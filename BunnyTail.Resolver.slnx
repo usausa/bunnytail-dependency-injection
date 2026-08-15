@@ -1,0 +1,30 @@
+<Solution>
+  <Folder Name="/Example/">
+  </Folder>
+  <Folder Name="/Library/">
+    <Project Path="BunnyTail.Resolver/BunnyTail.Resolver.csproj" />
+    <Project Path="BunnyTail.Resolver.Generator/BunnyTail.Resolver.Generator.csproj" />
+    <Project Path="BunnyTail.Resolver.Extensions.DependencyInjection/BunnyTail.Resolver.Extensions.DependencyInjection.csproj" />
+  </Folder>
+  <Folder Name="/Solution Items/">
+    <File Path=".editorconfig" />
+    <File Path=".gitattributes" />
+    <File Path=".gitignore" />
+    <File Path="AGENTS.md" />
+    <File Path="Analyzers.ruleset" />
+    <File Path="BunnyTail.Resolver.props" />
+    <File Path="BunnyTail.Resolver.sln.DotSettings" />
+    <File Path="CLAUDE.md" />
+    <File Path="CodeCoverage.runsettings" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Build.targets" />
+    <File Path="LICENSE" />
+    <File Path="README.md" />
+    <File Path="SPEC.md" />
+  </Folder>
+  <Folder Name="/Tests/">
+    <Project Path="BunnyTail.Resolver.Tests/BunnyTail.Resolver.Tests.csproj" />
+    <Project Path="BunnyTail.Resolver.CompatibilityTest/BunnyTail.Resolver.CompatibilityTest.csproj" />
+    <Project Path="BunnyTail.Resolver.AotTests/BunnyTail.Resolver.AotTests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <CodeAnalysisRuleSet>..\Analyzers.ruleset</CodeAnalysisRuleSet>
+    <IsPackable>false</IsPackable>
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BunnyTail.Resolver\BunnyTail.Resolver.csproj" />
+    <ProjectReference Include="..\BunnyTail.Resolver.Extensions.DependencyInjection\BunnyTail.Resolver.Extensions.DependencyInjection.csproj" />
+    <ProjectReference Include="..\BunnyTail.Resolver.Generator\BunnyTail.Resolver.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+</Project>
