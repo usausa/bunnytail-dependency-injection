@@ -3,6 +3,7 @@ namespace BunnyTail.Resolver;
 using Microsoft.Extensions.DependencyInjection;
 
 // ルートプロバイダ。状態 (Singleton 等) はインスタンスメンバとして保持する (プロセス static は使わない)
+// Root provider. State such as singletons is held as instance members (no process-wide statics).
 public sealed class ResolverServiceProvider :
     IServiceProvider,
     IKeyedServiceProvider,
@@ -31,7 +32,7 @@ public sealed class ResolverServiceProvider :
     }
 
     //--------------------------------------------------------------------------------
-    // IServiceProvider / IKeyedServiceProvider (root スコープへ委譲)
+    // IServiceProvider / IKeyedServiceProvider (root スコープへ委譲 / delegated to the root scope)
     //--------------------------------------------------------------------------------
 
     public object? GetService(Type serviceType) => RootScope.GetService(serviceType);

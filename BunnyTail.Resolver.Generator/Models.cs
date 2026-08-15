@@ -3,14 +3,16 @@ namespace BunnyTail.Resolver.Generator;
 using SourceGenerateHelper;
 
 // パイプラインに流す value-equatable モデル (Symbol/SyntaxNode は持たない)
+// Value-equatable models flowing through the pipeline (no Symbol/SyntaxNode references).
 
 // 依存の解決方法
+// How a dependency is resolved.
 internal static class DependencyKinds
 {
-    public const int Service = 0;        // 非 keyed サービス解決
-    public const int ServiceKey = 1;     // [ServiceKey] : 解決中のキーを注入
-    public const int KeyedExplicit = 2;  // [FromKeyedServices(key)] : 明示キー
-    public const int KeyedInherit = 3;   // [FromKeyedServices] : キー継承
+    public const int Service = 0;        // 非 keyed サービス解決 / non-keyed service resolution
+    public const int ServiceKey = 1;     // [ServiceKey] : 解決中のキーを注入 / injects the key being resolved
+    public const int KeyedExplicit = 2;  // [FromKeyedServices(key)] : 明示キー / explicit key
+    public const int KeyedInherit = 3;   // [FromKeyedServices] : キー継承 / inherits the key
 }
 
 internal sealed record ParameterModel(
@@ -27,15 +29,18 @@ internal sealed record PropertyModel(
     bool InCompilation);
 
 // 生成ファクトリの情報 (属性コンポーネント / Add* 収集 / 規約マッチで共通)
+// Generated factory information (shared by attribute components, Add* collection and convention matches).
 internal sealed record FactoryModel(
     string ImplementationType,
     EquatableArray<ParameterModel> Parameters,
     EquatableArray<PropertyModel> InjectProperties,
     bool EligibleUnkeyed,
     bool EligibleKeyed,
-    bool AmbiguousConstructor);
+    bool AmbiguousConstructor,
+    bool Disposable);
 
 // 属性 ([Singleton] 等) 付きコンポーネント
+// Component annotated with [Singleton] and friends.
 internal sealed record ComponentModel(
     FactoryModel Factory,
     string Lifetime,
@@ -47,6 +52,7 @@ internal sealed record ComponentModel(
     LocationInfo? Location);
 
 // Add*/TryAdd* 呼び出しから収集した実装型
+// Implementation type collected from Add*/TryAdd* invocations.
 internal sealed record CollectedModel(
     FactoryModel Factory,
     string ServiceType,
@@ -55,6 +61,7 @@ internal sealed record CollectedModel(
     int SpanStart);
 
 // 規約マッチの候補クラス (アセンブリ内の具象クラス全て)
+// Convention match candidate (every concrete class in the assembly).
 internal sealed record CandidateModel(
     string Name,
     string Namespace,
@@ -64,12 +71,14 @@ internal sealed record CandidateModel(
     int SpanStart);
 
 // [ComponentRegistration] のパターン指定
+// Pattern specification of [ComponentRegistration].
 internal sealed record PatternModel(
     string Lifetime,
     string Pattern,
     string? Namespace);
 
 // [ComponentRegistration] 付き partial メソッド
+// Partial method annotated with [ComponentRegistration].
 internal sealed record MethodModel(
     string? Namespace,
     string ClassName,

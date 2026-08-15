@@ -45,6 +45,60 @@ public static class GeneratedComponents
             global::System.Type.EmptyTypes,
             static provider => new global::BunnyTail.Resolver.Tests.Components.DisposableSingleton());
 
+        global::BunnyTail.Resolver.GeneratedComponentRegistry.Register(
+            typeof(global::BunnyTail.Resolver.Tests.Components.LeafDependency),
+            global::System.Type.EmptyTypes,
+            static provider => new global::BunnyTail.Resolver.Tests.Components.LeafDependency());
+
+        global::BunnyTail.Resolver.GeneratedComponentRegistry.Register(
+            typeof(global::BunnyTail.Resolver.Tests.Components.BranchA),
+            [typeof(global::BunnyTail.Resolver.Tests.Components.LeafDependency)],
+            [new global::BunnyTail.Resolver.InlinedDependency(typeof(global::BunnyTail.Resolver.Tests.Components.LeafDependency), typeof(global::BunnyTail.Resolver.Tests.Components.LeafDependency))],
+            static provider =>
+            {
+                var instance = new global::BunnyTail.Resolver.Tests.Components.BranchA(
+                    new global::BunnyTail.Resolver.Tests.Components.LeafDependency());
+                return instance;
+            });
+
+        global::BunnyTail.Resolver.GeneratedComponentRegistry.Register(
+            typeof(global::BunnyTail.Resolver.Tests.Components.BranchB),
+            [typeof(global::BunnyTail.Resolver.Tests.Components.LeafDependency)],
+            [new global::BunnyTail.Resolver.InlinedDependency(typeof(global::BunnyTail.Resolver.Tests.Components.LeafDependency), typeof(global::BunnyTail.Resolver.Tests.Components.LeafDependency))],
+            static provider =>
+            {
+                var instance = new global::BunnyTail.Resolver.Tests.Components.BranchB(
+                    new global::BunnyTail.Resolver.Tests.Components.LeafDependency());
+                return instance;
+            });
+
+        global::BunnyTail.Resolver.GeneratedComponentRegistry.Register(
+            typeof(global::BunnyTail.Resolver.Tests.Components.GraphRoot),
+            [typeof(global::BunnyTail.Resolver.Tests.Components.BranchA), typeof(global::BunnyTail.Resolver.Tests.Components.BranchB)],
+            [new global::BunnyTail.Resolver.InlinedDependency(typeof(global::BunnyTail.Resolver.Tests.Components.BranchA), typeof(global::BunnyTail.Resolver.Tests.Components.BranchA)), new global::BunnyTail.Resolver.InlinedDependency(typeof(global::BunnyTail.Resolver.Tests.Components.BranchB), typeof(global::BunnyTail.Resolver.Tests.Components.BranchB))],
+            static provider =>
+            {
+                var instance = new global::BunnyTail.Resolver.Tests.Components.GraphRoot(
+                    new global::BunnyTail.Resolver.Tests.Components.BranchA(new global::BunnyTail.Resolver.Tests.Components.LeafDependency()),
+                    new global::BunnyTail.Resolver.Tests.Components.BranchB(new global::BunnyTail.Resolver.Tests.Components.LeafDependency()));
+                return instance;
+            });
+
+        global::BunnyTail.Resolver.GeneratedComponentRegistry.Register(
+            typeof(global::BunnyTail.Resolver.Tests.Components.DisposableLeaf),
+            global::System.Type.EmptyTypes,
+            static provider => new global::BunnyTail.Resolver.Tests.Components.DisposableLeaf());
+
+        global::BunnyTail.Resolver.GeneratedComponentRegistry.Register(
+            typeof(global::BunnyTail.Resolver.Tests.Components.NodeWithDisposable),
+            [typeof(global::BunnyTail.Resolver.Tests.Components.DisposableLeaf)],
+            static provider =>
+            {
+                var instance = new global::BunnyTail.Resolver.Tests.Components.NodeWithDisposable(
+                    provider.GetRequiredService<global::BunnyTail.Resolver.Tests.Components.DisposableLeaf>());
+                return instance;
+            });
+
         global::BunnyTail.Resolver.GeneratedComponentRegistry.RegisterKeyed(
             typeof(global::BunnyTail.Resolver.Tests.Components.PrimaryKeyedComponent),
             global::System.Type.EmptyTypes,
@@ -60,6 +114,12 @@ public static class GeneratedComponents
         services.AddScoped<global::BunnyTail.Resolver.Tests.Components.IScopedService>(static provider => provider.GetRequiredService<global::BunnyTail.Resolver.Tests.Components.ScopedComponent>());
         services.AddKeyedSingleton<global::BunnyTail.Resolver.Tests.Components.IKeyedService, global::BunnyTail.Resolver.Tests.Components.PrimaryKeyedComponent>("primary");
         services.AddSingleton<global::BunnyTail.Resolver.Tests.Components.DisposableSingleton>();
+        services.AddTransient<global::BunnyTail.Resolver.Tests.Components.LeafDependency>();
+        services.AddTransient<global::BunnyTail.Resolver.Tests.Components.BranchA>();
+        services.AddTransient<global::BunnyTail.Resolver.Tests.Components.BranchB>();
+        services.AddTransient<global::BunnyTail.Resolver.Tests.Components.GraphRoot>();
+        services.AddTransient<global::BunnyTail.Resolver.Tests.Components.DisposableLeaf>();
+        services.AddTransient<global::BunnyTail.Resolver.Tests.Components.NodeWithDisposable>();
         return services;
     }
 }

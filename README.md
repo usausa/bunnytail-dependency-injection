@@ -1,65 +1,143 @@
 # BunnyTail.Resolver
 
+| Package | Info |
+|:-|:-|
+| BunnyTail.Resolver | [![NuGet](https://img.shields.io/nuget/v/BunnyTail.Resolver.svg)](https://www.nuget.org/packages/BunnyTail.Resolver) |
+| BunnyTail.Resolver.Extensions.DependencyInjection | [![NuGet](https://img.shields.io/nuget/v/BunnyTail.Resolver.Extensions.DependencyInjection.svg)](https://www.nuget.org/packages/BunnyTail.Resolver.Extensions.DependencyInjection) |
+
+## What is this?
+
 Source generator based AOT-safe DI library compatible with Microsoft.Extensions.DependencyInjection.
 
-## Features
-
-- **100% MEDI compatible**: passes all `Microsoft.Extensions.DependencyInjection.Specification.Tests` (base + keyed). Drop-in replacement via `IServiceProviderFactory`.
-- **AOT safe**: no `Reflection.Emit`, no `Expression.Compile` on the resolution path. Verified on NativeAOT with zero trim/AOT warnings.
-- **Source generator powered**: dependency graphs are resolved at compile time. Constructor selection, lifetimes and slot assignment are settled before the app starts.
-- **Automatic registration**: components are collected from attributes, existing `Add*` calls, and naming conventions — no manual registration required.
+* **100% MEDI compatible** — passes the complete official `Microsoft.Extensions.DependencyInjection.Specification.Tests` suite (base + keyed, 143/143), including keyed services (`KeyedService.AnyKey`, `[ServiceKey]`, `[FromKeyedServices]`), scope-aware injected `IServiceProvider`, enumerable semantics, constrained open generics and container-tracked reverse-order disposal. Drop-in replacement via `IServiceProviderFactory`
+* **AOT safe** — no `Reflection.Emit` / `Expression.Compile` on the resolution path. Verified on NativeAOT with zero trim/AOT warnings
+* **Source generator powered** — dependency graphs are resolved at compile time: constructor selection, lifetime shapes, disposal tracking and transient graph inlining are settled before the app starts
+* **Automatic registration** — components are collected from attributes, existing `Add*` calls and naming conventions
 
 ## Usage
 
 ### Attribute based registration
 
+Annotate components with `[Singleton]` / `[Scoped]` / `[Transient]`. The generated `AddComponents()` method registers the class itself and all implemented interfaces (interfaces are forwarded to the same instance).
+
 ```csharp
+using BunnyTail.Resolver;
+
 [Singleton]
-public class Component1;
+public sealed class Component1;
 
 [Transient]
-public class Component2(Component1 component)
+public sealed class Component2(Component1 component)
 {
     [Inject]
     public Component3 Three { get; set; } = default!;
 }
 
 [Singleton(As = typeof(IService), Key = "primary")]
-public class Component4 : IService;
+public sealed class Component4 : IService;
 ```
 
 ```csharp
-var provider = new ServiceCollection()
+using var provider = new ServiceCollection()
     .AddComponents()          // generated
     .BuildResolverServiceProvider();
+
+var component = provider.GetRequiredService<Component2>();
+var keyed = provider.GetRequiredKeyedService<IService>("primary");
 ```
 
+| Parameter | Description |
+|---|---|
+| `As` | Explicit service type. When omitted, the class itself and all implemented interfaces are registered (`IDisposable` / `IAsyncDisposable` excluded) |
+| `Key` | Keyed service registration |
+
+`[Inject]` marks a public settable property for property injection after construction. `[FromKeyedServices]` and `[ServiceKey]` on constructor parameters and `[Inject]` properties follow MEDI rules.
+
 ### Convention based registration
+
+Class name patterns generate the registration method body, same as attribute-free bulk registration.
 
 ```csharp
 public static partial class ServiceCollectionExtensions
 {
     [ComponentRegistration(Lifetime.Singleton, "Service$")]
+    [ComponentRegistration(Lifetime.Scoped, "Repository$", Namespace = "MyApp.Data")]
     public static partial IServiceCollection AddServices(this IServiceCollection services);
 }
 ```
 
-### Generic Host / ASP.NET Core
+| Parameter | Description |
+|---|---|
+| `Lifetime` | Service lifetime: `Transient`, `Singleton`, or `Scoped` |
+| `Pattern` | Regex pattern to match class names to register |
+| `Namespace` | Namespace prefix to filter classes |
+
+### Existing Add* registrations
+
+`AddSingleton<TService, TImplementation>()` style calls in user code are detected by the generator, and reflection-free factories are generated for the implementation types automatically. Existing MEDI registration code benefits from the generated path without any changes.
+
+## Microsoft.Extensions.DependencyInjection integration
+
+The `BunnyTail.Resolver.Extensions.DependencyInjection` package provides the MEDI bridge: `BuildResolverServiceProvider()` and `ResolverServiceProviderFactory`.
+
+### ServiceCollection
 
 ```csharp
+using var provider = new ServiceCollection()
+    .AddComponents()
+    .AddSingleton<IFoo, Foo>()
+    .BuildResolverServiceProvider();
+```
+
+### Generic Host
+
+```csharp
+using var host = Host.CreateDefaultBuilder(args)
+    .UseServiceProviderFactory(new ResolverServiceProviderFactory())
+    .ConfigureServices(static services => services.AddComponents())
+    .Build();
+```
+
+### ASP.NET Core
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseServiceProviderFactory(new ResolverServiceProviderFactory());
 ```
 
-Existing `AddSingleton<TService, TImplementation>()` style registrations are also detected by the generator and served by generated factories automatically.
+Framework services registered by the host are resolved through the runtime path, application components through the generated path — both with identical semantics.
 
-## Packages
+## How it works
 
-| Package | Description |
-|---------|-------------|
-| BunnyTail.Resolver | Runtime, attributes and the source generator |
-| BunnyTail.Resolver.Extensions.DependencyInjection | `IServiceProviderFactory` integration |
+Two resolution paths share one runtime core, so lifetime, disposal and collection semantics are always identical:
 
-## Documents
+| Path | Registrations | Implementation |
+|---|---|---|
+| Generated | Visible at compile time (attributes, `Add*` calls, conventions) | Generated factories with literal `new`. Transient dependency graphs are inlined into a single factory. Reflection-free |
+| Runtime | Known only at runtime (framework assemblies, factories, instances, replacements) | `ConstructorInfo.Invoke` based. No Emit, so it also works on NativeAOT |
 
-- [SPEC.md](SPEC.md) — design specification
-- [__benchmarks/results/VERDICT.md](__benchmarks/results/VERDICT.md) — measured design decisions
+When the provider is built, every `ServiceDescriptor` is verified against the generated assumptions (selected constructor, inlined dependency lifetimes and implementation types). A registration that no longer matches — replaced via `Replace`, re-registered with a different lifetime, or overridden by a factory — automatically falls back to the runtime path, so behavior always follows the actual registrations.
+
+## Diagnostics
+
+| ID | Severity | Description |
+|---|---|---|
+| BTRS0001 | Error | Registration method must be a static partial extension method with an `IServiceCollection` parameter and return type |
+| BTRS0002 | Warning | Registration pattern is not a valid regular expression |
+| BTRS0003 | Error | Circular dependency detected at compile time |
+| BTRS0004 | Warning | Dependency cannot be resolved from the registrations visible at compile time |
+| BTRS0005 | Warning | Captive dependency (singleton component depends on a scoped service) |
+| BTRS0006 | Error | Multiple public constructors with the same maximum parameter count |
+
+## Limitations
+
+* Runtime targets .NET 10 or later (the generator itself is netstandard2.0)
+* Open generic definition registrations (`typeof(IRepository<>)`) are served by the runtime path; on NativeAOT, value type arguments for such registrations are not supported
+* Method injection is not supported
+* On trimmed applications, `[Inject]` properties are only guaranteed for types with compile-time visible registrations
+
+## TODO
+
+- [ ] Open generic definition registrations: collect the closed types reachable at compile time and serve them through generated factories (currently served by the runtime path), plus a diagnostic for the NativeAOT value type argument limitation
+- [ ] `Add*` collection coverage: non-generic `typeof` overloads, `TryAddEnumerable`, `ServiceDescriptor` based registrations and `AddKeyed*`
+- [ ] `[ComponentRegistration]` `Assembly` parameter (referenced assembly scan)

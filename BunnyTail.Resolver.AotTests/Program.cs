@@ -1,5 +1,5 @@
-// NativeAOT 実行検証: 属性コンポーネント (生成経路) + 実行時登録 (互換経路) の両方を
-// PublishAot でビルドした実行ファイル上で検証する
+// NativeAOT 実行検証: 属性コンポーネント (生成経路) と実行時登録 (互換経路) の両方を PublishAot でビルドした実行ファイル上で検証する
+// NativeAOT execution verification: exercises both attribute components (generated path) and runtime registrations (runtime path) in an executable built with PublishAot.
 using BunnyTail.Resolver;
 using BunnyTail.Resolver.AotTests;
 
@@ -21,18 +21,19 @@ void Assert(bool condition, string name)
 }
 
 // AddComponents = 属性コンポーネント (生成登録メソッド) / AddTransient = Add* 収集 → 生成ファクトリ
+// AddComponents = attribute components (generated registration method) / AddTransient = Add* collection -> generated factory.
 var services = new ServiceCollection()
     .AddComponents()
     .AddTransient<RuntimeRegistered>();
 
 using (var provider = services.BuildResolverServiceProvider())
 {
-    // Singleton 同一性
+    // Singleton 同一性 / singleton identity
     var s1 = provider.GetRequiredService<AotSingleton>();
     var s2 = provider.GetRequiredService<AotSingleton>();
     Assert(ReferenceEquals(s1, s2), "singleton identity");
 
-    // Transient + コンストラクタ注入 + [Inject] プロパティ注入
+    // Transient + コンストラクタ注入 + [Inject] プロパティ注入 / transient + constructor injection + [Inject] property injection
     var t1 = provider.GetRequiredService<AotTransient>();
     var t2 = provider.GetRequiredService<AotTransient>();
     Assert(!ReferenceEquals(t1, t2), "transient distinct");
@@ -48,7 +49,13 @@ using (var provider = services.BuildResolverServiceProvider())
         Assert(ReferenceEquals(sc1, scope.ServiceProvider.GetRequiredService<AotScoped>()), "forwarded interface identity");
     }
 
-    // keyed ([ServiceKey] 注入込み)
+    // transient グラフ (インライン展開ファクトリ) / transient graph (inlined factory)
+    var g1 = provider.GetRequiredService<AotGraphRoot>();
+    var g2 = provider.GetRequiredService<AotGraphRoot>();
+    Assert(!ReferenceEquals(g1, g2), "graph transient distinct");
+    Assert(!ReferenceEquals(g1.B.Dep, g1.C.Dep), "graph fresh per use site");
+
+    // keyed ([ServiceKey] 注入込み) / keyed (including [ServiceKey] injection)
     var keyed = provider.GetRequiredKeyedService<IAotKeyed>("primary");
     Assert(keyed is AotKeyed { Key: "primary" }, "keyed with ServiceKey");
 
@@ -56,7 +63,7 @@ using (var provider = services.BuildResolverServiceProvider())
     var all = provider.GetServices<IAotMulti>().ToArray();
     Assert(all.Length == 2, "enumerable count");
 
-    // 実行時登録 (互換経路/収集ファクトリ)
+    // 実行時登録 (互換経路/収集ファクトリ) / runtime registration (runtime path / collected factory)
     Assert(provider.GetService<RuntimeRegistered>() is not null, "runtime registered");
 }
 
@@ -97,6 +104,29 @@ namespace BunnyTail.Resolver.AotTests
 
     [Scoped]
     public sealed class AotScoped : IAotScoped;
+
+    [Transient]
+    public sealed class AotGraphDep;
+
+    [Transient]
+    public sealed class AotGraphB(AotGraphDep dep)
+    {
+        public AotGraphDep Dep { get; } = dep;
+    }
+
+    [Transient]
+    public sealed class AotGraphC(AotGraphDep dep)
+    {
+        public AotGraphDep Dep { get; } = dep;
+    }
+
+    [Transient]
+    public sealed class AotGraphRoot(AotGraphB b, AotGraphC c)
+    {
+        public AotGraphB B { get; } = b;
+
+        public AotGraphC C { get; } = c;
+    }
 
     [Singleton(As = typeof(IAotKeyed), Key = "primary")]
     public sealed class AotKeyed([ServiceKey] string key) : IAotKeyed

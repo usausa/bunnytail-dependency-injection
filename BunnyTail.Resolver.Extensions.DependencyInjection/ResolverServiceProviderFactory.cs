@@ -3,6 +3,7 @@ namespace BunnyTail.Resolver;
 using Microsoft.Extensions.DependencyInjection;
 
 // MEDI 差し替え用ファクトリ (UseServiceProviderFactory で使用)
+// Factory for replacing MEDI (used with UseServiceProviderFactory).
 public sealed class ResolverServiceProviderFactory : IServiceProviderFactory<IServiceCollection>
 {
     public IServiceCollection CreateBuilder(IServiceCollection services) => services;

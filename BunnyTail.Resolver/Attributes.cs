@@ -1,6 +1,7 @@
 namespace BunnyTail.Resolver;
 
-// 属性ベース登録 (SPEC 3.1)。ジェネレータが収集して登録メソッド+生成ファクトリを出力する
+// 属性ベース登録のマーカー。ジェネレータが収集し、登録メソッドと生成ファクトリを出力する
+// Markers for attribute based registration. The generator collects them and emits the registration method and factories.
 
 [AttributeUsage(AttributeTargets.Class, AllowMultiple = true, Inherited = false)]
 public sealed class SingletonAttribute : Attribute
@@ -26,14 +27,15 @@ public sealed class TransientAttribute : Attribute
     public object? Key { get; set; }
 }
 
-// プロパティインジェクション (SPEC 3.4)。インスタンス生成後に注入される
+// プロパティインジェクションのマーカー。インスタンス生成後に注入される
+// Marker for property injection. Injected after the instance is constructed.
 [AttributeUsage(AttributeTargets.Property, Inherited = false)]
 public sealed class InjectAttribute : Attribute
 {
 }
 
-// 命名規約ベース登録 (SPEC 3.3)。partial 拡張メソッドに付与すると、
-// クラス名が正規表現にマッチするコンポーネントの登録コードが本体として生成される
+// 命名規約ベース登録。partial 拡張メソッドに付与すると、クラス名が正規表現にマッチするコンポーネントの登録コードが本体として生成される
+// Convention based registration. Applied to a partial extension method, the generator emits the method body registering components whose class names match the regex pattern.
 public enum Lifetime
 {
     Transient = 0,

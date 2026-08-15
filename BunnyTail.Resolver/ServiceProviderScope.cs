@@ -2,8 +2,8 @@ namespace BunnyTail.Resolver;
 
 using Microsoft.Extensions.DependencyInjection;
 
-// スコープ。ルートプロバイダも root スコープとして同じ実装を使う。
-// 注入される IServiceProvider はこのスコープ自身 (MEDI 互換)
+// スコープ。ルートプロバイダも root スコープとして同じ実装を使う。注入される IServiceProvider はこのスコープ自身 (MEDI 互換)
+// Scope. The root provider uses the same implementation as its root scope. The injected IServiceProvider is this scope itself (MEDI compatible).
 public sealed class ServiceProviderScope :
     IServiceScope,
     IServiceProvider,
@@ -37,7 +37,7 @@ public sealed class ServiceProviderScope :
     public IServiceProvider ServiceProvider => this;
 
     //--------------------------------------------------------------------------------
-    // Resolve
+    // Resolve (解決)
     //--------------------------------------------------------------------------------
 
     public object? GetService(Type serviceType)
@@ -90,8 +90,10 @@ public sealed class ServiceProviderScope :
         serviceType.IsConstructedGenericType && serviceType.GetGenericTypeDefinition() == typeof(IEnumerable<>);
 
     //--------------------------------------------------------------------------------
-    // Slot storage
+    // Slot storage (スロット保持)
     //--------------------------------------------------------------------------------
+
+    internal static object WrapSlotValue(object? value) => value ?? NullSentinel;
 
     internal static object? UnwrapSlotValue(object value) => ReferenceEquals(value, NullSentinel) ? null : value;
 
@@ -112,11 +114,11 @@ public sealed class ServiceProviderScope :
             array = newArray;
         }
 
-        array[index] = value ?? NullSentinel;
+        array[index] = WrapSlotValue(value);
     }
 
     //--------------------------------------------------------------------------------
-    // Disposal tracking
+    // Disposal tracking (disposal 追跡)
     //--------------------------------------------------------------------------------
 
     internal void CheckDisposed() => ObjectDisposedException.ThrowIf(disposed, typeof(IServiceProvider));
@@ -144,6 +146,7 @@ public sealed class ServiceProviderScope :
         if (disposed)
         {
             // dispose 済みスコープからの生成物は即時破棄して例外 (MEDI 互換)
+            // Instances created from a disposed scope are disposed immediately and an exception is thrown (MEDI compatible).
             if (value is IDisposable d)
             {
                 d.Dispose();
@@ -156,7 +159,7 @@ public sealed class ServiceProviderScope :
     }
 
     //--------------------------------------------------------------------------------
-    // Dispose (生成の逆順 = LIFO)
+    // Dispose (生成の逆順 = LIFO / reverse creation order)
     //--------------------------------------------------------------------------------
 
     public void Dispose()
@@ -187,7 +190,8 @@ public sealed class ServiceProviderScope :
             }
             else
             {
-                // MEDI 互換: IAsyncDisposable のみ実装のサービスを同期 Dispose した場合は例外
+                // IAsyncDisposable のみ実装のサービスを同期 Dispose した場合は例外 (MEDI 互換)
+                // Synchronous Dispose of a service implementing only IAsyncDisposable throws (MEDI compatible).
 #pragma warning disable CA1065
                 throw new InvalidOperationException(
                     $"'{toDispose[i].GetType()}' type only implements IAsyncDisposable. Use DisposeAsync to dispose the container.");

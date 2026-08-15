@@ -7,23 +7,34 @@ using System.Runtime.CompilerServices;
 
 using Microsoft.Extensions.DependencyInjection;
 
-// ServiceDescriptor 集合から解決グラフ (accessor 群) をビルドするレジストリ (互換経路)。
-// エントリ実現は初回解決時 (MEDI の callsite 構築と同タイミング)。実現済みエントリはイミュータブル。
+// ServiceDescriptor 集合から解決グラフ (accessor 群) をビルドするレジストリ。
+// エントリ実現は初回解決時 (MEDI の callsite 構築と同タイミング)。実現済みエントリはイミュータブル
+// Registry that builds the resolution graph (accessors) from the ServiceDescriptor set.
+// Entries are realized on first resolution (same timing as MEDI callsite construction) and are immutable once realized.
 internal sealed class ServiceRegistry
 {
     [ThreadStatic]
     private static List<ServiceIdentifier>? realizationStack;
 
-    private readonly ServiceDescriptor[] descriptors;                                          // 登録順 (IEnumerable 構築用)
-    private readonly Dictionary<ServiceIdentifier, List<ServiceDescriptor>> exactMap;          // (ServiceType, key) → 登録順リスト
-    private readonly HashSet<Type> keyedServiceTypes;                                          // AnyKey クエリ判定用
+    private readonly ServiceDescriptor[] descriptors;                                          // 登録順 / registration order (used to build IEnumerable)
+    private readonly Dictionary<ServiceIdentifier, List<ServiceDescriptor>> exactMap;          // (ServiceType, key) → 登録順リスト / list in registration order
+    private readonly HashSet<Type> keyedServiceTypes;                                          // AnyKey クエリ判定用 / for AnyKey query checks
     private readonly ConcurrentDictionary<ServiceIdentifier, ServiceAccessor?> entries = new();
     private readonly ConcurrentDictionary<AccessorCacheKey, ServiceAccessor> descriptorAccessors = new();
 
-    // 主テーブル (VB-01/VB-01b の勝者形状)。ビルド時に実現できたエントリを収め、以後イミュータブル。
-    // 派生エントリ (IEnumerable / closed generic / AnyKey 派生) とビルド時に実現できなかった登録は overlay (entries) 側
-    private readonly FixedTypeServiceTable typeTable;
-    private readonly FixedKeyedServiceTable keyedTable;
+    // 主テーブル (VB-01/VB-01b の勝者形状)。ビルド時に実現できたエントリを収め、実行時に実現した
+    // 派生エントリ (IEnumerable / closed generic / AnyKey 派生など) は COW 再構築で昇格する。
+    // テーブル自体は常にイミュータブルで、resolve 経路に同期はない。
+    // 実現できなかった登録 (null エントリ) は overlay (entries) 側に残る
+    // Main table (winner shape of VB-01/VB-01b). Holds entries realized at build time; derived entries realized
+    // at runtime (IEnumerable / closed generics / AnyKey derivations) are promoted by COW rebuild. The table itself
+    // is always immutable and the resolve path has no synchronization. Registrations that could not be realized
+    // (null entries) stay on the overlay (entries) side.
+    private readonly Lock tableSync = new();
+    private FixedTypeServiceTable? typeTable;
+    private FixedKeyedServiceTable? keyedTable;
+    private readonly List<KeyValuePair<Type, ServiceAccessor>>? typeTableEntries;              // 昇格用スナップショット (tableSync 下でのみ変更) / promotion snapshot (mutated only under tableSync)
+    private readonly List<(Type Type, object Key, ServiceAccessor Accessor)>? keyedTableEntries;
 
     private int slotCounter;
 
@@ -50,15 +61,18 @@ internal sealed class ServiceRegistry
             }
         }
 
-        // built-in (ユーザー登録より優先: MEDI 互換)
+        // built-in サービス (ユーザー登録より優先: MEDI 互換)
+        // Built-in services (take precedence over user registrations: MEDI compatible).
         entries[new ServiceIdentifier(typeof(IServiceProvider), null)] = new ServiceProviderAccessor();
         entries[new ServiceIdentifier(typeof(IServiceScopeFactory), null)] = new ConstantAccessor(provider);
         entries[new ServiceIdentifier(typeof(IServiceProviderIsService), null)] = new ConstantAccessor(provider);
         entries[new ServiceIdentifier(typeof(IServiceProviderIsKeyedService), null)] = new ConstantAccessor(provider);
 
-        // ビルド時ウォームアップ: 実現可能な exact 登録を主テーブルへ固める。
-        // 実現に失敗する登録 (未解決依存・循環など) はここでは無視し、初回 resolve 時に
-        // 例外を投げ直す (MEDI 互換: ビルドは失敗させない)
+        // ビルド時ウォームアップ: 実現可能な exact 登録を主テーブルへ固める。実現に失敗する登録
+        // (未解決依存・循環など) はここでは無視し、初回 resolve 時に例外を投げ直す (MEDI 互換: ビルドは失敗させない)
+        // Build-time warmup: realizable exact registrations are frozen into the main table. Registrations that fail
+        // to realize (unresolved dependencies, cycles, ...) are ignored here and rethrow on first resolve
+        // (MEDI compatible: building never fails).
         var typeEntries = new List<KeyValuePair<Type, ServiceAccessor>>
         {
             new(typeof(IServiceProvider), entries[new ServiceIdentifier(typeof(IServiceProvider), null)]!),
@@ -103,17 +117,20 @@ internal sealed class ServiceRegistry
 
         typeTable = new FixedTypeServiceTable(typeEntries);
         keyedTable = new FixedKeyedServiceTable(keyedEntries);
+        typeTableEntries = typeEntries;
+        keyedTableEntries = keyedEntries;
     }
 
     private int NextSlot() => Interlocked.Increment(ref slotCounter) - 1;
 
     //--------------------------------------------------------------------------------
-    // Entry realization
+    // Entry realization (エントリ実現)
     //--------------------------------------------------------------------------------
 
     public ServiceAccessor? GetEntry(ServiceIdentifier id)
     {
         // 主テーブル (イミュータブル、同期なし)。ウォームアップ中は未構築なので overlay 側を使う
+        // Main table (immutable, no synchronization). Not built yet during warmup, so the overlay is used instead.
         if (id.Key is null)
         {
             var fixedAccessor = typeTable?.Get(id.ServiceType);
@@ -133,6 +150,13 @@ internal sealed class ServiceRegistry
 
         if (entries.TryGetValue(id, out var existing))
         {
+            // ウォームアップ中に実現された派生エントリはテーブル未収載のことがあるため、ここでも昇格する
+            // Derived entries realized during warmup may not be in the table yet, so promote here as well.
+            if (existing is not null)
+            {
+                PromoteEntry(id, existing);
+            }
+
             return existing;
         }
 
@@ -149,11 +173,51 @@ internal sealed class ServiceRegistry
         try
         {
             var created = CreateEntry(id);
-            return entries.GetOrAdd(id, created);
+            var realized = entries.GetOrAdd(id, created);
+            if (realized is not null)
+            {
+                PromoteEntry(id, realized);
+            }
+
+            return realized;
         }
         finally
         {
             stack.RemoveAt(stack.Count - 1);
+        }
+    }
+
+    // 実現済みエントリの主テーブル昇格。スナップショットへ追記して再構築し、Volatile.Write で差し替える (COW)。
+    // 読み出し側はロックなしの素の読みのままで、差し替え前の古いテーブルを読んだ場合も overlay 側で解決できるため常に正しい
+    // Promotion of a realized entry into the main table. Appends to the snapshot, rebuilds and swaps with
+    // Volatile.Write (COW). Readers keep plain lock-free reads; reading a pre-swap table is still correct
+    // because the overlay can serve the entry.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void PromoteEntry(ServiceIdentifier id, ServiceAccessor accessor)
+    {
+        lock (tableSync)
+        {
+            if (typeTableEntries is null || keyedTableEntries is null)
+            {
+                return;   // ウォームアップ中 (コンストラクタ末尾でまとめて構築される) / during warmup (built in one go at the end of the constructor)
+            }
+
+            if (id.Key is null)
+            {
+                if (typeTable!.Get(id.ServiceType) is null)
+                {
+                    typeTableEntries.Add(new KeyValuePair<Type, ServiceAccessor>(id.ServiceType, accessor));
+                    Volatile.Write(ref typeTable, new FixedTypeServiceTable(typeTableEntries));
+                }
+            }
+            else
+            {
+                if (keyedTable!.Get(id.ServiceType, id.Key) is null)
+                {
+                    keyedTableEntries.Add((id.ServiceType, id.Key, accessor));
+                    Volatile.Write(ref keyedTable, new FixedKeyedServiceTable(keyedTableEntries));
+                }
+            }
         }
     }
 
@@ -175,12 +239,14 @@ internal sealed class ServiceRegistry
         }
 
         // 1. 完全一致 (closed)。単一解決は最後の登録 (MEDI 互換: exact は open より優先)
+        // 1. Exact (closed) match. Single resolution takes the last registration (MEDI compatible: exact wins over open).
         if (exactMap.TryGetValue(id, out var list))
         {
             return TryRealizeDescriptor(list[^1], serviceType, id.Key);
         }
 
         // 2. AnyKey 登録への concrete key 問い合わせ
+        // 2. Concrete key query against AnyKey registrations.
         if (id.Key is not null && !ReferenceEquals(id.Key, KeyedService.AnyKey)
             && exactMap.TryGetValue(new ServiceIdentifier(serviceType, KeyedService.AnyKey), out var anyList))
         {
@@ -198,6 +264,7 @@ internal sealed class ServiceRegistry
             }
 
             // 4. open generic (後方から、型制約を満たす最初のもの)
+            // 4. Open generics (searched backwards, first registration satisfying the type constraints).
             if (exactMap.TryGetValue(new ServiceIdentifier(definition, id.Key), out var openList))
             {
                 for (var i = openList.Count - 1; i >= 0; i--)
@@ -228,7 +295,7 @@ internal sealed class ServiceRegistry
     }
 
     //--------------------------------------------------------------------------------
-    // Descriptor realization
+    // Descriptor realization (ディスクリプタ実現)
     //--------------------------------------------------------------------------------
 
     private ServiceAccessor? TryRealizeDescriptor(ServiceDescriptor descriptor, Type serviceType, object? requestedKey)
@@ -270,7 +337,9 @@ internal sealed class ServiceRegistry
 
             if (descriptor.ImplementationFactory is not null)
             {
-                return new FactoryAccessor(descriptor.ImplementationFactory, cache, cache == ResultCache.None ? -1 : NextSlot());
+                // ユーザーファクトリは実装型が不明なため追跡は常に有効
+                // User factories have unknown implementation types, so tracking is always enabled.
+                return new FactoryAccessor(descriptor.ImplementationFactory, cache, cache == ResultCache.Scoped ? NextSlot() : -1, trackDisposable: true);
             }
 
             return CreateConstructorAccessor(descriptor.ImplementationType!, serviceType, cache, serviceKey: null);
@@ -283,15 +352,17 @@ internal sealed class ServiceRegistry
 
         if (descriptor.KeyedImplementationFactory is not null)
         {
-            return new KeyedFactoryAccessor(descriptor.KeyedImplementationFactory, effectiveKey, cache, cache == ResultCache.None ? -1 : NextSlot());
+            return new KeyedFactoryAccessor(descriptor.KeyedImplementationFactory, effectiveKey, cache, cache == ResultCache.Scoped ? NextSlot() : -1, trackDisposable: true);
         }
 
         return CreateConstructorAccessor(descriptor.KeyedImplementationType!, serviceType, cache, serviceKey: effectiveKey);
     }
 
-    // open generic 定義から closed 型を作る (互換経路のみ)。
-    // NativeAOT では参照型引数は shared generic で動作し、値型引数のみ実行時例外になり得る
-    // (BTRS0007 診断で誘導予定。生成経路はコンパイル時に閉じるため影響しない)
+    // open generic 定義から closed 型を作る (互換経路のみ)。NativeAOT では参照型引数は shared generic で動作し、
+    // 値型引数のみ実行時例外になり得る (生成経路はコンパイル時に閉じるため影響しない)
+    // Builds the closed type from an open generic definition (runtime path only). On NativeAOT, reference type
+    // arguments work through shared generics and only value type arguments may fail at runtime
+    // (the generated path closes types at compile time and is unaffected).
     [UnconditionalSuppressMessage("AotAnalysis", "IL3050", Justification = "値型引数の open generic のみ実行時に失敗し得る。互換経路限定の挙動としてドキュメント化済み")]
     [UnconditionalSuppressMessage("Trimming", "IL2055", Justification = "closed 型のコンストラクタは登録された open generic 実装型のメタデータから保持される")]
     [UnconditionalSuppressMessage("Trimming", "IL2068", Justification = "同上")]
@@ -314,18 +385,19 @@ internal sealed class ServiceRegistry
             catch (ArgumentException)
             {
                 // 型制約を満たさない → この登録はこの closed 型には適用不可
+                // Type constraints not satisfied: this registration does not apply to this closed type.
                 return null;
             }
         }
 
-        var slot = cache == ResultCache.None ? -1 : NextSlot();
+        var slot = cache == ResultCache.Scoped ? NextSlot() : -1;
 
         var constructors = implType.GetConstructors();
         if (constructors.Length == 0)
         {
             if (implType.IsValueType)
             {
-                return new ValueTypeAccessor(implType, cache, slot);
+                return new ValueTypeAccessor(implType, cache, slot, IsDisposableType(implType));
             }
 
             throw new InvalidOperationException(
@@ -339,6 +411,7 @@ internal sealed class ServiceRegistry
         }
 
         // 複数コンストラクタ: MEDI 規則 (解決可能な最大のもの、superset でなければ ambiguous)
+        // Multiple constructors: MEDI rules (the largest resolvable one; ambiguous unless a superset).
         Array.Sort(constructors, static (a, b) => b.GetParameters().Length.CompareTo(a.GetParameters().Length));
 
         ConstructorInfo? best = null;
@@ -361,7 +434,7 @@ internal sealed class ServiceRegistry
             }
             else if (bestTypes!.IsSupersetOf(types))
             {
-                // 既存の best が優位
+                // 既存の best が優位 / the current best remains superior
             }
             else
             {
@@ -379,33 +452,45 @@ internal sealed class ServiceRegistry
         return CreateFinalAccessor(implType, best, bestPlans!, serviceKey, cache, slot);
     }
 
+    // disposal 追跡要否を実装型で確定する (VB-06: 実行時 is チェックの排除)
+    // Settles whether disposal tracking is needed from the implementation type (VB-06: eliminates runtime type checks).
+    private static bool IsDisposableType(Type type) =>
+        typeof(IDisposable).IsAssignableFrom(type) || typeof(IAsyncDisposable).IsAssignableFrom(type);
+
     private ServiceAccessor CreateFinalAccessor(Type implType, ConstructorInfo constructor, ParameterPlan[] plans, object? serviceKey, ResultCache cache, int slot)
     {
-        // 生成経路フック: MEDI 規則で選択されたコンストラクタが生成時の前提と一致し、
-        // かつ全引数がサービス解決 (既定値フォールバックなし) の場合のみ生成ファクトリを採用する
-        // (SPEC 2.3 のビルド時検証。不一致は互換経路へフォールバック)
+        var track = IsDisposableType(implType);
+
+        // 生成経路フック: MEDI 規則で選択されたコンストラクタが生成時の前提と一致し、かつ全引数が
+        // サービス解決 (既定値フォールバックなし) の場合のみ生成ファクトリを採用する (不一致は互換経路へフォールバック)
+        // Generated path hook: the generated factory is adopted only when the constructor selected by MEDI rules
+        // matches the generation-time assumption and every argument is a service resolution (no default value
+        // fallback). Mismatches fall back to the runtime path.
         if (serviceKey is null)
         {
             if (GeneratedComponentRegistry.TryGet(implType, out var generated)
                 && ConstructorMatches(constructor, generated.ConstructorParameterTypes)
-                && AllPlansAreServices(plans))
+                && AllPlansAreServices(plans)
+                && InlinedDependenciesMatch(generated.InlinedDependencies))
             {
-                return new FactoryAccessor(generated.Factory, cache, slot);
+                return new FactoryAccessor(generated.Factory, cache, slot, track);
             }
         }
         else
         {
             // keyed: [ServiceKey] 注入は生成ファクトリが key 引数として受け取るため採用可
+            // Keyed: [ServiceKey] injection is acceptable because the generated factory receives it as the key argument.
             if (GeneratedComponentRegistry.TryGetKeyed(implType, out var generatedKeyed)
                 && ConstructorMatches(constructor, generatedKeyed.ConstructorParameterTypes)
-                && AllPlansAreServicesOrServiceKey(plans))
+                && AllPlansAreServicesOrServiceKey(plans)
+                && InlinedDependenciesMatch(generatedKeyed.InlinedDependencies))
             {
-                return new KeyedFactoryAccessor(generatedKeyed.Factory, serviceKey, cache, slot);
+                return new KeyedFactoryAccessor(generatedKeyed.Factory, serviceKey, cache, slot, track);
             }
         }
 
         var properties = BuildPropertyInjections(implType, serviceKey);
-        return new ConstructorAccessor(constructor, plans, properties, cache, slot);
+        return new ConstructorAccessor(constructor, plans, properties, cache, slot, track);
     }
 
     private static bool AllPlansAreServices(ParameterPlan[] plans)
@@ -426,6 +511,32 @@ internal sealed class ServiceRegistry
         foreach (var plan in plans)
         {
             if (!plan.IsService && !plan.IsServiceKey)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // インライン展開された依存の前提検証。生成ファクトリが依存をリテラル new で展開している場合、
+    // その依存サービスの実行時解決が「前提どおりの実装型の生成ファクトリによる transient 解決」になる場合のみ
+    // 採用できる。展開先の生成ファクトリ自体も採用時に同じ検証を受けているため、直接依存の検証で推移的に
+    // 全体が保証される。不成立 (差し替え・lifetime 変更・ファクトリ登録等) なら呼び出し側が互換経路へフォールバックする
+    // Validation of inlined dependency assumptions. When a generated factory inlines a dependency as a literal new,
+    // it can only be adopted if resolving that dependency at runtime results in a transient resolution through the
+    // assumed implementation type's generated factory. Each inlined factory goes through the same validation when
+    // adopted, so validating direct dependencies transitively guarantees the whole graph. On mismatch (replacement,
+    // lifetime change, factory registration, ...) the caller falls back to the runtime path.
+    private bool InlinedDependenciesMatch(InlinedDependency[] dependencies)
+    {
+        foreach (var dependency in dependencies)
+        {
+            var accessor = GetEntry(new ServiceIdentifier(dependency.ServiceType, null));
+            if (accessor is not FactoryAccessor factoryAccessor
+                || factoryAccessor.Cache != ResultCache.None
+                || !GeneratedComponentRegistry.TryGet(dependency.ImplementationType, out var entry)
+                || !ReferenceEquals(factoryAccessor.Factory, entry.Factory))
             {
                 return false;
             }
@@ -456,7 +567,9 @@ internal sealed class ServiceRegistry
     private static readonly PropertyInjection[] EmptyPropertyInjections = [];
 
     // [Inject] プロパティは生成経路 (Source Generator) では静的に参照されるため保持される。
-    // 「トリミング環境 + 実行時のみ判明する登録 + [Inject] プロパティ」の組合せのみ制約 (ドキュメント化)
+    // 「トリミング環境 + 実行時のみ判明する登録 + [Inject] プロパティ」の組合せのみ制約 (ドキュメント化済み)
+    // [Inject] properties are statically referenced by the generated path and therefore preserved. Only the
+    // combination of trimming + runtime-only registrations + [Inject] properties is constrained (documented).
     [UnconditionalSuppressMessage("Trimming", "IL2070", Justification = "[Inject] プロパティ付き型は生成コードが静的参照するため保持される。実行時登録のみの型は制約としてドキュメント化")]
     private PropertyInjection[] BuildPropertyInjections(Type implType, object? serviceKey)
     {
@@ -508,6 +621,7 @@ internal sealed class ServiceRegistry
             var parameter = parameters[i];
 
             // [ServiceKey]: 解決中のキーを注入 (キー型がパラメータ型と非互換なら失敗)
+            // [ServiceKey]: injects the key being resolved (fails when the key type is incompatible with the parameter type).
             if (parameter.GetCustomAttribute<ServiceKeyAttribute>() is not null)
             {
                 if (serviceKey is not null)
@@ -523,6 +637,7 @@ internal sealed class ServiceRegistry
                 }
 
                 // 非 keyed 文脈での [ServiceKey] は解決不能扱い (既定値フォールバックあり)
+                // [ServiceKey] in a non-keyed context is treated as unresolvable (with default value fallback).
                 if (ParameterDefaults.TryGetDefaultValue(parameter, out var keyDefault))
                 {
                     plans[i] = ParameterPlan.FromConstant(keyDefault);
@@ -543,6 +658,7 @@ internal sealed class ServiceRegistry
             if (fromKeyed is not null)
             {
                 // [FromKeyedServices] (キー省略) = 解決中のキーを継承 / [FromKeyedServices(null)] = 非 keyed 解決
+                // [FromKeyedServices] without a key inherits the key being resolved; [FromKeyedServices(null)] resolves non-keyed.
                 key = fromKeyed.LookupMode == ServiceKeyLookupMode.InheritKey ? serviceKey : fromKeyed.Key;
             }
 
@@ -582,6 +698,7 @@ internal sealed class ServiceRegistry
         if (ReferenceEquals(key, KeyedService.AnyKey))
         {
             // AnyKey クエリ: concrete key で登録された全 keyed サービス (AnyKey 登録は除外)
+            // AnyKey query: all keyed services registered with concrete keys (AnyKey registrations excluded).
             foreach (var descriptor in descriptors)
             {
                 if (!descriptor.IsKeyedService || ReferenceEquals(descriptor.ServiceKey, KeyedService.AnyKey))
@@ -597,6 +714,7 @@ internal sealed class ServiceRegistry
             foreach (var descriptor in descriptors)
             {
                 // 列挙は完全一致キーのみ (AnyKey 登録は単一解決のフォールバック専用。MEDI 互換)
+                // Enumeration matches exact keys only (AnyKey registrations are a fallback for single resolution. MEDI compatible).
                 var matches = key is null
                     ? !descriptor.IsKeyedService
                     : descriptor.IsKeyedService
@@ -612,6 +730,7 @@ internal sealed class ServiceRegistry
         }
 
         // enumerable 自体のキャッシュ位置は要素の最弱に合わせる
+        // The cache location of the enumerable itself follows the weakest element.
         var cache = ResultCache.Root;
         foreach (var item in items)
         {
@@ -632,7 +751,7 @@ internal sealed class ServiceRegistry
             cache = ResultCache.None;
         }
 
-        return new EnumerableAccessor(elementType, items.ToArray(), cache, cache == ResultCache.None ? -1 : NextSlot());
+        return new EnumerableAccessor(elementType, items.ToArray(), cache, cache == ResultCache.Scoped ? NextSlot() : -1);
     }
 
     private void AddEnumerableItem(List<ServiceAccessor> items, ServiceDescriptor descriptor, Type elementType, object? requestedKey)
@@ -656,7 +775,7 @@ internal sealed class ServiceRegistry
     }
 
     //--------------------------------------------------------------------------------
-    // IsService (shallow: 実現せず登録の有無だけを判定)
+    // IsService (shallow: 実現せず登録の有無だけを判定 / checks registration presence without realizing)
     //--------------------------------------------------------------------------------
 
     public bool IsService(ServiceIdentifier id)

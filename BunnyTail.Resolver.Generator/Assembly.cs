@@ -7,7 +7,8 @@ using System.Runtime.CompilerServices;
 #pragma warning disable IDE0161
 namespace System.Runtime.CompilerServices
 {
-    // For compatibility (netstandard2.0 で record を使うためのポリフィル)
+    // netstandard2.0 で record を使うためのポリフィル
+    // Polyfill to use records on netstandard2.0.
     internal sealed class IsExternalInit
     {
     }

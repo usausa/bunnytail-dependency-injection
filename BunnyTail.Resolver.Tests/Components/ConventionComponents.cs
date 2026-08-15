@@ -1,6 +1,7 @@
 namespace BunnyTail.Resolver.Tests.Components;
 
-// 命名規約ベース登録 (SPEC 3.3) のサンプル。"Service$" にマッチする
+// 命名規約ベース登録のサンプル。"Service$" にマッチする
+// Samples for convention based registration, matching "Service$".
 
 public interface IBarService;
 

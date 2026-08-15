@@ -9,7 +9,8 @@ using SourceGenerateHelper.Testing;
 
 using Xunit;
 
-// ジェネレータ出力の検証 (M2b: プロトタイプ一致 / M3: Add* 収集・規約登録・診断)
+// ジェネレータ出力の検証 (期待値一致 / Add* 収集 / 規約登録 / インライン展開 / 診断)
+// Verification of generator output (expected text match / Add* collection / convention registration / inline expansion / diagnostics).
 public sealed class GeneratorOutputTest
 {
     private static GeneratorTestRunner CreateRunner() =>
@@ -20,12 +21,13 @@ public sealed class GeneratorOutputTest
 
     private static string Normalize(string text) => text.Replace("\r\n", "\n", StringComparison.Ordinal).TrimEnd('\n');
 
-    // ---- M2b: 属性コンポーネントの出力一致 ----
+    // ---- 属性コンポーネントの出力一致 / attribute component output match ----
 
     [Fact]
     public void GeneratedSourceMatchesHandWrittenPrototype()
     {
         // ImplicitUsings 相当 (harness コンパイルはプロジェクト設定を持たないため)
+        // Equivalent of ImplicitUsings (the harness compilation has no project settings).
         var source = "global using System;" + Environment.NewLine + File.ReadAllText(Path.Combine("Components", "Components.cs"));
         var expected = File.ReadAllText(Path.Combine("Expected", "ComponentRegistration.expected.txt"));
 
@@ -36,12 +38,13 @@ public sealed class GeneratorOutputTest
         var actual = result.GeneratedSource("GeneratedComponents.g.cs");
 
         // 失敗時の調査用に実出力を保存
+        // Saves the actual output for investigating failures.
         File.WriteAllText("actual-generated.txt", actual);
 
         Assert.Equal(Normalize(expected), Normalize(actual));
     }
 
-    // ---- M3: Add* 呼び出し収集 ----
+    // ---- Add* 呼び出し収集 / Add* invocation collection ----
 
     [Fact]
     public void FactoryIsCollectedFromAddInvocation()
@@ -74,12 +77,16 @@ public sealed class GeneratorOutputTest
 
         Assert.Contains("typeof(global::Demo.CollectedComponent)", generated, StringComparison.Ordinal);
         Assert.Contains("typeof(global::Demo.DependentComponent),", generated, StringComparison.Ordinal);
-        Assert.Contains("provider.GetRequiredService<global::Demo.CollectedComponent>()", generated, StringComparison.Ordinal);
+        // transient 依存はインライン展開され、前提 (InlinedDependency) が登録される
+        // Transient dependencies are inlined and the assumption (InlinedDependency) is registered.
+        Assert.Contains("new global::Demo.CollectedComponent())", generated, StringComparison.Ordinal);
+        Assert.Contains("new global::BunnyTail.Resolver.InlinedDependency(typeof(global::Demo.CollectedComponent), typeof(global::Demo.CollectedComponent))", generated, StringComparison.Ordinal);
         // AddComponents は属性コンポーネントが無いので出力されない
+        // AddComponents is not emitted because there are no attribute components.
         Assert.DoesNotContain("AddComponents", generated, StringComparison.Ordinal);
     }
 
-    // ---- M3: 命名規約ベース登録メソッド生成 ----
+    // ---- 命名規約ベース登録メソッド生成 / convention based registration method generation ----
 
     [Fact]
     public void ConventionMethodBodyIsGenerated()
@@ -116,11 +123,12 @@ public sealed class GeneratorOutputTest
         Assert.DoesNotContain("OtherComponent", generated, StringComparison.Ordinal);
 
         // 規約マッチしたクラスには生成ファクトリも出力される
+        // Generated factories are also emitted for convention matched classes.
         var factories = result.GeneratedSource("GeneratedComponents.g.cs");
         Assert.Contains("typeof(global::Demo.FooService)", factories, StringComparison.Ordinal);
     }
 
-    // ---- M3: 診断 ----
+    // ---- 診断 / diagnostics ----
 
     [Fact]
     public void InvalidMethodDefinitionIsReported()
@@ -254,6 +262,93 @@ public sealed class GeneratorOutputTest
         Assert.Contains("RegisterKeyed(", generated, StringComparison.Ordinal);
         Assert.Contains("static (provider, key) =>", generated, StringComparison.Ordinal);
         Assert.Contains("(string)key!", generated, StringComparison.Ordinal);
+    }
+
+    // ---- transient 依存のインライン展開 / inline expansion of transient dependencies ----
+
+    [Fact]
+    public void TransientDependenciesAreInlined()
+    {
+        const string Source = """
+            using System;
+
+            using BunnyTail.Resolver;
+
+            namespace Demo;
+
+            [Transient]
+            public sealed class Leaf;
+
+            [Transient]
+            public sealed class Branch(Leaf leaf);
+
+            [Transient]
+            public sealed class Root(Branch a, Branch b);
+
+            [Singleton]
+            public sealed class Shared;
+
+            [Transient]
+            public sealed class DisposableLeaf : IDisposable
+            {
+                public void Dispose()
+                {
+                }
+            }
+
+            [Transient]
+            public sealed class Mixed(Shared shared, Leaf leaf, DisposableLeaf disposable);
+            """;
+
+        var result = CreateRunner()
+            .VerifyCompiles()
+            .Run(Source);
+
+        var generated = result.GeneratedSource("GeneratedComponents.g.cs");
+
+        // transient 依存はネストも含めリテラル new 展開。同一依存も使用箇所ごとに new (インスタンス共有しない)
+        // Transient dependencies are expanded as literal new including nesting. The same dependency gets a fresh new per use site (never shared).
+        Assert.Contains("new global::Demo.Branch(new global::Demo.Leaf()),", generated, StringComparison.Ordinal);
+        Assert.Contains("new global::Demo.Branch(new global::Demo.Leaf()));", generated, StringComparison.Ordinal);
+
+        // 前提はトップレベルの展開のみ (Root は Branch のみ。Leaf は Branch 自身のエントリが検証する)
+        // Assumptions cover top-level expansions only (Root records Branch only; Leaf is validated by Branch's own entry).
+        Assert.Contains("[new global::BunnyTail.Resolver.InlinedDependency(typeof(global::Demo.Branch), typeof(global::Demo.Branch))],", generated, StringComparison.Ordinal);
+
+        // singleton / disposable transient は使用箇所でインライン展開されない
+        // (DisposableLeaf 自身の Register ファクトリの new は正当な出力なので、使用箇所側の解決式で判定する)
+        // Singletons and disposable transients are not inlined at use sites (the new inside DisposableLeaf's own
+        // Register factory is legitimate output, so the assertion checks the use-site resolution expression).
+        Assert.Contains("provider.GetRequiredService<global::Demo.Shared>()", generated, StringComparison.Ordinal);
+        Assert.Contains("provider.GetRequiredService<global::Demo.DisposableLeaf>()", generated, StringComparison.Ordinal);
+        Assert.Contains("new global::Demo.Mixed(", generated, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TransientCycleDoesNotBreakInlineExpansion()
+    {
+        // 循環は BTRS0003 (Error) だが、インライン展開自体は無限再帰せず生成が完了すること
+        // Cycles are BTRS0003 (Error), but inline expansion itself must finish generation without infinite recursion.
+        const string Source = """
+            using BunnyTail.Resolver;
+
+            namespace Demo;
+
+            [Transient]
+            public sealed class First(Second second);
+
+            [Transient]
+            public sealed class Second(First first);
+            """;
+
+        var result = CreateRunner().Run(Source);
+
+        Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0003");
+
+        // 循環箇所は GetRequiredService へフォールバックして出力される
+        // The cyclic edge is emitted as a GetRequiredService fallback.
+        var generated = result.GeneratedSource("GeneratedComponents.g.cs");
+        Assert.Contains("provider.GetRequiredService<global::Demo.First>()", generated, StringComparison.Ordinal);
     }
 
     [Fact]

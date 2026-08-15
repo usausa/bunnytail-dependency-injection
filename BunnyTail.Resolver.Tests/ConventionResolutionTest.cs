@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 // 命名規約ベース登録メソッド (生成コード) の機能検証
+// Functional verification of the generated convention based registration method.
 public sealed class ConventionResolutionTest
 {
     private static ResolverServiceProvider CreateProvider() =>
@@ -27,7 +28,7 @@ public sealed class ConventionResolutionTest
         using var provider = CreateProvider();
 
         Assert.IsType<BarService>(provider.GetRequiredService<IBarService>());
-        Assert.Null(provider.GetService<BarService>());   // 1 インタフェースはインタフェース登録のみ
+        Assert.Null(provider.GetService<BarService>());   // 1 インタフェースはインタフェース登録のみ / a single interface registers the interface only
     }
 
     [Fact]

@@ -142,14 +142,15 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             .SelectMany(static (models, _) => models);
 
     // ------------------------------------------------------------
-    // Parser : shared factory analysis
+    // Parser : shared factory analysis (共通ファクトリ解析)
     // ------------------------------------------------------------
 
     private static FactoryModel CreateFactoryModel(INamedTypeSymbol symbol, IAssemblySymbol compilationAssembly)
     {
         var implementationType = symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
-        // コンストラクタ: MEDI 規則の前提 = 最大パラメータの public コンストラクタ
+        // コンストラクタ選択: MEDI 規則の前提 = 最大パラメータの public コンストラクタ
+        // Constructor selection: assumes MEDI rules = the public constructor with the most parameters.
         var constructors = symbol.InstanceConstructors
             .Where(static x => x.DeclaredAccessibility == Accessibility.Public)
             .OrderByDescending(static x => x.Parameters.Length)
@@ -157,6 +158,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         var constructor = constructors.Length > 0 ? constructors[0] : null;
 
         // 同数の最大コンストラクタが複数あり、互いに superset でない場合は曖昧 (BTRS0006)
+        // Ambiguous when multiple constructors share the maximum parameter count and are not supersets of each other (BTRS0006).
         var ambiguous = false;
         if ((constructors.Length > 1) && (constructors[0].Parameters.Length == constructors[1].Parameters.Length))
         {
@@ -177,6 +179,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
                 parameters[i] = new ParameterModel(typeName, kind, keyLiteral, inCompilation);
 
                 // 既定値付き引数は生成ファクトリ不可 (GetRequiredService と挙動が変わるため互換経路へ)
+                // Parameters with default values disqualify the generated factory (behavior differs from GetRequiredService; runtime path is used).
                 if (parameter.HasExplicitDefaultValue)
                 {
                     eligibleUnkeyed = false;
@@ -184,6 +187,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
                 }
 
                 // keyed 依存 ([ServiceKey]/[FromKeyedServices]) は keyed ファクトリでのみ扱える
+                // Keyed dependencies ([ServiceKey]/[FromKeyedServices]) can only be handled by keyed factories.
                 if (kind != DependencyKinds.Service)
                 {
                     eligibleUnkeyed = false;
@@ -191,7 +195,8 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             }
         }
 
-        // [Inject] プロパティ
+        // [Inject] プロパティの収集
+        // Collect [Inject] properties.
         var injectProperties = new List<PropertyModel>();
         foreach (var property in symbol.GetMembers().OfType<IPropertySymbol>())
         {
@@ -208,7 +213,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             var (typeName, kind, keyLiteral, inCompilation) = CreateDependencyModel(property.Type, property.GetAttributes(), compilationAssembly);
             if (kind == DependencyKinds.ServiceKey)
             {
-                // プロパティへの [ServiceKey] は非対応
+                // プロパティへの [ServiceKey] は非対応 / [ServiceKey] on properties is not supported
                 eligibleUnkeyed = false;
                 eligibleKeyed = false;
                 continue;
@@ -222,13 +227,27 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             injectProperties.Add(new PropertyModel(property.Name, typeName, kind, keyLiteral, inCompilation));
         }
 
+        // IDisposable / IAsyncDisposable 実装型は disposal 追跡が必要なためインライン展開不可
+        // Types implementing IDisposable / IAsyncDisposable need disposal tracking and cannot be inlined.
+        var disposable = false;
+        foreach (var interfaceType in symbol.AllInterfaces)
+        {
+            if ((interfaceType.SpecialType == SpecialType.System_IDisposable)
+                || (interfaceType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == "global::System.IAsyncDisposable"))
+            {
+                disposable = true;
+                break;
+            }
+        }
+
         return new FactoryModel(
             implementationType,
             new EquatableArray<ParameterModel>(parameters),
             new EquatableArray<PropertyModel>(injectProperties.ToArray()),
             eligibleUnkeyed,
             eligibleKeyed,
-            ambiguous);
+            ambiguous,
+            disposable);
     }
 
     private static (string TypeName, int Kind, string? KeyLiteral, bool InCompilation) CreateDependencyModel(ITypeSymbol type, ImmutableArray<AttributeData> attributes, IAssemblySymbol compilationAssembly)
@@ -254,7 +273,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
                 var argument = attribute.ConstructorArguments[0];
                 if (argument.IsNull)
                 {
-                    // [FromKeyedServices(null)] = 非 keyed 解決
+                    // [FromKeyedServices(null)] = 非 keyed 解決 / resolves non-keyed
                     return (typeName, DependencyKinds.Service, null, inCompilation);
                 }
 
@@ -310,7 +329,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
     }
 
     // ------------------------------------------------------------
-    // Parser : attribute components
+    // Parser : attribute components (属性コンポーネント)
     // ------------------------------------------------------------
 
     private static ImmutableArray<ComponentModel> CreateComponentModels(GeneratorAttributeSyntaxContext context, string lifetime)
@@ -365,7 +384,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
     }
 
     // ------------------------------------------------------------
-    // Parser : Add* invocation collection
+    // Parser : Add* invocation collection (Add* 呼び出し収集)
     // ------------------------------------------------------------
 
     private static bool IsAddInvocationSyntax(SyntaxNode node)
@@ -387,7 +406,8 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             return null;
         }
 
-        // MEDI の登録拡張メソッドのみ対象 (keyed は生成ファクトリ側が keyed 登録の場合に非対応のため対象外)
+        // MEDI の登録拡張メソッドのみ対象 (keyed 登録 API は対象外)
+        // Only MEDI registration extension methods are collected (keyed registration APIs are excluded).
         var methodName = method.Name;
         var lifetime = methodName switch
         {
@@ -409,6 +429,8 @@ public sealed class ResolverGenerator : IIncrementalGenerator
 
         // ジェネリックオーバーロードのみ対象。factory/instance オーバーロード (delegate / 型引数の実引数) は
         // コンテナが型をインスタンス化しないため対象外
+        // Only generic overloads are collected. Factory/instance overloads (delegates or instance arguments) are
+        // excluded because the container does not instantiate the type.
         if (method.TypeArguments.Length == 0)
         {
             return null;
@@ -428,7 +450,8 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             return null;
         }
 
-        // closed generic は対象 (typeof(Foo<int>) は生成可能)。型パラメータを含む場合は対象外
+        // closed generic は対象 (new Foo<int>() は生成可能)。型パラメータを含む場合は対象外
+        // Closed generics are eligible (new Foo<int>() can be generated); types containing type parameters are not.
         if (implementationSymbol.IsAbstract
             || (implementationSymbol.TypeKind != TypeKind.Class)
             || ContainsTypeParameter(implementationSymbol))
@@ -437,6 +460,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         }
 
         // 生成ファクトリ (new 直書き) が現在のアセンブリからアクセスできること
+        // The generated factory (literal new) must be able to access the type from the current assembly.
         if (!context.SemanticModel.Compilation.IsSymbolAccessibleWithin(implementationSymbol, context.SemanticModel.Compilation.Assembly))
         {
             return null;
@@ -453,7 +477,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
     }
 
     // ------------------------------------------------------------
-    // Parser : convention registration method
+    // Parser : convention registration method (規約登録メソッド)
     // ------------------------------------------------------------
 
     private static Result<MethodModel> CreateMethodModel(GeneratorAttributeSyntaxContext context)
@@ -512,7 +536,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
     }
 
     // ------------------------------------------------------------
-    // Parser : convention candidates
+    // Parser : convention candidates (規約マッチ候補)
     // ------------------------------------------------------------
 
     private static bool IsCandidateClassSyntax(SyntaxNode node)
@@ -547,6 +571,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         }
 
         // partial クラスの重複登録を避ける (最初の宣言のみ採用)
+        // Avoids duplicate registration of partial classes (only the first declaration is used).
         if ((symbol.DeclaringSyntaxReferences.Length > 0) && (symbol.DeclaringSyntaxReferences[0].GetSyntax() != syntax))
         {
             return null;
@@ -594,6 +619,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             .ToArray();
 
         // 規約マッチ (メソッドごと)
+        // Convention matching (per method).
         var sortedCandidates = candidates
             .OrderBy(static x => x.FilePath, StringComparer.Ordinal)
             .ThenBy(static x => x.SpanStart)
@@ -646,9 +672,10 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         }
 
         // コンパイル時診断 (循環 / 未解決 / captive / 曖昧 ctor)
+        // Compile-time diagnostics (cycles / unresolved / captive / ambiguous constructors).
         ReportAnalysisDiagnostics(context, components, sortedCollected, conventionMatches);
 
-        // ---- GeneratedComponents.g.cs (登録メソッド + 生成ファクトリ) ----
+        // ---- GeneratedComponents.g.cs (登録メソッド + 生成ファクトリ / registration method + generated factories) ----
 
         var unkeyedFactories = new List<FactoryModel>();
         var keyedFactories = new List<FactoryModel>();
@@ -693,10 +720,11 @@ public sealed class ResolverGenerator : IIncrementalGenerator
 
         if ((components.Length > 0) || (unkeyedFactories.Count > 0) || (keyedFactories.Count > 0))
         {
-            EmitGeneratedComponents(context, assemblyName, components, unkeyedFactories, keyedFactories);
+            var inlineMap = BuildInlineTargetMap(components, sortedCollected, conventionMatches);
+            EmitGeneratedComponents(context, assemblyName, components, unkeyedFactories, keyedFactories, inlineMap);
         }
 
-        // ---- 規約登録メソッドの本体 ----
+        // ---- 規約登録メソッドの本体 / convention registration method bodies ----
 
         foreach (var (method, matches) in conventionMatches)
         {
@@ -705,7 +733,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
     }
 
     // ------------------------------------------------------------
-    // Diagnostics (compile-time analysis)
+    // Diagnostics (compile-time analysis / コンパイル時解析)
     // ------------------------------------------------------------
 
     private static void ReportAnalysisDiagnostics(
@@ -715,6 +743,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         List<(MethodModel Method, List<(CandidateModel Candidate, string Lifetime)> Matches)> conventionMatches)
     {
         // 登録マップ: サービス型 → (実装型, lifetime)。登録順で last-wins
+        // Registration map: service type -> (implementation type, lifetime). Last registration wins.
         var serviceMap = new Dictionary<string, (string Impl, string Lifetime)>(StringComparer.Ordinal);
         var nodes = new Dictionary<string, (FactoryModel Factory, string Lifetime, LocationInfo? Location)>(StringComparer.Ordinal);
 
@@ -722,7 +751,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         {
             if (component.KeyLiteral is not null)
             {
-                continue;   // keyed は M4 の解析対象外
+                continue;   // keyed は解析対象外 / keyed registrations are not analyzed
             }
 
             var impl = component.Factory.ImplementationType;
@@ -780,6 +809,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         }
 
         // 依存列挙 (非 keyed のみ)
+        // Dependency enumeration (non-keyed only).
         static IEnumerable<(string TypeName, bool InCompilation)> Dependencies(FactoryModel factory)
         {
             foreach (var parameter in factory.Parameters)
@@ -802,6 +832,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         static string Display(string typeName) => typeName.StartsWith("global::", StringComparison.Ordinal) ? typeName.Substring(8) : typeName;
 
         // BTRS0004 (未解決) / BTRS0005 (captive) / BTRS0006 (曖昧 ctor) — 属性コンポーネント起点
+        // BTRS0004 (unresolved) / BTRS0005 (captive) / BTRS0006 (ambiguous ctor) reported from attribute components.
         foreach (var component in components)
         {
             if (component.Factory.AmbiguousConstructor)
@@ -826,13 +857,15 @@ public sealed class ResolverGenerator : IIncrementalGenerator
                 else if (inCompilation && !typeName.StartsWith("global::System.", StringComparison.Ordinal))
                 {
                     // コンパイル対象アセンブリ内の型で、コンパイル時に見える登録に無いもののみ警告 (実行時登録は見えないため Warning)
+                    // Warns only for types inside the compiling assembly missing from compile-time visible registrations (runtime registrations are invisible, hence Warning).
                     context.ReportDiagnostic(new DiagnosticInfo(UnresolvedDependency, component.Location, Display(typeName), Display(component.Factory.ImplementationType)).ToDiagnostic());
                 }
             }
         }
 
         // BTRS0003 (循環) — 生成対象ノード全体で DFS
-        var state = new Dictionary<string, int>(StringComparer.Ordinal);   // 0=未訪問 1=探索中 2=完了
+        // BTRS0003 (cycles) — DFS over all generation target nodes.
+        var state = new Dictionary<string, int>(StringComparer.Ordinal);   // 0=未訪問 1=探索中 2=完了 / 0=unvisited 1=visiting 2=done
         var reported = new HashSet<string>(StringComparer.Ordinal);
         foreach (var node in nodes.Keys)
         {
@@ -859,7 +892,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
 
                     if (state.TryGetValue(target.Impl, out var targetState) && (targetState == 1))
                     {
-                        // 循環検出
+                        // 循環検出 / cycle detected
                         var start = stack.IndexOf(target.Impl);
                         var chain = string.Join(" -> ", stack.Skip(start).Concat([target.Impl]).Select(Display));
                         if (reported.Add(chain))
@@ -880,10 +913,167 @@ public sealed class ResolverGenerator : IIncrementalGenerator
     }
 
     // ------------------------------------------------------------
+    // Inline expansion (transient 依存のリテラル new 展開 / literal new expansion of transient dependencies)
+    // ------------------------------------------------------------
+
+    // 非 keyed サービス型 → インライン展開先ファクトリ。
+    // 展開してよいのは「コンパイル時登録が一意 (登録間の不一致がない) な direct 登録 (Add<S, I> 形式)」かつ
+    // 「transient・生成ファクトリ適格・[Inject] プロパティなし・IDisposable/IAsyncDisposable 非実装」のみ。
+    // それ以外は従来どおり provider.GetRequiredService<T>() を出力する。
+    // 実行時登録との最終整合はランタイム側 (ServiceRegistry.InlinedDependenciesMatch) が検証し、
+    // 不成立なら互換経路へフォールバックする
+    // Non-keyed service type -> inline expansion target factory. Expansion is allowed only for direct
+    // (Add<S, I> style) registrations that are unambiguous at compile time, and whose target is transient,
+    // eligible for a generated factory, has no [Inject] properties and does not implement
+    // IDisposable/IAsyncDisposable. Everything else keeps emitting provider.GetRequiredService<T>().
+    // Final consistency against runtime registrations is validated by ServiceRegistry.InlinedDependenciesMatch,
+    // falling back to the runtime path on mismatch.
+    private sealed class InlineTargetMap
+    {
+        private readonly Dictionary<string, FactoryModel> targets;
+
+        public InlineTargetMap(Dictionary<string, FactoryModel> targets)
+        {
+            this.targets = targets;
+        }
+
+        public FactoryModel? GetTarget(string serviceTypeName) =>
+            targets.TryGetValue(serviceTypeName, out var factory) ? factory : null;
+    }
+
+    // サービス依存の展開計画。Parameters の null 要素は GetRequiredService 経由で解決する
+    // Expansion plan for a service dependency. Null elements in Parameters resolve through GetRequiredService.
+    private sealed record InlineNode(string ServiceType, FactoryModel Factory, InlineNode?[] Parameters);
+
+    private static InlineTargetMap BuildInlineTargetMap(
+        ComponentModel[] components,
+        CollectedModel[] collected,
+        List<(MethodModel Method, List<(CandidateModel Candidate, string Lifetime)> Matches)> conventionMatches)
+    {
+        var factories = new Dictionary<string, FactoryModel>(StringComparer.Ordinal);
+        var candidates = new Dictionary<string, (string Impl, string Lifetime, bool Direct)>(StringComparer.Ordinal);
+        var conflicted = new HashSet<string>(StringComparer.Ordinal);
+
+        void Add(string service, string impl, string lifetime, bool direct)
+        {
+            if (candidates.TryGetValue(service, out var existing))
+            {
+                if ((existing.Impl != impl) || (existing.Lifetime != lifetime) || (existing.Direct != direct))
+                {
+                    conflicted.Add(service);
+                }
+            }
+            else
+            {
+                candidates[service] = (impl, lifetime, direct);
+            }
+        }
+
+        // 属性コンポーネント (AddComponents の登録形と一致させる)
+        // Attribute components (kept consistent with the registration shape of AddComponents).
+        foreach (var component in components)
+        {
+            if (component.KeyLiteral is not null)
+            {
+                continue;   // keyed 登録は非 keyed 解決に影響しない / keyed registrations do not affect non-keyed resolution
+            }
+
+            var impl = component.Factory.ImplementationType;
+            factories[impl] = component.Factory;
+            if (component.AsType is not null)
+            {
+                Add(component.AsType, impl, component.Lifetime, direct: true);
+            }
+            else
+            {
+                Add(impl, impl, component.Lifetime, direct: true);
+                foreach (var interfaceType in component.Interfaces)
+                {
+                    Add(interfaceType, impl, component.Lifetime, direct: false);   // フォワーディングファクトリ登録 / forwarding factory registration
+                }
+            }
+        }
+
+        // Add* 呼び出し収集 (ジェネリックオーバーロードのみ = 全て direct)
+        // Add* invocation collection (generic overloads only = all direct).
+        foreach (var model in collected)
+        {
+            factories[model.Factory.ImplementationType] = model.Factory;
+            Add(model.ServiceType, model.Factory.ImplementationType, model.Lifetime, direct: true);
+        }
+
+        // 規約登録 (EmitConventionMethod の登録形と一致させる)
+        // Convention registrations (kept consistent with the shape emitted by EmitConventionMethod).
+        foreach (var (_, matches) in conventionMatches)
+        {
+            foreach (var (candidate, lifetime) in matches)
+            {
+                var impl = candidate.Factory.ImplementationType;
+                factories[impl] = candidate.Factory;
+                if (candidate.Interfaces.Count == 1)
+                {
+                    Add(candidate.Interfaces[0], impl, lifetime, direct: true);
+                }
+                else
+                {
+                    Add(impl, impl, lifetime, direct: true);
+                    foreach (var interfaceType in candidate.Interfaces)
+                    {
+                        Add(interfaceType, impl, lifetime, direct: false);
+                    }
+                }
+            }
+        }
+
+        var targets = new Dictionary<string, FactoryModel>(StringComparer.Ordinal);
+        foreach (var pair in candidates)
+        {
+            if (conflicted.Contains(pair.Key) || (pair.Value.Lifetime != "Transient") || !pair.Value.Direct)
+            {
+                continue;
+            }
+
+            if (!factories.TryGetValue(pair.Value.Impl, out var factory)
+                || !factory.EligibleUnkeyed
+                || (factory.InjectProperties.Count > 0)
+                || factory.Disposable)
+            {
+                continue;
+            }
+
+            targets[pair.Key] = factory;
+        }
+
+        return new InlineTargetMap(targets);
+    }
+
+    private static InlineNode? TryCreateInlineNode(string serviceTypeName, InlineTargetMap map, List<string> stack)
+    {
+        var factory = map.GetTarget(serviceTypeName);
+        if ((factory is null) || stack.Contains(factory.ImplementationType))
+        {
+            return null;   // 展開不可 or 循環 / not expandable or cyclic (cycles themselves error separately via BTRS0003)
+        }
+
+        stack.Add(factory.ImplementationType);
+        var parameters = new InlineNode?[factory.Parameters.Count];
+        for (var i = 0; i < factory.Parameters.Count; i++)
+        {
+            if (factory.Parameters[i].Kind == DependencyKinds.Service)
+            {
+                parameters[i] = TryCreateInlineNode(factory.Parameters[i].TypeName, map, stack);
+            }
+        }
+
+        stack.RemoveAt(stack.Count - 1);
+        return new InlineNode(serviceTypeName, factory, parameters);
+    }
+
+    // ------------------------------------------------------------
     // Emit
     // ------------------------------------------------------------
 
-    private static void EmitGeneratedComponents(SourceProductionContext context, string assemblyName, ComponentModel[] components, List<FactoryModel> unkeyedFactories, List<FactoryModel> keyedFactories)
+    private static void EmitGeneratedComponents(SourceProductionContext context, string assemblyName, ComponentModel[] components, List<FactoryModel> unkeyedFactories, List<FactoryModel> keyedFactories, InlineTargetMap inlineMap)
     {
         var builder = new SourceBuilder();
         builder.AutoGenerated();
@@ -916,7 +1106,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             }
 
             first = false;
-            EmitFactoryRegistration(builder, factory, keyed: false);
+            EmitFactoryRegistration(builder, factory, keyed: false, inlineMap);
         }
 
         foreach (var factory in keyedFactories)
@@ -927,7 +1117,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             }
 
             first = false;
-            EmitFactoryRegistration(builder, factory, keyed: true);
+            EmitFactoryRegistration(builder, factory, keyed: true, inlineMap);
         }
 
         builder.EndScope();
@@ -971,8 +1161,43 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         }
     }
 
-    private static void EmitFactoryRegistration(SourceBuilder builder, FactoryModel factory, bool keyed)
+    private static void EmitFactoryRegistration(SourceBuilder builder, FactoryModel factory, bool keyed, InlineTargetMap inlineMap)
     {
+        // インライン展開の決定。前提 (InlinedDependency) として登録するのはトップレベルの展開のみ。
+        // ネストした展開は、展開先コンポーネント自身の登録エントリが採用時に同じ前提を検証するため、
+        // 直接依存の検証で推移的に全体が保証される
+        // Decide inline expansion. Only top-level expansions are registered as assumptions (InlinedDependency).
+        // Nested expansions are validated by the inlined component's own registry entry on adoption, so validating
+        // direct dependencies transitively guarantees the whole graph.
+        var stack = new List<string> { factory.ImplementationType };
+        var parameterNodes = new InlineNode?[factory.Parameters.Count];
+        for (var i = 0; i < factory.Parameters.Count; i++)
+        {
+            if (factory.Parameters[i].Kind == DependencyKinds.Service)
+            {
+                parameterNodes[i] = TryCreateInlineNode(factory.Parameters[i].TypeName, inlineMap, stack);
+            }
+        }
+
+        var propertyNodes = new InlineNode?[factory.InjectProperties.Count];
+        for (var i = 0; i < factory.InjectProperties.Count; i++)
+        {
+            if (factory.InjectProperties[i].Kind == DependencyKinds.Service)
+            {
+                propertyNodes[i] = TryCreateInlineNode(factory.InjectProperties[i].TypeName, inlineMap, stack);
+            }
+        }
+
+        var assumptions = new List<InlineNode>();
+        var assumed = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var node in parameterNodes.Concat(propertyNodes))
+        {
+            if ((node is not null) && assumed.Add(node.ServiceType))
+            {
+                assumptions.Add(node);
+            }
+        }
+
         builder.AppendLine(keyed
             ? "global::BunnyTail.Resolver.GeneratedComponentRegistry.RegisterKeyed("
             : "global::BunnyTail.Resolver.GeneratedComponentRegistry.Register(");
@@ -994,6 +1219,22 @@ public sealed class ResolverGenerator : IIncrementalGenerator
                 }
 
                 builder.Append("typeof(").Append(factory.Parameters[i].TypeName).Append(')');
+            }
+
+            builder.Append("],").NewLine();
+        }
+
+        if (assumptions.Count > 0)
+        {
+            builder.Indent().Append('[');
+            for (var i = 0; i < assumptions.Count; i++)
+            {
+                if (i > 0)
+                {
+                    builder.Append(", ");
+                }
+
+                builder.Append("new global::BunnyTail.Resolver.InlinedDependency(typeof(").Append(assumptions[i].ServiceType).Append("), typeof(").Append(assumptions[i].Factory.ImplementationType).Append("))");
             }
 
             builder.Append("],").NewLine();
@@ -1022,28 +1263,65 @@ public sealed class ResolverGenerator : IIncrementalGenerator
                 {
                     var parameter = factory.Parameters[i];
                     builder.Indent();
-                    EmitDependencyResolution(builder, parameter.TypeName, parameter.Kind, parameter.KeyLiteral);
+                    EmitArgument(builder, parameterNodes[i], parameter.TypeName, parameter.Kind, parameter.KeyLiteral);
                     builder.Append(i < factory.Parameters.Count - 1 ? "," : ");").NewLine();
                 }
 
                 builder.IndentLevel--;
             }
 
-            foreach (var property in factory.InjectProperties)
+            for (var i = 0; i < factory.InjectProperties.Count; i++)
             {
+                var property = factory.InjectProperties[i];
                 builder.Indent().Append("instance.").Append(property.Name).Append(" = ");
-                EmitDependencyResolution(builder, property.TypeName, property.Kind, property.KeyLiteral);
+                EmitArgument(builder, propertyNodes[i], property.TypeName, property.Kind, property.KeyLiteral);
                 builder.Append(';').NewLine();
             }
 
             builder.AppendLine("return instance;");
 
             // lambda ブロックを閉じる (BeginScope の +1 を戻して "});" を出力)
+            // Closes the lambda block (undo BeginScope's +1 and emit "});").
             builder.IndentLevel--;
             builder.Indent().Append("});").NewLine();
         }
 
         builder.IndentLevel--;
+    }
+
+    // インライン展開ノードがあればリテラル new を、なければ従来の解決式を出力する
+    // Emits a literal new when an inline node exists, otherwise the ordinary resolution expression.
+    private static void EmitArgument(SourceBuilder builder, InlineNode? node, string typeName, int kind, string? keyLiteral)
+    {
+        if (node is null)
+        {
+            EmitDependencyResolution(builder, typeName, kind, keyLiteral);
+        }
+        else
+        {
+            EmitInlineNew(builder, node);
+        }
+    }
+
+    // transient 依存のリテラル new 展開。同一依存も使用箇所ごとに new を出力する
+    // (MEDI 互換: transient は都度新規生成。インスタンスを共有してはならない)
+    // Literal new expansion of transient dependencies. The same dependency gets a fresh new at every use site
+    // (MEDI compatible: transients are created per use and must never be shared).
+    private static void EmitInlineNew(SourceBuilder builder, InlineNode node)
+    {
+        builder.Append("new ").Append(node.Factory.ImplementationType).Append('(');
+        for (var i = 0; i < node.Factory.Parameters.Count; i++)
+        {
+            if (i > 0)
+            {
+                builder.Append(", ");
+            }
+
+            var parameter = node.Factory.Parameters[i];
+            EmitArgument(builder, node.Parameters[i], parameter.TypeName, parameter.Kind, parameter.KeyLiteral);
+        }
+
+        builder.Append(')');
     }
 
     private static void EmitComponentRegistration(SourceBuilder builder, ComponentModel component)
@@ -1104,6 +1382,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             var implementationType = candidate.Factory.ImplementationType;
 
             // ServiceRegistration 互換: 0 iface → 自己 / 1 iface → IFace,Impl / 2+ → 自己 + フォワーディング
+            // ServiceRegistration compatible: 0 interfaces -> self / 1 -> IFace,Impl / 2+ -> self + forwarding.
             if (candidate.Interfaces.Count == 0)
             {
                 builder.Indent().Append("services.Add").Append(lifetime).Append('<').Append(implementationType).Append(">();").NewLine();

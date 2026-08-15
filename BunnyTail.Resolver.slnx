@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/Benchmark/">
+    <Project Path="BunnyTail.Resolver.Benchmark/BunnyTail.Resolver.Benchmark.csproj" />
+  </Folder>
   <Folder Name="/Example/">
   </Folder>
   <Folder Name="/Library/">
@@ -20,7 +23,6 @@
     <File Path="Directory.Build.targets" />
     <File Path="LICENSE" />
     <File Path="README.md" />
-    <File Path="SPEC.md" />
   </Folder>
   <Folder Name="/Tests/">
     <Project Path="BunnyTail.Resolver.Tests/BunnyTail.Resolver.Tests.csproj" />
