@@ -37,6 +37,16 @@ internal static class Registrations
         services.AddTransient<IMultipleTransientService, MultipleTransientService3>();
         services.AddTransient<IMultipleTransientService, MultipleTransientService4>();
         services.AddTransient<IMultipleTransientService, MultipleTransientService5>();
+        services.AddScoped<IScoped1, Scoped1>();
+        services.AddScoped<IScoped2, Scoped2>();
+        services.AddScoped<IScoped3, Scoped3>();
+        services.AddScoped<IScoped4, Scoped4>();
+        services.AddScoped<IScoped5, Scoped5>();
+        services.AddKeyedSingleton<IKeyedService, KeyedService1>("key1");
+        services.AddKeyedSingleton<IKeyedService, KeyedService2>("key2");
+        services.AddKeyedSingleton<IKeyedService, KeyedService3>("key3");
+        services.AddKeyedSingleton<IKeyedService, KeyedService4>("key4");
+        services.AddKeyedSingleton<IKeyedService, KeyedService5>("key5");
 
         // ASP.NET Core simulation
         services.AddScoped<IScopedService, ScopedService>();

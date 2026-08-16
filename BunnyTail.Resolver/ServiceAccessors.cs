@@ -25,10 +25,11 @@ internal abstract class ServiceAccessor
     public readonly int Slot;
 #pragma warning restore SA1401
 
-    // disposal 追跡要否は accessor 構築時に実装型で確定する。実行時 is チェックの排除 (VB-06)。
-    // 実装型が不明なユーザーファクトリのみ true 固定
+    // disposal 追跡要否は accessor 構築時に実装型で確定する。実行時 is チェックの排除
+    // (Sandbox の DisposalTrackingBenchmark)。実装型が不明なユーザーファクトリのみ true 固定
     // Whether disposal tracking is needed is settled from the implementation type when the accessor is built,
-    // eliminating runtime type checks (VB-06). Only user factories with unknown implementation types stay true.
+    // eliminating runtime type checks (see DisposalTrackingBenchmark in the sandbox).
+    // Only user factories with unknown implementation types stay true.
     private readonly bool trackDisposable;
 
     // Singleton キャッシュ。accessor は ServiceRegistry ごと = プロバイダごとに固有なので、
@@ -163,6 +164,49 @@ internal sealed class FactoryAccessor : ServiceAccessor
     protected override object? Create(ServiceProviderScope scope) => Factory(scope);
 }
 
+// singleton 依存を解決済み配列で受け取る生成ファクトリ (deps 形)。
+// deps は初回生成時に一度だけ充填する (lazy セマンティクス維持: singleton は初回解決まで生成されない)。
+// 充填が競合しても各依存 accessor がキャッシュ済みインスタンスを返すため、内容は同一で後勝ちで問題ない
+// Generated factory receiving resolved singleton dependencies as an array (deps shape). The array is filled once on
+// first creation, preserving lazy semantics (singletons are not created until first resolution). Concurrent fills are
+// benign: each dependency accessor returns its cached instance, so the contents are identical and last-write wins.
+internal sealed class DepsFactoryAccessor : ServiceAccessor
+{
+    // インライン展開前提の検証用に公開 (ServiceRegistry が生成ファクトリと参照比較する)
+    // Exposed for inline assumption validation (ServiceRegistry compares it with the generated factory by reference).
+    public Func<IServiceProvider, object?[], object> Factory { get; }
+
+    private readonly ServiceAccessor[] dependencyAccessors;
+
+    private object?[]? resolved;
+
+    public DepsFactoryAccessor(Func<IServiceProvider, object?[], object> factory, ServiceAccessor[] dependencyAccessors, ResultCache cache, int slot, bool trackDisposable)
+        : base(cache, slot, trackDisposable)
+    {
+        Factory = factory;
+        this.dependencyAccessors = dependencyAccessors;
+    }
+
+    protected override object? Create(ServiceProviderScope scope)
+    {
+        var deps = resolved ?? FillDependencies(scope);
+        return Factory(scope, deps);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private object?[] FillDependencies(ServiceProviderScope scope)
+    {
+        var array = new object?[dependencyAccessors.Length];
+        for (var i = 0; i < dependencyAccessors.Length; i++)
+        {
+            array[i] = dependencyAccessors[i].GetValue(scope.RootScope);
+        }
+
+        Volatile.Write(ref resolved, array);
+        return array;
+    }
+}
+
 // keyed ファクトリ (Func<IServiceProvider, object?, object>)
 // Keyed factory (Func<IServiceProvider, object?, object>).
 internal sealed class KeyedFactoryAccessor : ServiceAccessor
@@ -236,37 +280,46 @@ internal readonly struct PropertyInjection
 // Constructor invocation (runtime path: ConstructorInfo.Invoke based, no Emit).
 internal sealed class ConstructorAccessor : ServiceAccessor
 {
-    private readonly ConstructorInfo constructor;
+    // ConstructorInfo.Invoke より速い呼び出しスタブ (.NET 8+、Emit 不使用で NativeAOT でも動作)。
+    // 例外は TargetInvocationException に包まれず素通しになる (生成経路と同じ挙動)
+    // Faster invocation stub than ConstructorInfo.Invoke (.NET 8+, no Emit, works on NativeAOT).
+    // Exceptions propagate unwrapped, matching the generated path.
+    private readonly ConstructorInvoker invoker;
 
     private readonly ParameterPlan[] plans;
 
     private readonly PropertyInjection[] properties;
 
-    public ConstructorAccessor(ConstructorInfo constructor, ParameterPlan[] plans, PropertyInjection[] properties, ResultCache cache, int slot, bool trackDisposable)
+    private readonly MethodInfo? postConstruct;
+
+    private readonly bool initializable;
+
+    public ConstructorAccessor(ConstructorInfo constructor, ParameterPlan[] plans, PropertyInjection[] properties, MethodInfo? postConstruct, bool initializable, ResultCache cache, int slot, bool trackDisposable)
         : base(cache, slot, trackDisposable)
     {
-        this.constructor = constructor;
+        invoker = ConstructorInvoker.Create(constructor);
         this.plans = plans;
         this.properties = properties;
+        this.postConstruct = postConstruct;
+        this.initializable = initializable;
     }
 
     protected override object? Create(ServiceProviderScope scope)
     {
-        var arguments = plans.Length == 0 ? [] : new object?[plans.Length];
-        for (var i = 0; i < plans.Length; i++)
-        {
-            arguments[i] = plans[i].Resolve(scope);
-        }
-
         object instance;
-        try
+        if (plans.Length == 0)
         {
-            instance = constructor.Invoke(arguments);
+            instance = invoker.Invoke();
         }
-        catch (TargetInvocationException e) when (e.InnerException is not null)
+        else
         {
-            ExceptionDispatchInfo.Capture(e.InnerException).Throw();
-            throw;
+            var arguments = new object?[plans.Length];
+            for (var i = 0; i < plans.Length; i++)
+            {
+                arguments[i] = plans[i].Resolve(scope);
+            }
+
+            instance = invoker.Invoke(arguments.AsSpan());
         }
 
         // [Inject] プロパティ注入 (生成経路と同セマンティクス: 生成後に設定)
@@ -274,6 +327,25 @@ internal sealed class ConstructorAccessor : ServiceAccessor
         for (var i = 0; i < properties.Length; i++)
         {
             properties[i].Property.SetValue(instance, properties[i].Plan.Resolve(scope));
+        }
+
+        // 初期化コールバック (生成経路と同セマンティクス: プロパティ注入の後。例外は素通し)
+        // Initialization callback (same semantics as the generated path: after property injection, exceptions flow through unwrapped).
+        if (postConstruct is not null)
+        {
+            try
+            {
+                postConstruct.Invoke(instance, null);
+            }
+            catch (TargetInvocationException e) when (e.InnerException is not null)
+            {
+                ExceptionDispatchInfo.Capture(e.InnerException).Throw();
+                throw;
+            }
+        }
+        else if (initializable)
+        {
+            ((IInitializable)instance).Initialize();
         }
 
         return instance;
@@ -287,26 +359,51 @@ internal sealed class ValueTypeAccessor : ServiceAccessor
     [System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
     private readonly Type type;
 
+    private readonly bool initializable;
+
     public ValueTypeAccessor(
         [System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] Type type,
+        bool initializable,
         ResultCache cache,
         int slot,
         bool trackDisposable)
         : base(cache, slot, trackDisposable)
     {
         this.type = type;
+        this.initializable = initializable;
     }
 
-    protected override object? Create(ServiceProviderScope scope) => Activator.CreateInstance(type);
+    protected override object? Create(ServiceProviderScope scope)
+    {
+        var value = Activator.CreateInstance(type);
+        if (initializable)
+        {
+            // box に対する呼び出しなので、box 内の値が初期化される
+            // Invoked on the box, so the boxed value is what gets initialized.
+            ((IInitializable)value!).Initialize();
+        }
+
+        return value;
+    }
 }
 
 // IEnumerable<T> (T[] 実体、登録順)
 // IEnumerable<T> (materialized as T[] in registration order).
 internal sealed class EnumerableAccessor : ServiceAccessor
 {
+    // new T[n] を行う open generic メソッドの定義。デリゲート経由で静的参照し、トリミングで消えないようにする
+    // Open generic definition of new T[n], acquired through a delegate so trimming preserves it.
+    private static readonly MethodInfo CreateTypedArrayMethod = new Func<int, Array>(CreateTypedArray<object>).Method.GetGenericMethodDefinition();
+
     private readonly Type elementType;
 
     private readonly ServiceAccessor[] items;
+
+    // 参照型要素のみ: new T[n] デリゲート (Array.CreateInstance の固定 ~50ns を回避。Sandbox の
+    // EnumerableMaterializationBenchmark で確定)。値型要素は null で従来経路へフォールバック
+    // Reference elements only: a new T[n] delegate avoiding the fixed ~50ns of Array.CreateInstance
+    // (settled by EnumerableMaterializationBenchmark in the sandbox). Null for value type elements, which fall back.
+    private readonly Func<int, Array>? arrayFactory;
 
     // 配列自体は追跡しない (要素は各 accessor が追跡する)
     // The array itself is not tracked (each element is tracked by its own accessor).
@@ -315,13 +412,39 @@ internal sealed class EnumerableAccessor : ServiceAccessor
     {
         this.elementType = elementType;
         this.items = items;
+        arrayFactory = elementType.IsValueType ? null : CreateArrayFactory(elementType);
     }
+
+    private static T[] CreateTypedArray<T>(int length) => new T[length];
+
+    // 参照型引数は NativeAOT でも shared generic で動作する (Sandbox の AOT プローブで実測確認済み)。
+    // 値型引数は実行時に失敗するため、呼び出し元が IsValueType で除外している
+    // Reference type arguments work on NativeAOT through shared generics (confirmed by the sandbox AOT probe).
+    // Value type arguments would fail at runtime, so the caller excludes them via IsValueType.
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("AotAnalysis", "IL3050", Justification = "参照型要素のみ (shared generic で動作)。値型要素は Array.CreateInstance へフォールバックする")]
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2060", Justification = "対象はこのクラス内の new T[n] のみで、型引数にメタデータ要求はない")]
+    private static Func<int, Array> CreateArrayFactory(Type elementType) =>
+        CreateTypedArrayMethod.MakeGenericMethod(elementType).CreateDelegate<Func<int, Array>>();
 
     // 要素型 T の配列は IEnumerable<T> の要求経路 (呼び出し側の型参照) でメタデータが保持される
     // Metadata of T[] is preserved through the IEnumerable<T> request path (the caller's type reference).
     [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("AotAnalysis", "IL3050", Justification = "IEnumerable<T> が要求される要素型の配列型は参照経路で保持される (AotTests で検証済み)")]
     protected override object Create(ServiceProviderScope scope)
     {
+        if (arrayFactory is not null)
+        {
+            // 参照型要素: 型付き配列 + 共変ビューへの直接格納 (Array.SetValue のリフレクション経路を回避)
+            // Reference elements: typed array with direct stores through the covariant view (no Array.SetValue reflection).
+            var typed = arrayFactory(items.Length);
+            var view = (object?[])(object)typed;
+            for (var i = 0; i < items.Length; i++)
+            {
+                view[i] = items[i].GetValue(scope);
+            }
+
+            return typed;
+        }
+
         var array = Array.CreateInstance(elementType, items.Length);
         for (var i = 0; i < items.Length; i++)
         {

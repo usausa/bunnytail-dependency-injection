@@ -124,6 +124,119 @@ public sealed class ComponentResolutionTest
         Assert.True(leaf.Disposed);
     }
 
+    // ---- singleton 依存の deps 配列渡し / singleton dependencies through the deps array ----
+
+    [Fact]
+    public void DepsShapedFactoryFallsBackWhenSingletonLifetimeIsReplaced()
+    {
+        // SingletonComponent を transient に差し替えると deps 前提 (singleton 解決) が崩れ、
+        // 互換経路へフォールバックして transient セマンティクスが守られること
+        // Replacing SingletonComponent as transient breaks the deps assumption (singleton resolution);
+        // the factory must fall back to the runtime path and honor transient semantics.
+        var services = new ServiceCollection().AddComponents();
+        services.Add(ServiceDescriptor.Describe(typeof(SingletonComponent), typeof(SingletonComponent), ServiceLifetime.Transient));
+        using var provider = services.BuildResolverServiceProvider();
+
+        var a = provider.GetRequiredService<TransientComponent>();
+        var b = provider.GetRequiredService<TransientComponent>();
+
+        Assert.NotSame(a.Singleton, b.Singleton);
+    }
+
+    [Fact]
+    public void DepsFillingIsLazy()
+    {
+        // deps 充填は消費側の初回解決時。プロバイダ構築だけでは singleton を生成しない (MEDI の lazy と一致)
+        // Deps are filled on the consumer's first resolution; building the provider alone creates no singleton (matches MEDI laziness).
+        var before = LazyProbeSingleton.Created;
+        using var provider = CreateProvider();
+        Assert.Equal(before, LazyProbeSingleton.Created);
+
+        var consumer = provider.GetRequiredService<LazyProbeConsumer>();
+        Assert.Equal(before + 1, LazyProbeSingleton.Created);
+        Assert.Same(consumer.Dependency, provider.GetRequiredService<LazyProbeSingleton>());
+    }
+
+    [Fact]
+    public void ValueTypeEnumerableUsesFallbackPath()
+    {
+        // 値型要素は型付き配列ファクトリを使えないため Array.CreateInstance 経路で実体化される
+        // Value type elements cannot use the typed array factory and materialize through Array.CreateInstance.
+        IServiceCollection services = new ServiceCollection();
+        services.Add(ServiceDescriptor.Singleton(typeof(int), 1));
+        services.Add(ServiceDescriptor.Singleton(typeof(int), 2));
+        using var provider = services.BuildResolverServiceProvider();
+
+        Assert.Equal([1, 2], provider.GetServices<int>());
+    }
+
+    // ---- 初期化コールバック / initialization callbacks ----
+
+    public sealed class RuntimeInitializable : IInitializable
+    {
+        public bool Initialized { get; private set; }
+
+        public void Initialize() => Initialized = true;
+    }
+
+    [Fact]
+    public void PostConstructMethodIsInvoked()
+    {
+        using var provider = CreateProvider();
+
+        Assert.True(provider.GetRequiredService<PostConstructComponent>().Initialized);
+    }
+
+    [Fact]
+    public void InitializableInterfaceIsInvoked()
+    {
+        using var provider = CreateProvider();
+
+        Assert.True(provider.GetRequiredService<InitializableComponent>().Initialized);
+    }
+
+    [Fact]
+    public void InitializationRunsAfterPropertyInjection()
+    {
+        using var provider = CreateProvider();
+
+        Assert.True(provider.GetRequiredService<OrderedInitComponent>().PropWasSetOnInitialize);
+    }
+
+    [Fact]
+    public void PostConstructIsInvokedOnReflectionPath()
+    {
+        // ReflectionInitComponent は既定値付き引数のため生成ファクトリ不適格 → 互換経路で解決される
+        // ReflectionInitComponent has a default-valued parameter, so it resolves through the runtime path.
+        using var provider = CreateProvider();
+
+        Assert.True(provider.GetRequiredService<ReflectionInitComponent>().Initialized);
+    }
+
+    [Fact]
+    public void RuntimeRegisteredInitializableIsInvoked()
+    {
+        // ServiceDescriptor 直接登録はジェネレータから見えない → 互換経路の IInitializable 呼び出しを検証
+        // Direct ServiceDescriptor registration is invisible to the generator, exercising IInitializable on the runtime path.
+        IServiceCollection services = new ServiceCollection();
+        services.Add(ServiceDescriptor.Describe(typeof(RuntimeInitializable), typeof(RuntimeInitializable), ServiceLifetime.Transient));
+        using var provider = services.BuildResolverServiceProvider();
+
+        Assert.True(provider.GetRequiredService<RuntimeInitializable>().Initialized);
+    }
+
+    [Fact]
+    public void FactoryRegistrationIsNotInitialized()
+    {
+        // ファクトリ登録はユーザー所有の生成なので初期化しない
+        // Factory registrations are user-owned construction and are never initialized.
+        using var provider = new ServiceCollection()
+            .AddTransient(static _ => new RuntimeInitializable())
+            .BuildResolverServiceProvider();
+
+        Assert.False(provider.GetRequiredService<RuntimeInitializable>().Initialized);
+    }
+
     // ---- Singleton の accessor フィールドキャッシュ / singleton accessor field cache ----
 
     public sealed class CountingSingleton

@@ -19,6 +19,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
     private const string ScopedAttributeName = "BunnyTail.Resolver.ScopedAttribute";
     private const string TransientAttributeName = "BunnyTail.Resolver.TransientAttribute";
     private const string InjectAttributeName = "BunnyTail.Resolver.InjectAttribute";
+    private const string InitializableInterfaceName = "global::BunnyTail.Resolver.IInitializable";
     private const string ComponentRegistrationAttributeName = "BunnyTail.Resolver.ComponentRegistrationAttribute";
     private const string FromKeyedServicesAttributeName = "Microsoft.Extensions.DependencyInjection.FromKeyedServicesAttribute";
     private const string ServiceKeyAttributeName = "Microsoft.Extensions.DependencyInjection.ServiceKeyAttribute";
@@ -75,6 +76,22 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         "BTRS0006",
         "Ambiguous constructor",
         "Type '{0}' has multiple public constructors with the same maximum parameter count",
+        "BunnyTail.Resolver",
+        DiagnosticSeverity.Error,
+        true);
+
+    private static readonly DiagnosticDescriptor InvalidPostConstruct = new(
+        "BTRS0007",
+        "Invalid PostConstruct method",
+        "The PostConstruct method '{0}' on type '{1}' must be a public parameterless instance method returning void",
+        "BunnyTail.Resolver",
+        DiagnosticSeverity.Error,
+        true);
+
+    private static readonly DiagnosticDescriptor ConflictingPostConstruct = new(
+        "BTRS0008",
+        "Conflicting PostConstruct specifications",
+        "Type '{0}' has conflicting PostConstruct specifications across its lifetime attributes",
         "BunnyTail.Resolver",
         DiagnosticSeverity.Error,
         true);
@@ -175,8 +192,8 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             for (var i = 0; i < constructor.Parameters.Length; i++)
             {
                 var parameter = constructor.Parameters[i];
-                var (typeName, kind, keyLiteral, inCompilation) = CreateDependencyModel(parameter.Type, parameter.GetAttributes(), compilationAssembly);
-                parameters[i] = new ParameterModel(typeName, kind, keyLiteral, inCompilation);
+                var (typeName, kind, keyLiteral, inCompilation, isValueType) = CreateDependencyModel(parameter.Type, parameter.GetAttributes(), compilationAssembly);
+                parameters[i] = new ParameterModel(typeName, kind, keyLiteral, inCompilation, isValueType);
 
                 // 既定値付き引数は生成ファクトリ不可 (GetRequiredService と挙動が変わるため互換経路へ)
                 // Parameters with default values disqualify the generated factory (behavior differs from GetRequiredService; runtime path is used).
@@ -210,7 +227,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
                 continue;
             }
 
-            var (typeName, kind, keyLiteral, inCompilation) = CreateDependencyModel(property.Type, property.GetAttributes(), compilationAssembly);
+            var (typeName, kind, keyLiteral, inCompilation, isValueType) = CreateDependencyModel(property.Type, property.GetAttributes(), compilationAssembly);
             if (kind == DependencyKinds.ServiceKey)
             {
                 // プロパティへの [ServiceKey] は非対応 / [ServiceKey] on properties is not supported
@@ -224,21 +241,55 @@ public sealed class ResolverGenerator : IIncrementalGenerator
                 eligibleUnkeyed = false;
             }
 
-            injectProperties.Add(new PropertyModel(property.Name, typeName, kind, keyLiteral, inCompilation));
+            injectProperties.Add(new PropertyModel(property.Name, typeName, kind, keyLiteral, inCompilation, isValueType));
         }
 
         // IDisposable / IAsyncDisposable 実装型は disposal 追跡が必要なためインライン展開不可
         // Types implementing IDisposable / IAsyncDisposable need disposal tracking and cannot be inlined.
         var disposable = false;
+        var initializableInterface = false;
         foreach (var interfaceType in symbol.AllInterfaces)
         {
-            if ((interfaceType.SpecialType == SpecialType.System_IDisposable)
-                || (interfaceType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == "global::System.IAsyncDisposable"))
+            var interfaceName = interfaceType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            if ((interfaceType.SpecialType == SpecialType.System_IDisposable) || (interfaceName == "global::System.IAsyncDisposable"))
             {
                 disposable = true;
-                break;
+            }
+            else if (interfaceName == InitializableInterfaceName)
+            {
+                initializableInterface = true;
             }
         }
+
+        // 初期化コールバック: ライフタイム属性の PostConstruct 指定を収集する (相違があれば BTRS0008)
+        // Initialization callback: collect PostConstruct from lifetime attributes (BTRS0008 when they disagree).
+        string? postConstruct = null;
+        var conflictingPostConstruct = false;
+        foreach (var attribute in symbol.GetAttributes())
+        {
+            var attributeName = attribute.AttributeClass?.ToDisplayString();
+            if (attributeName is not (SingletonAttributeName or ScopedAttributeName or TransientAttributeName))
+            {
+                continue;
+            }
+
+            foreach (var argument in attribute.NamedArguments)
+            {
+                if ((argument.Key == "PostConstruct") && argument.Value.Value is string value)
+                {
+                    if (postConstruct is null)
+                    {
+                        postConstruct = value;
+                    }
+                    else if (postConstruct != value)
+                    {
+                        conflictingPostConstruct = true;
+                    }
+                }
+            }
+        }
+
+        var invalidPostConstruct = (postConstruct is not null) && !HasValidPostConstructMethod(symbol, postConstruct);
 
         return new FactoryModel(
             implementationType,
@@ -247,41 +298,70 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             eligibleUnkeyed,
             eligibleKeyed,
             ambiguous,
-            disposable);
+            disposable,
+            postConstruct,
+            initializableInterface,
+            invalidPostConstruct,
+            conflictingPostConstruct);
     }
 
-    private static (string TypeName, int Kind, string? KeyLiteral, bool InCompilation) CreateDependencyModel(ITypeSymbol type, ImmutableArray<AttributeData> attributes, IAssemblySymbol compilationAssembly)
+    private static bool HasValidPostConstructMethod(INamedTypeSymbol symbol, string name)
+    {
+        for (var type = symbol; type is not null; type = type.BaseType)
+        {
+            foreach (var member in type.GetMembers(name))
+            {
+                if (member is IMethodSymbol
+                    {
+                        IsStatic: false,
+                        Parameters.Length: 0,
+                        ReturnsVoid: true,
+                        IsGenericMethod: false,
+                        DeclaredAccessibility: Accessibility.Public,
+                        MethodKind: MethodKind.Ordinary,
+                    })
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static (string TypeName, int Kind, string? KeyLiteral, bool InCompilation, bool IsValueType) CreateDependencyModel(ITypeSymbol type, ImmutableArray<AttributeData> attributes, IAssemblySymbol compilationAssembly)
     {
         var typeName = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
         var inCompilation = SymbolEqualityComparer.Default.Equals(type.ContainingAssembly, compilationAssembly);
+        var isValueType = type.IsValueType;
 
         foreach (var attribute in attributes)
         {
             var attributeName = attribute.AttributeClass?.ToDisplayString();
             if (attributeName == ServiceKeyAttributeName)
             {
-                return (typeName, DependencyKinds.ServiceKey, null, inCompilation);
+                return (typeName, DependencyKinds.ServiceKey, null, inCompilation, isValueType);
             }
 
             if (attributeName == FromKeyedServicesAttributeName)
             {
                 if (attribute.ConstructorArguments.Length == 0)
                 {
-                    return (typeName, DependencyKinds.KeyedInherit, null, inCompilation);
+                    return (typeName, DependencyKinds.KeyedInherit, null, inCompilation, isValueType);
                 }
 
                 var argument = attribute.ConstructorArguments[0];
                 if (argument.IsNull)
                 {
                     // [FromKeyedServices(null)] = 非 keyed 解決 / resolves non-keyed
-                    return (typeName, DependencyKinds.Service, null, inCompilation);
+                    return (typeName, DependencyKinds.Service, null, inCompilation, isValueType);
                 }
 
-                return (typeName, DependencyKinds.KeyedExplicit, SymbolDisplay.FormatPrimitive(argument.Value!, quoteStrings: true, useHexadecimalNumbers: false), inCompilation);
+                return (typeName, DependencyKinds.KeyedExplicit, SymbolDisplay.FormatPrimitive(argument.Value!, quoteStrings: true, useHexadecimalNumbers: false), inCompilation, isValueType);
             }
         }
 
-        return (typeName, DependencyKinds.Service, null, inCompilation);
+        return (typeName, DependencyKinds.Service, null, inCompilation, isValueType);
     }
 
     private static EquatableArray<string> CollectInterfaces(INamedTypeSymbol symbol)
@@ -289,7 +369,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         var interfaces = symbol.AllInterfaces
             .Where(static x => x.SpecialType != SpecialType.System_IDisposable)
             .Select(static x => x.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))
-            .Where(static x => x != "global::System.IAsyncDisposable")
+            .Where(static x => x is not ("global::System.IAsyncDisposable" or InitializableInterfaceName))
             .ToArray();
         return new EquatableArray<string>(interfaces);
     }
@@ -840,6 +920,16 @@ public sealed class ResolverGenerator : IIncrementalGenerator
                 context.ReportDiagnostic(new DiagnosticInfo(AmbiguousConstructor, component.Location, Display(component.Factory.ImplementationType)).ToDiagnostic());
             }
 
+            if (component.Factory.InvalidPostConstruct)
+            {
+                context.ReportDiagnostic(new DiagnosticInfo(InvalidPostConstruct, component.Location, component.Factory.PostConstruct!, Display(component.Factory.ImplementationType)).ToDiagnostic());
+            }
+
+            if (component.Factory.ConflictingPostConstruct)
+            {
+                context.ReportDiagnostic(new DiagnosticInfo(ConflictingPostConstruct, component.Location, Display(component.Factory.ImplementationType)).ToDiagnostic());
+            }
+
             if (component.KeyLiteral is not null)
             {
                 continue;
@@ -932,13 +1022,21 @@ public sealed class ResolverGenerator : IIncrementalGenerator
     {
         private readonly Dictionary<string, FactoryModel> targets;
 
-        public InlineTargetMap(Dictionary<string, FactoryModel> targets)
+        // 一意な direct Singleton 登録 (サービス型 → 実装型)。deps 配列渡しの対象
+        // Unambiguous direct singleton registrations (service type -> implementation type), eligible for the deps array.
+        private readonly Dictionary<string, string> singletonTargets;
+
+        public InlineTargetMap(Dictionary<string, FactoryModel> targets, Dictionary<string, string> singletonTargets)
         {
             this.targets = targets;
+            this.singletonTargets = singletonTargets;
         }
 
         public FactoryModel? GetTarget(string serviceTypeName) =>
             targets.TryGetValue(serviceTypeName, out var factory) ? factory : null;
+
+        public string? GetSingletonTarget(string serviceTypeName) =>
+            singletonTargets.TryGetValue(serviceTypeName, out var implementation) ? implementation : null;
     }
 
     // サービス依存の展開計画。Parameters の null 要素は GetRequiredService 経由で解決する
@@ -1026,25 +1124,39 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         }
 
         var targets = new Dictionary<string, FactoryModel>(StringComparer.Ordinal);
+        var singletonTargets = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var pair in candidates)
         {
-            if (conflicted.Contains(pair.Key) || (pair.Value.Lifetime != "Transient") || !pair.Value.Direct)
+            if (conflicted.Contains(pair.Key) || !pair.Value.Direct)
             {
                 continue;
             }
 
-            if (!factories.TryGetValue(pair.Value.Impl, out var factory)
-                || !factory.EligibleUnkeyed
-                || (factory.InjectProperties.Count > 0)
-                || factory.Disposable)
+            if (!factories.TryGetValue(pair.Value.Impl, out var factory) || !factory.EligibleUnkeyed)
             {
                 continue;
             }
 
-            targets[pair.Key] = factory;
+            // Singleton: deps 配列渡しの対象 (disposal/初期化/[Inject] は実装側の accessor が担うため制限なし)
+            // Singletons are deps-array candidates (disposal/initialization/[Inject] are handled by the dependency's own accessor).
+            if (pair.Value.Lifetime == "Singleton")
+            {
+                singletonTargets[pair.Key] = pair.Value.Impl;
+                continue;
+            }
+
+            // Transient: リテラル new 展開の対象 (従来条件)
+            // Transients are literal-new candidates (existing conditions).
+            if ((pair.Value.Lifetime == "Transient")
+                && (factory.InjectProperties.Count == 0)
+                && !factory.Disposable
+                && !factory.HasInitializer)
+            {
+                targets[pair.Key] = factory;
+            }
         }
 
-        return new InlineTargetMap(targets);
+        return new InlineTargetMap(targets, singletonTargets);
     }
 
     private static InlineNode? TryCreateInlineNode(string serviceTypeName, InlineTargetMap map, List<string> stack)
@@ -1142,7 +1254,11 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         context.AddSource("GeneratedComponents.g.cs", builder);
     }
 
-    private static void EmitDependencyResolution(SourceBuilder builder, string typeName, int kind, string? keyLiteral)
+    // 依存解決は ServiceProviderScope への直接呼び出し (sealed) で出力する。
+    // MEDI 拡張メソッド経由 (ISupportRequiredService 型テスト + 二重ディスパッチ) より約 0.8ns/件 短い
+    // Dependency resolutions are emitted as direct calls on the sealed ServiceProviderScope,
+    // about 0.8 ns per dependency shorter than the MEDI extension methods (type test + double dispatch).
+    private static void EmitDependencyResolution(SourceBuilder builder, string typeName, int kind, string? keyLiteral, bool isValueType, Dictionary<string, int>? depsIndex)
     {
         switch (kind)
         {
@@ -1150,14 +1266,81 @@ public sealed class ResolverGenerator : IIncrementalGenerator
                 builder.Append('(').Append(typeName).Append(")key!");
                 break;
             case DependencyKinds.KeyedExplicit:
-                builder.Append("provider.GetRequiredKeyedService<").Append(typeName).Append(">(").Append(keyLiteral!).Append(')');
+                builder.Append("scope.GetRequiredKeyedService<").Append(typeName).Append(">(").Append(keyLiteral!).Append(')');
                 break;
             case DependencyKinds.KeyedInherit:
-                builder.Append("provider.GetRequiredKeyedService<").Append(typeName).Append(">(key)");
+                builder.Append("scope.GetRequiredKeyedService<").Append(typeName).Append(">(key)");
                 break;
             default:
-                builder.Append("provider.GetRequiredService<").Append(typeName).Append(">()");
+                if ((depsIndex is not null) && depsIndex.TryGetValue(typeName, out var depSlot))
+                {
+                    // singleton 依存: 解決済み deps スロットの読み出しのみ。前提検証済みのため参照型は Unsafe.As
+                    // Singleton dependency: just a resolved deps slot read. Assumptions are validated, so reference types use Unsafe.As.
+                    if (isValueType)
+                    {
+                        builder.Append('(').Append(typeName).Append(")deps[").Append(depSlot.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append("]!");
+                    }
+                    else
+                    {
+                        builder.Append("global::System.Runtime.CompilerServices.Unsafe.As<").Append(typeName).Append(">(deps[").Append(depSlot.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append("])!");
+                    }
+                }
+                else
+                {
+                    builder.Append("scope.GetRequiredService<").Append(typeName).Append(">()");
+                }
+
                 break;
+        }
+    }
+
+    // 出力される式の中に scope 経由の解決が 1 つでもあるか (scope ローカルの要否)。deps スロットは scope を使わない
+    // Whether the emitted body contains any scope-based resolution (decides if the scope local is needed). Deps slots never use the scope.
+    private static bool NeedsScope(int kind, string typeName, InlineNode? node, Dictionary<string, int>? depsIndex)
+    {
+        if (node is null)
+        {
+            if (kind == DependencyKinds.ServiceKey)
+            {
+                return false;
+            }
+
+            return (kind != DependencyKinds.Service) || (depsIndex is null) || !depsIndex.ContainsKey(typeName);
+        }
+
+        for (var i = 0; i < node.Factory.Parameters.Count; i++)
+        {
+            if (NeedsScope(node.Factory.Parameters[i].Kind, node.Factory.Parameters[i].TypeName, node.Parameters[i], depsIndex))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // 出力される式に現れる singleton 依存へ deps スロットを割り当てる (ネストしたインライン展開の内側も含む)
+    // Assigns deps slots to the singleton dependencies appearing in the emitted body, including inside nested inline expansions.
+    private static void CollectSingletonSlots(int kind, string typeName, InlineNode? node, InlineTargetMap map, Dictionary<string, int> depsIndex, List<(string Service, string Implementation)> depsList)
+    {
+        if (node is null)
+        {
+            if (kind == DependencyKinds.Service)
+            {
+                var implementation = map.GetSingletonTarget(typeName);
+                if ((implementation is not null) && !depsIndex.ContainsKey(typeName))
+                {
+                    depsIndex[typeName] = depsIndex.Count;
+                    depsList.Add((typeName, implementation));
+                }
+            }
+
+            return;
+        }
+
+        for (var i = 0; i < node.Factory.Parameters.Count; i++)
+        {
+            CollectSingletonSlots(node.Factory.Parameters[i].Kind, node.Factory.Parameters[i].TypeName, node.Parameters[i], map, depsIndex, depsList);
         }
     }
 
@@ -1198,6 +1381,25 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             }
         }
 
+        // singleton 依存の deps スロット割り当て (unkeyed のみ。keyed は従来経路)
+        // Deps slot assignment for singleton dependencies (unkeyed only; keyed factories keep the scope path).
+        var depsIndex = new Dictionary<string, int>(StringComparer.Ordinal);
+        var depsList = new List<(string Service, string Implementation)>();
+        if (!keyed)
+        {
+            for (var i = 0; i < factory.Parameters.Count; i++)
+            {
+                CollectSingletonSlots(factory.Parameters[i].Kind, factory.Parameters[i].TypeName, parameterNodes[i], inlineMap, depsIndex, depsList);
+            }
+
+            for (var i = 0; i < factory.InjectProperties.Count; i++)
+            {
+                CollectSingletonSlots(factory.InjectProperties[i].Kind, factory.InjectProperties[i].TypeName, propertyNodes[i], inlineMap, depsIndex, depsList);
+            }
+        }
+
+        var emitDepsIndex = depsList.Count > 0 ? depsIndex : null;
+
         builder.AppendLine(keyed
             ? "global::BunnyTail.Resolver.GeneratedComponentRegistry.RegisterKeyed("
             : "global::BunnyTail.Resolver.GeneratedComponentRegistry.Register(");
@@ -1224,7 +1426,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             builder.Append("],").NewLine();
         }
 
-        if (assumptions.Count > 0)
+        if ((assumptions.Count > 0) || (depsList.Count > 0))
         {
             builder.Indent().Append('[');
             for (var i = 0; i < assumptions.Count; i++)
@@ -1240,16 +1442,50 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             builder.Append("],").NewLine();
         }
 
-        var lambdaHeader = keyed ? "static (provider, key) => " : "static provider => ";
+        if (depsList.Count > 0)
+        {
+            builder.Indent().Append('[');
+            for (var i = 0; i < depsList.Count; i++)
+            {
+                if (i > 0)
+                {
+                    builder.Append(", ");
+                }
 
-        if ((factory.Parameters.Count == 0) && (factory.InjectProperties.Count == 0))
+                builder.Append("new global::BunnyTail.Resolver.InlinedDependency(typeof(").Append(depsList[i].Service).Append("), typeof(").Append(depsList[i].Implementation).Append("))");
+            }
+
+            builder.Append("],").NewLine();
+        }
+
+        var lambdaHeader = keyed
+            ? "static (provider, key) => "
+            : (depsList.Count > 0 ? "static (provider, deps) => " : "static provider => ");
+
+        if ((factory.Parameters.Count == 0) && (factory.InjectProperties.Count == 0) && !factory.HasInitializer)
         {
             builder.Indent().Append(lambdaHeader).Append("new ").Append(factory.ImplementationType).Append("());").NewLine();
         }
         else
         {
+            var needsScope = false;
+            for (var i = 0; i < factory.Parameters.Count; i++)
+            {
+                needsScope = needsScope || NeedsScope(factory.Parameters[i].Kind, factory.Parameters[i].TypeName, parameterNodes[i], emitDepsIndex);
+            }
+
+            for (var i = 0; i < factory.InjectProperties.Count; i++)
+            {
+                needsScope = needsScope || NeedsScope(factory.InjectProperties[i].Kind, factory.InjectProperties[i].TypeName, propertyNodes[i], emitDepsIndex);
+            }
+
             builder.Indent().Append(lambdaHeader.TrimEnd()).NewLine();
             builder.BeginScope();
+
+            if (needsScope)
+            {
+                builder.AppendLine("var scope = (global::BunnyTail.Resolver.ServiceProviderScope)provider;");
+            }
 
             if (factory.Parameters.Count == 0)
             {
@@ -1263,7 +1499,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
                 {
                     var parameter = factory.Parameters[i];
                     builder.Indent();
-                    EmitArgument(builder, parameterNodes[i], parameter.TypeName, parameter.Kind, parameter.KeyLiteral);
+                    EmitArgument(builder, parameterNodes[i], parameter.TypeName, parameter.Kind, parameter.KeyLiteral, parameter.IsValueType, emitDepsIndex);
                     builder.Append(i < factory.Parameters.Count - 1 ? "," : ");").NewLine();
                 }
 
@@ -1274,8 +1510,22 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             {
                 var property = factory.InjectProperties[i];
                 builder.Indent().Append("instance.").Append(property.Name).Append(" = ");
-                EmitArgument(builder, propertyNodes[i], property.TypeName, property.Kind, property.KeyLiteral);
+                EmitArgument(builder, propertyNodes[i], property.TypeName, property.Kind, property.KeyLiteral, property.IsValueType, emitDepsIndex);
                 builder.Append(';').NewLine();
+            }
+
+            // 初期化コールバック (プロパティ注入の後。PostConstruct 指定が IInitializable より優先)
+            // Initialization callback (after property injection; PostConstruct takes precedence over IInitializable).
+            if (factory.PostConstruct is not null)
+            {
+                if (!factory.InvalidPostConstruct)
+                {
+                    builder.Indent().Append("instance.").Append(factory.PostConstruct).Append("();").NewLine();
+                }
+            }
+            else if (factory.InitializableInterface)
+            {
+                builder.AppendLine("((global::BunnyTail.Resolver.IInitializable)instance).Initialize();");
             }
 
             builder.AppendLine("return instance;");
@@ -1291,15 +1541,15 @@ public sealed class ResolverGenerator : IIncrementalGenerator
 
     // インライン展開ノードがあればリテラル new を、なければ従来の解決式を出力する
     // Emits a literal new when an inline node exists, otherwise the ordinary resolution expression.
-    private static void EmitArgument(SourceBuilder builder, InlineNode? node, string typeName, int kind, string? keyLiteral)
+    private static void EmitArgument(SourceBuilder builder, InlineNode? node, string typeName, int kind, string? keyLiteral, bool isValueType, Dictionary<string, int>? depsIndex)
     {
         if (node is null)
         {
-            EmitDependencyResolution(builder, typeName, kind, keyLiteral);
+            EmitDependencyResolution(builder, typeName, kind, keyLiteral, isValueType, depsIndex);
         }
         else
         {
-            EmitInlineNew(builder, node);
+            EmitInlineNew(builder, node, depsIndex);
         }
     }
 
@@ -1307,7 +1557,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
     // (MEDI 互換: transient は都度新規生成。インスタンスを共有してはならない)
     // Literal new expansion of transient dependencies. The same dependency gets a fresh new at every use site
     // (MEDI compatible: transients are created per use and must never be shared).
-    private static void EmitInlineNew(SourceBuilder builder, InlineNode node)
+    private static void EmitInlineNew(SourceBuilder builder, InlineNode node, Dictionary<string, int>? depsIndex)
     {
         builder.Append("new ").Append(node.Factory.ImplementationType).Append('(');
         for (var i = 0; i < node.Factory.Parameters.Count; i++)
@@ -1318,7 +1568,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             }
 
             var parameter = node.Factory.Parameters[i];
-            EmitArgument(builder, node.Parameters[i], parameter.TypeName, parameter.Kind, parameter.KeyLiteral);
+            EmitArgument(builder, node.Parameters[i], parameter.TypeName, parameter.Kind, parameter.KeyLiteral, parameter.IsValueType, depsIndex);
         }
 
         builder.Append(')');
@@ -1351,7 +1601,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         builder.Indent().Append("services.Add").Append(component.Lifetime).Append('<').Append(implementationType).Append(">();").NewLine();
         foreach (var interfaceType in component.Interfaces)
         {
-            builder.Indent().Append("services.Add").Append(component.Lifetime).Append('<').Append(interfaceType).Append(">(static provider => provider.GetRequiredService<").Append(implementationType).Append(">());").NewLine();
+            builder.Indent().Append("services.Add").Append(component.Lifetime).Append('<').Append(interfaceType).Append(">(static provider => ((global::BunnyTail.Resolver.ServiceProviderScope)provider).GetRequiredService<").Append(implementationType).Append(">());").NewLine();
         }
     }
 
@@ -1396,7 +1646,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
                 builder.Indent().Append("services.Add").Append(lifetime).Append('<').Append(implementationType).Append(">();").NewLine();
                 foreach (var interfaceType in candidate.Interfaces)
                 {
-                    builder.Indent().Append("services.Add").Append(lifetime).Append('<').Append(interfaceType).Append(">(static provider => provider.GetRequiredService<").Append(implementationType).Append(">());").NewLine();
+                    builder.Indent().Append("services.Add").Append(lifetime).Append('<').Append(interfaceType).Append(">(static provider => ((global::BunnyTail.Resolver.ServiceProviderScope)provider).GetRequiredService<").Append(implementationType).Append(">());").NewLine();
                 }
             }
         }

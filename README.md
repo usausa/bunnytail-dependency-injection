@@ -48,10 +48,35 @@ var keyed = provider.GetRequiredKeyedService<IService>("primary");
 
 | Parameter | Description |
 |---|---|
-| `As` | Explicit service type. When omitted, the class itself and all implemented interfaces are registered (`IDisposable` / `IAsyncDisposable` excluded) |
+| `As` | Explicit service type. When omitted, the class itself and all implemented interfaces are registered (`IDisposable` / `IAsyncDisposable` / `IInitializable` excluded) |
 | `Key` | Keyed service registration |
+| `PostConstruct` | Name of a method invoked after construction and property injection |
 
 `[Inject]` marks a public settable property for property injection after construction. `[FromKeyedServices]` and `[ServiceKey]` on constructor parameters and `[Inject]` properties follow MEDI rules.
+
+### Initialization callback
+
+A component can run initialization after the container constructs it — either name a method on the lifetime attribute, or implement `IInitializable`.
+
+```csharp
+[Singleton(PostConstruct = nameof(Setup))]
+public sealed class Component5
+{
+    public void Setup()
+    {
+    }
+}
+
+[Transient]
+public sealed class Component6 : IInitializable
+{
+    public void Initialize()
+    {
+    }
+}
+```
+
+The callback runs after constructor and `[Inject]` property injection, with identical timing on both the generated and the runtime path. The method must be a public parameterless instance method returning void; `PostConstruct` takes precedence when both are present. Only container-constructed instances are initialized — factory and instance registrations are user-owned and never touched. Types without a callback pay no resolution cost.
 
 ### Convention based registration
 
@@ -128,6 +153,8 @@ When the provider is built, every `ServiceDescriptor` is verified against the ge
 | BTRS0004 | Warning | Dependency cannot be resolved from the registrations visible at compile time |
 | BTRS0005 | Warning | Captive dependency (singleton component depends on a scoped service) |
 | BTRS0006 | Error | Multiple public constructors with the same maximum parameter count |
+| BTRS0007 | Error | The `PostConstruct` method is missing or is not a public parameterless instance method returning void |
+| BTRS0008 | Error | Conflicting `PostConstruct` specifications across lifetime attributes |
 
 ## Limitations
 

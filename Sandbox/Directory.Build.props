@@ -1,0 +1,13 @@
+<Project>
+
+  <!--
+    Sandbox はライブラリ本体の解析設定 (StyleCop / AnalysisMode) を継承しない
+    The sandbox does not inherit the library's analysis settings (StyleCop / AnalysisMode).
+  -->
+  <PropertyGroup>
+    <LangVersion>preview</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+</Project>

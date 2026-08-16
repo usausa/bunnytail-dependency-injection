@@ -65,6 +65,10 @@ using (var provider = services.BuildResolverServiceProvider())
 
     // 実行時登録 (互換経路/収集ファクトリ) / runtime registration (runtime path / collected factory)
     Assert(provider.GetService<RuntimeRegistered>() is not null, "runtime registered");
+
+    // 初期化コールバック / initialization callbacks
+    Assert(provider.GetRequiredService<AotPostConstruct>().Initialized, "post construct method");
+    Assert(provider.GetRequiredService<AotInitializable>().Initialized, "initializable interface");
 }
 
 // disposal
@@ -104,6 +108,22 @@ namespace BunnyTail.Resolver.AotTests
 
     [Scoped]
     public sealed class AotScoped : IAotScoped;
+
+    [Singleton(PostConstruct = nameof(Setup))]
+    public sealed class AotPostConstruct
+    {
+        public bool Initialized { get; private set; }
+
+        public void Setup() => Initialized = true;
+    }
+
+    [Transient]
+    public sealed class AotInitializable : IInitializable
+    {
+        public bool Initialized { get; private set; }
+
+        public void Initialize() => Initialized = true;
+    }
 
     [Transient]
     public sealed class AotGraphDep;

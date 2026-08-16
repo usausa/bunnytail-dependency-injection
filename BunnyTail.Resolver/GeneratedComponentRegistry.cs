@@ -41,14 +41,31 @@ public static class GeneratedComponentRegistry
 
         public readonly InlinedDependency[] InlinedDependencies;
 
-        public readonly Func<IServiceProvider, object> Factory;
+        // singleton 依存の前提。deps 配列のスロット順に対応する (DepsFactory 形のみ)
+        // Singleton dependency assumptions, in deps array slot order (deps-shaped factories only).
+        public readonly InlinedDependency[] SingletonDependencies;
+
+        public readonly Func<IServiceProvider, object>? Factory;
+
+        // singleton 依存を解決済み配列で受け取る形 (Factory と排他)
+        // Shape receiving resolved singleton dependencies as an array (mutually exclusive with Factory).
+        public readonly Func<IServiceProvider, object?[], object>? DepsFactory;
 #pragma warning restore SA1401
 
         public Entry(Type[] constructorParameterTypes, InlinedDependency[] inlinedDependencies, Func<IServiceProvider, object> factory)
         {
             ConstructorParameterTypes = constructorParameterTypes;
             InlinedDependencies = inlinedDependencies;
+            SingletonDependencies = [];
             Factory = factory;
+        }
+
+        public Entry(Type[] constructorParameterTypes, InlinedDependency[] inlinedDependencies, InlinedDependency[] singletonDependencies, Func<IServiceProvider, object?[], object> depsFactory)
+        {
+            ConstructorParameterTypes = constructorParameterTypes;
+            InlinedDependencies = inlinedDependencies;
+            SingletonDependencies = singletonDependencies;
+            DepsFactory = depsFactory;
         }
     }
 
@@ -84,6 +101,18 @@ public static class GeneratedComponentRegistry
         ArgumentNullException.ThrowIfNull(inlinedDependencies);
         ArgumentNullException.ThrowIfNull(factory);
         Map[implementationType] = new Entry(constructorParameterTypes, inlinedDependencies, factory);
+    }
+
+    // singleton 依存を deps 配列で受け取る形。singletonDependencies がスロット順の前提になる
+    // Deps-shaped registration receiving resolved singleton dependencies; singletonDependencies define the slot order assumptions.
+    public static void Register(Type implementationType, Type[] constructorParameterTypes, InlinedDependency[] inlinedDependencies, InlinedDependency[] singletonDependencies, Func<IServiceProvider, object?[], object> factory)
+    {
+        ArgumentNullException.ThrowIfNull(implementationType);
+        ArgumentNullException.ThrowIfNull(constructorParameterTypes);
+        ArgumentNullException.ThrowIfNull(inlinedDependencies);
+        ArgumentNullException.ThrowIfNull(singletonDependencies);
+        ArgumentNullException.ThrowIfNull(factory);
+        Map[implementationType] = new Entry(constructorParameterTypes, inlinedDependencies, singletonDependencies, factory);
     }
 
     public static void RegisterKeyed(Type implementationType, Type[] constructorParameterTypes, Func<IServiceProvider, object?, object> factory) =>

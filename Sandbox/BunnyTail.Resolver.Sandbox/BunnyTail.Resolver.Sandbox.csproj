@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.11" />
+  </ItemGroup>
+
+  <!--
+    一時的: 解決経路の層ごとの分解測定 (P-7) のため本体を参照する。調査が終わったら削除すること
+    Temporary: references the library for the layer-by-layer decomposition of the resolution path (P-7). Remove when done.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\BunnyTail.Resolver\BunnyTail.Resolver.csproj" />
+    <ProjectReference Include="..\..\BunnyTail.Resolver.Generator\BunnyTail.Resolver.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+</Project>

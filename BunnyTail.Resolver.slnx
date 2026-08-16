@@ -2,7 +2,8 @@
   <Folder Name="/Benchmark/">
     <Project Path="BunnyTail.Resolver.Benchmark/BunnyTail.Resolver.Benchmark.csproj" />
   </Folder>
-  <Folder Name="/Example/">
+  <Folder Name="/Sandbox/">
+    <Project Path="Sandbox/BunnyTail.Resolver.Sandbox/BunnyTail.Resolver.Sandbox.csproj" />
   </Folder>
   <Folder Name="/Library/">
     <Project Path="BunnyTail.Resolver/BunnyTail.Resolver.csproj" />

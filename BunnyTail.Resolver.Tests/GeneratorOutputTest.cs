@@ -315,12 +315,14 @@ public sealed class GeneratorOutputTest
         // Assumptions cover top-level expansions only (Root records Branch only; Leaf is validated by Branch's own entry).
         Assert.Contains("[new global::BunnyTail.Resolver.InlinedDependency(typeof(global::Demo.Branch), typeof(global::Demo.Branch))],", generated, StringComparison.Ordinal);
 
-        // singleton / disposable transient は使用箇所でインライン展開されない
+        // singleton 依存は deps スロット (Unsafe.As)、disposable transient は scope 経由のまま
         // (DisposableLeaf 自身の Register ファクトリの new は正当な出力なので、使用箇所側の解決式で判定する)
-        // Singletons and disposable transients are not inlined at use sites (the new inside DisposableLeaf's own
-        // Register factory is legitimate output, so the assertion checks the use-site resolution expression).
-        Assert.Contains("provider.GetRequiredService<global::Demo.Shared>()", generated, StringComparison.Ordinal);
-        Assert.Contains("provider.GetRequiredService<global::Demo.DisposableLeaf>()", generated, StringComparison.Ordinal);
+        // Singleton dependencies become deps slots (Unsafe.As); disposable transients stay on the scope path
+        // (the new inside DisposableLeaf's own Register factory is legitimate output, so the assertion checks the use site).
+        Assert.Contains("global::System.Runtime.CompilerServices.Unsafe.As<global::Demo.Shared>(deps[0])!", generated, StringComparison.Ordinal);
+        Assert.Contains("[new global::BunnyTail.Resolver.InlinedDependency(typeof(global::Demo.Shared), typeof(global::Demo.Shared))],", generated, StringComparison.Ordinal);
+        Assert.Contains("static (provider, deps) =>", generated, StringComparison.Ordinal);
+        Assert.Contains("scope.GetRequiredService<global::Demo.DisposableLeaf>()", generated, StringComparison.Ordinal);
         Assert.Contains("new global::Demo.Mixed(", generated, StringComparison.Ordinal);
     }
 
@@ -348,7 +350,101 @@ public sealed class GeneratorOutputTest
         // 循環箇所は GetRequiredService へフォールバックして出力される
         // The cyclic edge is emitted as a GetRequiredService fallback.
         var generated = result.GeneratedSource("GeneratedComponents.g.cs");
-        Assert.Contains("provider.GetRequiredService<global::Demo.First>()", generated, StringComparison.Ordinal);
+        Assert.Contains("scope.GetRequiredService<global::Demo.First>()", generated, StringComparison.Ordinal);
+    }
+
+    // ---- 初期化コールバック / initialization callbacks ----
+
+    [Fact]
+    public void InitializationCallbacksAreEmitted()
+    {
+        const string Source = """
+            using BunnyTail.Resolver;
+
+            namespace Demo;
+
+            [Singleton(PostConstruct = nameof(Setup))]
+            public sealed class WithMethod
+            {
+                public void Setup()
+                {
+                }
+            }
+
+            [Transient]
+            public sealed class WithInterface : IInitializable
+            {
+                public void Initialize()
+                {
+                }
+            }
+
+            [Transient]
+            public sealed class Parent(WithInterface dependency);
+            """;
+
+        var result = CreateRunner()
+            .VerifyCompiles()
+            .Run(Source);
+
+        var generated = result.GeneratedSource("GeneratedComponents.g.cs");
+
+        // PostConstruct はメソッド名を直接呼び、IInitializable はインタフェース経由で呼ぶ
+        // PostConstruct calls the named method directly; IInitializable is invoked through the interface.
+        Assert.Contains("instance.Setup();", generated, StringComparison.Ordinal);
+        Assert.Contains("((global::BunnyTail.Resolver.IInitializable)instance).Initialize();", generated, StringComparison.Ordinal);
+
+        // IInitializable はサービスとして転送登録されない
+        // IInitializable is never registered as a forwarded service.
+        Assert.DoesNotContain("services.AddTransient<global::BunnyTail.Resolver.IInitializable>", generated, StringComparison.Ordinal);
+
+        // 初期化コールバックを持つ型はインライン展開されない (親は GetRequiredService 経由)
+        // Types with an initialization callback are not inlined; the parent resolves them through GetRequiredService.
+        Assert.Contains("scope.GetRequiredService<global::Demo.WithInterface>()", generated, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void InvalidPostConstructIsReported()
+    {
+        const string Source = """
+            using BunnyTail.Resolver;
+
+            namespace Demo;
+
+            [Singleton(PostConstruct = "Missing")]
+            public sealed class Component;
+            """;
+
+        var result = CreateRunner().Run(Source);
+
+        Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0007");
+    }
+
+    [Fact]
+    public void ConflictingPostConstructIsReported()
+    {
+        const string Source = """
+            using BunnyTail.Resolver;
+
+            namespace Demo;
+
+            [Singleton(PostConstruct = nameof(First))]
+            [Transient(PostConstruct = nameof(Second))]
+            public sealed class Component
+            {
+                public void First()
+                {
+                }
+
+                public void Second()
+                {
+                }
+            }
+            """;
+
+        var result = CreateRunner().Run(Source);
+
+        Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0008");
     }
 
     [Fact]

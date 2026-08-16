@@ -9,6 +9,8 @@ public sealed class SingletonAttribute : Attribute
     public Type? As { get; set; }
 
     public object? Key { get; set; }
+
+    public string? PostConstruct { get; set; }
 }
 
 [AttributeUsage(AttributeTargets.Class, AllowMultiple = true, Inherited = false)]
@@ -17,6 +19,8 @@ public sealed class ScopedAttribute : Attribute
     public Type? As { get; set; }
 
     public object? Key { get; set; }
+
+    public string? PostConstruct { get; set; }
 }
 
 [AttributeUsage(AttributeTargets.Class, AllowMultiple = true, Inherited = false)]
@@ -25,6 +29,8 @@ public sealed class TransientAttribute : Attribute
     public Type? As { get; set; }
 
     public object? Key { get; set; }
+
+    public string? PostConstruct { get; set; }
 }
 
 // プロパティインジェクションのマーカー。インスタンス生成後に注入される

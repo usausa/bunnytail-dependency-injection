@@ -86,6 +86,73 @@ public sealed class DisposableLeaf : IDisposable
     public void Dispose() => Disposed = true;
 }
 
+// deps 充填の遅延性検証用 (singleton は消費側の初回解決まで生成されない)
+// For verifying lazy deps filling: the singleton is not created until the consumer's first resolution.
+[Singleton]
+public sealed class LazyProbeSingleton
+{
+    private static int created;
+
+    public static int Created => created;
+
+    public LazyProbeSingleton()
+    {
+        System.Threading.Interlocked.Increment(ref created);
+    }
+}
+
+[Transient]
+public sealed class LazyProbeConsumer(LazyProbeSingleton dependency)
+{
+    public LazyProbeSingleton Dependency { get; } = dependency;
+}
+
+// 初期化コールバック (PostConstruct 指定 / IInitializable 実装)
+// Initialization callbacks (PostConstruct specification / IInitializable implementation).
+[Singleton(PostConstruct = nameof(Setup))]
+public sealed class PostConstructComponent
+{
+    public bool Initialized { get; private set; }
+
+    public void Setup() => Initialized = true;
+}
+
+[Transient]
+public sealed class InitializableComponent : IInitializable
+{
+    public bool Initialized { get; private set; }
+
+    public void Initialize() => Initialized = true;
+}
+
+// 初期化は [Inject] プロパティ注入の後に呼ばれる
+// Initialization runs after [Inject] property injection.
+[Transient]
+public sealed class OrderedInitComponent : IInitializable
+{
+    [Inject]
+    public PropDependency Prop { get; set; } = default!;
+
+    public bool PropWasSetOnInitialize { get; private set; }
+
+    public void Initialize() => PropWasSetOnInitialize = Prop is not null;
+}
+
+// 既定値付き引数 → 生成ファクトリ不適格 → 互換経路での PostConstruct 呼び出しを検証する
+// Default-valued parameter makes the factory ineligible, exercising PostConstruct on the runtime path.
+[Transient(PostConstruct = nameof(Setup))]
+public sealed class ReflectionInitComponent
+{
+    public ReflectionInitComponent(int value = 0)
+    {
+        _ = value;
+    }
+
+    public bool Initialized { get; private set; }
+
+    public void Setup() => Initialized = true;
+}
+
 [Transient]
 public sealed class NodeWithDisposable(DisposableLeaf leaf)
 {

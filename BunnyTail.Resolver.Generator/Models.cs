@@ -19,14 +19,16 @@ internal sealed record ParameterModel(
     string TypeName,
     int Kind,
     string? KeyLiteral,
-    bool InCompilation);
+    bool InCompilation,
+    bool IsValueType);
 
 internal sealed record PropertyModel(
     string Name,
     string TypeName,
     int Kind,
     string? KeyLiteral,
-    bool InCompilation);
+    bool InCompilation,
+    bool IsValueType);
 
 // 生成ファクトリの情報 (属性コンポーネント / Add* 収集 / 規約マッチで共通)
 // Generated factory information (shared by attribute components, Add* collection and convention matches).
@@ -37,7 +39,16 @@ internal sealed record FactoryModel(
     bool EligibleUnkeyed,
     bool EligibleKeyed,
     bool AmbiguousConstructor,
-    bool Disposable);
+    bool Disposable,
+    string? PostConstruct,
+    bool InitializableInterface,
+    bool InvalidPostConstruct,
+    bool ConflictingPostConstruct)
+{
+    // 初期化コールバックを持つか (PostConstruct 指定 or IInitializable 実装)
+    // Whether the type carries an initialization callback (PostConstruct specification or IInitializable).
+    public bool HasInitializer => (PostConstruct is not null) || InitializableInterface;
+}
 
 // 属性 ([Singleton] 等) 付きコンポーネント
 // Component annotated with [Singleton] and friends.

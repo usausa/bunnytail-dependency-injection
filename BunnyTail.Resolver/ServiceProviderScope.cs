@@ -1,5 +1,7 @@
 namespace BunnyTail.Resolver;
 
+using System.Runtime.CompilerServices;
+
 using Microsoft.Extensions.DependencyInjection;
 
 // スコープ。ルートプロバイダも root スコープとして同じ実装を使う。注入される IServiceProvider はこのスコープ自身 (MEDI 互換)
@@ -88,6 +90,16 @@ public sealed class ServiceProviderScope :
 
     private static bool IsEnumerableService(Type serviceType) =>
         serviceType.IsConstructedGenericType && serviceType.GetGenericTypeDefinition() == typeof(IEnumerable<>);
+
+    // 生成コード用の型付き解決。sealed クラスへの直接呼び出しになり、MEDI 拡張メソッドが行う
+    // ISupportRequiredService の型テストとインタフェース二重ディスパッチを回避する
+    // Typed resolution for generated code. Direct calls on a sealed class, avoiding the
+    // ISupportRequiredService type test and the double interface dispatch of the MEDI extension methods.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public T GetRequiredService<T>() => (T)GetRequiredService(typeof(T));
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public T GetRequiredKeyedService<T>(object? serviceKey) => (T)GetRequiredKeyedService(typeof(T), serviceKey);
 
     //--------------------------------------------------------------------------------
     // Slot storage (スロット保持)

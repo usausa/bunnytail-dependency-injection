@@ -22,17 +22,17 @@ internal sealed class ServiceRegistry
     private readonly ConcurrentDictionary<ServiceIdentifier, ServiceAccessor?> entries = new();
     private readonly ConcurrentDictionary<AccessorCacheKey, ServiceAccessor> descriptorAccessors = new();
 
-    // 主テーブル (VB-01/VB-01b の勝者形状)。ビルド時に実現できたエントリを収め、実行時に実現した
+    // 主テーブル (FixedServiceTable 参照)。ビルド時に実現できたエントリを収め、実行時に実現した
     // 派生エントリ (IEnumerable / closed generic / AnyKey 派生など) は COW 再構築で昇格する。
     // テーブル自体は常にイミュータブルで、resolve 経路に同期はない。
     // 実現できなかった登録 (null エントリ) は overlay (entries) 側に残る
-    // Main table (winner shape of VB-01/VB-01b). Holds entries realized at build time; derived entries realized
+    // Main table (see FixedServiceTable). Holds entries realized at build time; derived entries realized
     // at runtime (IEnumerable / closed generics / AnyKey derivations) are promoted by COW rebuild. The table itself
     // is always immutable and the resolve path has no synchronization. Registrations that could not be realized
     // (null entries) stay on the overlay (entries) side.
     private readonly Lock tableSync = new();
-    private FixedTypeServiceTable? typeTable;
-    private FixedKeyedServiceTable? keyedTable;
+    private FixedTypeServiceTable typeTable;
+    private FixedKeyedServiceTable keyedTable;
     private readonly List<KeyValuePair<Type, ServiceAccessor>>? typeTableEntries;              // 昇格用スナップショット (tableSync 下でのみ変更) / promotion snapshot (mutated only under tableSync)
     private readonly List<(Type Type, object Key, ServiceAccessor Accessor)>? keyedTableEntries;
 
@@ -40,6 +40,11 @@ internal sealed class ServiceRegistry
 
     public ServiceRegistry(IEnumerable<ServiceDescriptor> source, ResolverServiceProvider provider)
     {
+        // ウォームアップ中は空テーブルを置く。null 許容にすると解決のホット経路に null チェックが乗るため
+        // Empty tables during warmup: making the fields nullable would put a null check on the hot resolution path.
+        typeTable = new FixedTypeServiceTable([]);
+        keyedTable = new FixedKeyedServiceTable([]);
+
         descriptors = source.ToArray();
         exactMap = [];
         keyedServiceTypes = [];
@@ -127,27 +132,27 @@ internal sealed class ServiceRegistry
     // Entry realization (エントリ実現)
     //--------------------------------------------------------------------------------
 
+    // ホット経路は主テーブル (イミュータブル、同期なし) を引くだけ。realization は低速パスへ分離してあり、
+    // このメソッドが呼び出し元にインライン展開されることを維持する (JIT-04)。
+    // 分離前は realization を同一メソッドに抱えていたため JIT がインライン化を諦め、
+    // 巻き添えで RuntimeHelpers.GetHashCode すら call として残っていた
+    // The hot path only probes the main tables (immutable, no synchronization). Realization lives in a separate slow
+    // path so this method stays inlineable into its callers (JIT-04). Before the split, realization sat in the same
+    // method, the JIT gave up inlining it and even RuntimeHelpers.GetHashCode was left as a call.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ServiceAccessor? GetEntry(ServiceIdentifier id)
     {
-        // 主テーブル (イミュータブル、同期なし)。ウォームアップ中は未構築なので overlay 側を使う
-        // Main table (immutable, no synchronization). Not built yet during warmup, so the overlay is used instead.
-        if (id.Key is null)
-        {
-            var fixedAccessor = typeTable?.Get(id.ServiceType);
-            if (fixedAccessor is not null)
-            {
-                return fixedAccessor;
-            }
-        }
-        else
-        {
-            var fixedAccessor = keyedTable?.Get(id.ServiceType, id.Key);
-            if (fixedAccessor is not null)
-            {
-                return fixedAccessor;
-            }
-        }
+        var fixedAccessor = id.Key is null
+            ? typeTable.Get(id.ServiceType)
+            : keyedTable.Get(id.ServiceType, id.Key);
+        return fixedAccessor ?? GetEntrySlow(id);
+    }
 
+    // 主テーブルに無いもの: 派生エントリ (IEnumerable / closed generic / AnyKey 派生)、未実現の登録、未登録型
+    // Not in the main tables: derived entries (IEnumerable / closed generics / AnyKey derivations), unrealized registrations and unknown types.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private ServiceAccessor? GetEntrySlow(ServiceIdentifier id)
+    {
         if (entries.TryGetValue(id, out var existing))
         {
             // ウォームアップ中に実現された派生エントリはテーブル未収載のことがあるため、ここでも昇格する
@@ -204,7 +209,7 @@ internal sealed class ServiceRegistry
 
             if (id.Key is null)
             {
-                if (typeTable!.Get(id.ServiceType) is null)
+                if (typeTable.Get(id.ServiceType) is null)
                 {
                     typeTableEntries.Add(new KeyValuePair<Type, ServiceAccessor>(id.ServiceType, accessor));
                     Volatile.Write(ref typeTable, new FixedTypeServiceTable(typeTableEntries));
@@ -212,7 +217,7 @@ internal sealed class ServiceRegistry
             }
             else
             {
-                if (keyedTable!.Get(id.ServiceType, id.Key) is null)
+                if (keyedTable.Get(id.ServiceType, id.Key) is null)
                 {
                     keyedTableEntries.Add((id.ServiceType, id.Key, accessor));
                     Volatile.Write(ref keyedTable, new FixedKeyedServiceTable(keyedTableEntries));
@@ -397,7 +402,7 @@ internal sealed class ServiceRegistry
         {
             if (implType.IsValueType)
             {
-                return new ValueTypeAccessor(implType, cache, slot, IsDisposableType(implType));
+                return new ValueTypeAccessor(implType, typeof(IInitializable).IsAssignableFrom(implType), cache, slot, IsDisposableType(implType));
             }
 
             throw new InvalidOperationException(
@@ -452,10 +457,54 @@ internal sealed class ServiceRegistry
         return CreateFinalAccessor(implType, best, bestPlans!, serviceKey, cache, slot);
     }
 
-    // disposal 追跡要否を実装型で確定する (VB-06: 実行時 is チェックの排除)
-    // Settles whether disposal tracking is needed from the implementation type (VB-06: eliminates runtime type checks).
+    // disposal 追跡要否を実装型で確定する (実行時 is チェックの排除。Sandbox の DisposalTrackingBenchmark)
+    // Settles whether disposal tracking is needed from the implementation type (eliminates runtime type checks; see DisposalTrackingBenchmark in the sandbox).
     private static bool IsDisposableType(Type type) =>
         typeof(IDisposable).IsAssignableFrom(type) || typeof(IAsyncDisposable).IsAssignableFrom(type);
+
+    // 初期化コールバックの解決 (PostConstruct 指定優先、なければ IInitializable)。accessor 構築時に確定し、
+    // 初期化を持たない型の resolve にはコストを発生させない。
+    // PostConstruct のメソッドは生成経路 (Source Generator) では静的に参照されるため保持される。
+    // 「トリミング環境 + 実行時のみ判明する登録 + PostConstruct 指定」の組合せのみ制約 ([Inject] と同じ)
+    // Resolves the initialization callback (an explicit PostConstruct wins, otherwise IInitializable). Settled when
+    // the accessor is built, so types without initialization pay no resolve-time cost. PostConstruct methods are
+    // statically referenced by the generated path and therefore preserved; only the combination of trimming +
+    // runtime-only registrations + PostConstruct is constrained (same as [Inject]).
+    [UnconditionalSuppressMessage("Trimming", "IL2070", Justification = "PostConstruct 指定付き型は生成コードが静的参照するため保持される。実行時登録のみの型は制約としてドキュメント化")]
+    private static (MethodInfo? PostConstruct, bool Initializable) ResolveInitializer(Type implType)
+    {
+        string? name = null;
+        foreach (var attribute in implType.GetCustomAttributes(inherit: false))
+        {
+            var candidate = attribute switch
+            {
+                SingletonAttribute singleton => singleton.PostConstruct,
+                ScopedAttribute scoped => scoped.PostConstruct,
+                TransientAttribute transient => transient.PostConstruct,
+                _ => null,
+            };
+
+            if (candidate is not null)
+            {
+                name = candidate;
+                break;
+            }
+        }
+
+        if (name is not null)
+        {
+            var method = implType.GetMethod(name, BindingFlags.Public | BindingFlags.Instance, Type.EmptyTypes);
+            if (method is null || method.ReturnType != typeof(void) || method.IsGenericMethodDefinition)
+            {
+                throw new InvalidOperationException(
+                    $"The PostConstruct method '{name}' on type '{implType}' must be a public parameterless instance method returning void.");
+            }
+
+            return (method, false);
+        }
+
+        return (null, typeof(IInitializable).IsAssignableFrom(implType));
+    }
 
     private ServiceAccessor CreateFinalAccessor(Type implType, ConstructorInfo constructor, ParameterPlan[] plans, object? serviceKey, ResultCache cache, int slot)
     {
@@ -473,7 +522,17 @@ internal sealed class ServiceRegistry
                 && AllPlansAreServices(plans)
                 && InlinedDependenciesMatch(generated.InlinedDependencies))
             {
-                return new FactoryAccessor(generated.Factory, cache, slot, track);
+                if (generated.DepsFactory is null)
+                {
+                    return new FactoryAccessor(generated.Factory!, cache, slot, track);
+                }
+
+                // deps 形: singleton 依存の前提も成立する場合のみ採用し、検証済み accessor を保持する
+                // Deps shape: adopted only when the singleton assumptions also hold; keeps the validated accessors.
+                if (TryResolveSingletonDependencies(generated.SingletonDependencies, out var dependencyAccessors))
+                {
+                    return new DepsFactoryAccessor(generated.DepsFactory, dependencyAccessors, cache, slot, track);
+                }
             }
         }
         else
@@ -490,7 +549,8 @@ internal sealed class ServiceRegistry
         }
 
         var properties = BuildPropertyInjections(implType, serviceKey);
-        return new ConstructorAccessor(constructor, plans, properties, cache, slot, track);
+        var (postConstruct, initializable) = ResolveInitializer(implType);
+        return new ConstructorAccessor(constructor, plans, properties, postConstruct, initializable, cache, slot, track);
     }
 
     private static bool AllPlansAreServices(ParameterPlan[] plans)
@@ -533,16 +593,48 @@ internal sealed class ServiceRegistry
         foreach (var dependency in dependencies)
         {
             var accessor = GetEntry(new ServiceIdentifier(dependency.ServiceType, null));
-            if (accessor is not FactoryAccessor factoryAccessor
-                || factoryAccessor.Cache != ResultCache.None
-                || !GeneratedComponentRegistry.TryGet(dependency.ImplementationType, out var entry)
-                || !ReferenceEquals(factoryAccessor.Factory, entry.Factory))
+            if (!GeneratedComponentRegistry.TryGet(dependency.ImplementationType, out var entry)
+                || !UsesGeneratedFactory(accessor, entry, ResultCache.None))
             {
                 return false;
             }
         }
 
         return true;
+    }
+
+    // singleton 依存の前提検証 (deps 形)。各依存が「前提どおりの実装型の生成ファクトリによる singleton 解決」に
+    // なる場合のみ成立し、検証済み accessor を deps 充填用に返す
+    // Singleton assumption validation for the deps shape. Holds only when each dependency resolves as a singleton
+    // through the assumed implementation's generated factory; returns the validated accessors for filling deps.
+    private bool TryResolveSingletonDependencies(InlinedDependency[] dependencies, out ServiceAccessor[] accessors)
+    {
+        accessors = dependencies.Length == 0 ? [] : new ServiceAccessor[dependencies.Length];
+        for (var i = 0; i < dependencies.Length; i++)
+        {
+            var accessor = GetEntry(new ServiceIdentifier(dependencies[i].ServiceType, null));
+            if (!GeneratedComponentRegistry.TryGet(dependencies[i].ImplementationType, out var entry)
+                || !UsesGeneratedFactory(accessor, entry, ResultCache.Root))
+            {
+                return false;
+            }
+
+            accessors[i] = accessor!;
+        }
+
+        return true;
+    }
+
+    // 実行時解決が「entry の生成ファクトリによる指定 lifetime の解決」かを、ファクトリの参照比較で判定する
+    // Checks whether the runtime resolution uses the entry's generated factory with the required lifetime, by reference comparison.
+    private static bool UsesGeneratedFactory(ServiceAccessor? accessor, GeneratedComponentRegistry.Entry entry, ResultCache requiredCache)
+    {
+        return accessor switch
+        {
+            FactoryAccessor factory when factory.Cache == requiredCache => ReferenceEquals(factory.Factory, entry.Factory),
+            DepsFactoryAccessor deps when deps.Cache == requiredCache => ReferenceEquals(deps.Factory, entry.DepsFactory),
+            _ => false,
+        };
     }
 
     private static bool ConstructorMatches(ConstructorInfo constructor, Type[] assumedParameterTypes)

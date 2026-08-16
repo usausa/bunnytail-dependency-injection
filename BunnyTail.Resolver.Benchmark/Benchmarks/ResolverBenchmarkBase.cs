@@ -13,6 +13,10 @@ public abstract class ResolverBenchmarkBase
 {
     private IServiceProvider provider = default!;
 
+    private IServiceScope scope = default!;
+
+    private IServiceProvider scopeProvider = default!;
+
     protected abstract IServiceProvider CreateProvider();
 
     [GlobalSetup]
@@ -20,6 +24,23 @@ public abstract class ResolverBenchmarkBase
     {
         provider = CreateProvider();
         Validator.Validate(provider);
+
+        // Scoped は解決済みスコープからの読み出しを測るため、スコープ生成と初回解決を事前に済ませる
+        // Scoped measures reads from an already-populated scope, so scope creation and first resolution happen up front.
+        scope = provider.GetRequiredService<IServiceScopeFactory>().CreateScope();
+        scopeProvider = scope.ServiceProvider;
+        _ = scopeProvider.GetService(typeof(IScoped1));
+        _ = scopeProvider.GetService(typeof(IScoped2));
+        _ = scopeProvider.GetService(typeof(IScoped3));
+        _ = scopeProvider.GetService(typeof(IScoped4));
+        _ = scopeProvider.GetService(typeof(IScoped5));
+    }
+
+    [GlobalCleanup]
+    public void Cleanup()
+    {
+        scope.Dispose();
+        (provider as IDisposable)?.Dispose();
     }
 
     [Benchmark(OperationsPerInvoke = 5)]
@@ -73,23 +94,61 @@ public abstract class ResolverBenchmarkBase
     }
 
     [Benchmark(OperationsPerInvoke = 5)]
+    public void Scoped()
+    {
+        _ = scopeProvider.GetService(typeof(IScoped1));
+        _ = scopeProvider.GetService(typeof(IScoped2));
+        _ = scopeProvider.GetService(typeof(IScoped3));
+        _ = scopeProvider.GetService(typeof(IScoped4));
+        _ = scopeProvider.GetService(typeof(IScoped5));
+    }
+
+    [Benchmark(OperationsPerInvoke = 5)]
+    public void Keyed()
+    {
+        _ = ((IKeyedServiceProvider)provider).GetRequiredKeyedService(typeof(IKeyedService), "key1");
+        _ = ((IKeyedServiceProvider)provider).GetRequiredKeyedService(typeof(IKeyedService), "key2");
+        _ = ((IKeyedServiceProvider)provider).GetRequiredKeyedService(typeof(IKeyedService), "key3");
+        _ = ((IKeyedServiceProvider)provider).GetRequiredKeyedService(typeof(IKeyedService), "key4");
+        _ = ((IKeyedServiceProvider)provider).GetRequiredKeyedService(typeof(IKeyedService), "key5");
+    }
+
+    // 列挙まで行う。Smart.Resolver は遅延列挙 (要素は列挙時に解決) のため、取得だけではラッパー確保しか測れない
+    // Enumerate the result: Smart.Resolver materializes lazily, so fetching alone would only measure wrapper allocation.
+    [Benchmark(OperationsPerInvoke = 5)]
     public void MultipleSingleton()
     {
-        _ = provider.GetService(typeof(IEnumerable<IMultipleSingletonService>));
-        _ = provider.GetService(typeof(IEnumerable<IMultipleSingletonService>));
-        _ = provider.GetService(typeof(IEnumerable<IMultipleSingletonService>));
-        _ = provider.GetService(typeof(IEnumerable<IMultipleSingletonService>));
-        _ = provider.GetService(typeof(IEnumerable<IMultipleSingletonService>));
+        EnumerateMultipleSingleton();
+        EnumerateMultipleSingleton();
+        EnumerateMultipleSingleton();
+        EnumerateMultipleSingleton();
+        EnumerateMultipleSingleton();
+    }
+
+    private void EnumerateMultipleSingleton()
+    {
+        foreach (var service in (IEnumerable<IMultipleSingletonService>)provider.GetService(typeof(IEnumerable<IMultipleSingletonService>))!)
+        {
+            _ = service;
+        }
     }
 
     [Benchmark(OperationsPerInvoke = 5)]
     public void MultipleTransient()
     {
-        _ = provider.GetService(typeof(IEnumerable<IMultipleTransientService>));
-        _ = provider.GetService(typeof(IEnumerable<IMultipleTransientService>));
-        _ = provider.GetService(typeof(IEnumerable<IMultipleTransientService>));
-        _ = provider.GetService(typeof(IEnumerable<IMultipleTransientService>));
-        _ = provider.GetService(typeof(IEnumerable<IMultipleTransientService>));
+        EnumerateMultipleTransient();
+        EnumerateMultipleTransient();
+        EnumerateMultipleTransient();
+        EnumerateMultipleTransient();
+        EnumerateMultipleTransient();
+    }
+
+    private void EnumerateMultipleTransient()
+    {
+        foreach (var service in (IEnumerable<IMultipleTransientService>)provider.GetService(typeof(IEnumerable<IMultipleTransientService>))!)
+        {
+            _ = service;
+        }
     }
 
     [Benchmark(OperationsPerInvoke = 5)]

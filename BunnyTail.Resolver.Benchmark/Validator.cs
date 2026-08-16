@@ -59,6 +59,14 @@ public static class Validator
             Ensure(!ReferenceEquals(transients1[i], transients2[i]), "multiple transient");
         }
 
+        // Keyed: キーごとに対応する実装が解決され、同一キーは同一インスタンス / each key resolves its implementation and repeats share the instance
+        Ensure(provider.GetRequiredKeyedService<IKeyedService>("key1") is KeyedService1, "keyed");
+        Ensure(provider.GetRequiredKeyedService<IKeyedService>("key3") is KeyedService3, "keyed");
+        Ensure(provider.GetRequiredKeyedService<IKeyedService>("key5") is KeyedService5, "keyed");
+        Ensure(
+            ReferenceEquals(provider.GetRequiredKeyedService<IKeyedService>("key1"), provider.GetRequiredKeyedService<IKeyedService>("key1")),
+            "keyed singleton");
+
         // AspNet: スコープ内共有 + スコープ間分離 / shared within a scope, isolated across scopes
         var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
         using var scope1 = scopeFactory.CreateScope();
@@ -69,6 +77,14 @@ public static class Validator
         Ensure(ReferenceEquals(scoped1, scoped2), "scoped shared in scope");
         var other = scope2.ServiceProvider.GetRequiredService<Controller>();
         Ensure(!ReferenceEquals(scoped1, ((TransientService1)other.TransientService1).ScopedService), "scoped distinct across scopes");
+
+        // Scoped: スコープ内で同一、スコープ間で別 / same within a scope, distinct across scopes
+        Ensure(
+            ReferenceEquals(scope1.ServiceProvider.GetRequiredService<IScoped1>(), scope1.ServiceProvider.GetRequiredService<IScoped1>()),
+            "scoped");
+        Ensure(
+            !ReferenceEquals(scope1.ServiceProvider.GetRequiredService<IScoped5>(), scope2.ServiceProvider.GetRequiredService<IScoped5>()),
+            "scoped");
     }
 
     private static void Ensure(bool condition, string name)

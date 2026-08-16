@@ -2,10 +2,12 @@ namespace BunnyTail.Resolver;
 
 using System.Runtime.CompilerServices;
 
-// VB-01 / VB-01b で確定した主テーブルの形状: ノードリスト直置き (バケット先頭 Node + Next 連結 + センチネル) + identity hash + 容量 2^n。
-// 構築後イミュータブルなので resolve 経路に同期は存在しない。非 keyed 用 (Type キー)
-// Main table shape settled by VB-01 / VB-01b: nodes stored directly in buckets (head node + Next chain + empty sentinel),
-// identity hash and power-of-two capacity. Immutable once built, so the resolve path needs no synchronization. Non-keyed (Type key) variant.
+// 主テーブルの形状: ノードリスト直置き (バケット先頭 Node + Next 連結 + センチネル) + identity hash + 容量 2^n。
+// 構築後イミュータブルなので resolve 経路に同期は存在しない。非 keyed 用 (Type キー)。
+// 形状の実測根拠は dotnet-performance の候補検証 (TypeIdentityHashBenchmark / NodeTypeHashMap) と TYP-01 を参照
+// Main table shape: nodes stored directly in buckets (head node + Next chain + empty sentinel), identity hash and
+// power-of-two capacity. Immutable once built, so the resolve path needs no synchronization. Non-keyed (Type key) variant.
+// See the dotnet-performance candidate verification (TypeIdentityHashBenchmark / NodeTypeHashMap) and TYP-01 for the measurements behind this shape.
 internal sealed class FixedTypeServiceTable
 {
 #pragma warning disable CA1812
@@ -87,8 +89,8 @@ internal sealed class FixedTypeServiceTable
     }
 }
 
-// keyed 用。(Type, key) の複合ハッシュ 1 テーブル (VB-05 で確定)
-// Keyed variant. Single table with a composite (Type, key) hash, settled by VB-05.
+// keyed 用。(Type, key) の複合ハッシュ 1 テーブル (Sandbox の KeyedLookupBenchmark で確定)
+// Keyed variant. Single table with a composite (Type, key) hash, settled by KeyedLookupBenchmark in the sandbox.
 internal sealed class FixedKeyedServiceTable
 {
 #pragma warning disable CA1812
