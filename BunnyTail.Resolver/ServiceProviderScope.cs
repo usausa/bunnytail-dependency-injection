@@ -18,6 +18,12 @@ public sealed class ServiceProviderScope :
 
     private readonly ResolverServiceProvider provider;
 
+    // 解決に使う registry 参照。dispose 時に「必ず throw する番兵」へ差し替えることで、
+    // ホット経路から disposed フラグの分岐を消す (S-10)。MEDI と同じく dispose 競合時は best-effort
+    // Registry reference used for resolution. Swapped to an always-throwing sentinel on dispose, which removes
+    // the disposed-flag branch from the hot path (S-10). Like MEDI, racing with dispose is best-effort.
+    private ServiceRegistry registry;
+
     private object?[] slots = [];
 
     private List<object>? disposables;
@@ -27,6 +33,7 @@ public sealed class ServiceProviderScope :
     internal ServiceProviderScope(ResolverServiceProvider provider, bool isRootScope)
     {
         this.provider = provider;
+        registry = provider.Registry;
         IsRootScope = isRootScope;
     }
 
@@ -42,11 +49,7 @@ public sealed class ServiceProviderScope :
     // Resolve (解決)
     //--------------------------------------------------------------------------------
 
-    public object? GetService(Type serviceType)
-    {
-        CheckDisposed();
-        return provider.ResolveService(new ServiceIdentifier(serviceType, null), this);
-    }
+    public object? GetService(Type serviceType) => registry.Resolve(new ServiceIdentifier(serviceType, null), this);
 
     public object GetRequiredService(Type serviceType)
     {
@@ -61,7 +64,6 @@ public sealed class ServiceProviderScope :
 
     public object? GetKeyedService(Type serviceType, object? serviceKey)
     {
-        CheckDisposed();
         if (serviceKey is null)
         {
             return GetService(serviceType);
@@ -72,7 +74,7 @@ public sealed class ServiceProviderScope :
             throw new InvalidOperationException("KeyedService.AnyKey can only be used to retrieve an IEnumerable of keyed services.");
         }
 
-        return provider.ResolveService(new ServiceIdentifier(serviceType, serviceKey), this);
+        return registry.Resolve(new ServiceIdentifier(serviceType, serviceKey), this);
     }
 
     public object GetRequiredKeyedService(Type serviceType, object? serviceKey)
@@ -185,6 +187,7 @@ public sealed class ServiceProviderScope :
             }
 
             disposed = true;
+            registry = ServiceRegistry.DisposedSentinel;
             toDispose = disposables;
             disposables = null;
         }
@@ -223,6 +226,7 @@ public sealed class ServiceProviderScope :
             }
 
             disposed = true;
+            registry = ServiceRegistry.DisposedSentinel;
             toDispose = disposables;
             disposables = null;
         }

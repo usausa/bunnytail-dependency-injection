@@ -14,18 +14,21 @@ public sealed class ResolverServiceProvider :
     IDisposable,
     IAsyncDisposable
 {
-    private readonly ServiceRegistry registry;
-
     internal ServiceProviderScope RootScope { get; }
+
+    internal ServiceRegistry Registry { get; }
 
     public ResolverServiceProvider(IEnumerable<ServiceDescriptor> descriptors)
     {
         ArgumentNullException.ThrowIfNull(descriptors);
-        RootScope = new ServiceProviderScope(this, isRootScope: true);
-        registry = new ServiceRegistry(descriptors, this);
-    }
 
-    internal object? ResolveService(ServiceIdentifier id, ServiceProviderScope scope) => registry.Resolve(id, scope);
+        // registry を先に構築する。scope は registry 参照を直接保持するため (S-10)。
+        // warmup はアクセサの実現のみで、scope 経由の解決は発生しない
+        // The registry is built first because scopes hold a direct registry reference (S-10).
+        // Warmup only realizes accessors; no resolution goes through a scope.
+        Registry = new ServiceRegistry(descriptors, this);
+        RootScope = new ServiceProviderScope(this, isRootScope: true);
+    }
 
     //--------------------------------------------------------------------------------
     // IServiceProvider / IKeyedServiceProvider (root スコープへ委譲 / delegated to the root scope)
@@ -53,10 +56,10 @@ public sealed class ResolverServiceProvider :
     // IServiceProviderIsService / IServiceProviderIsKeyedService
     //--------------------------------------------------------------------------------
 
-    public bool IsService(Type serviceType) => registry.IsService(new ServiceIdentifier(serviceType, null));
+    public bool IsService(Type serviceType) => Registry.IsService(new ServiceIdentifier(serviceType, null));
 
     public bool IsKeyedService(Type serviceType, object? serviceKey) =>
-        serviceKey is null ? IsService(serviceType) : registry.IsService(new ServiceIdentifier(serviceType, serviceKey));
+        serviceKey is null ? IsService(serviceType) : Registry.IsService(new ServiceIdentifier(serviceType, serviceKey));
 
     //--------------------------------------------------------------------------------
     // Dispose

@@ -38,6 +38,24 @@ internal sealed class ServiceRegistry
 
     private int slotCounter;
 
+    private readonly bool disposedSentinel;
+
+    // dispose 済み scope 用の番兵。テーブルが空なので全解決がミスして GetEntrySlow へ落ち、そこで throw する。
+    // これによりホット経路から disposed フラグの分岐が消える (S-10)
+    // Sentinel for disposed scopes. The tables are empty, so every resolution misses into GetEntrySlow, which throws.
+    // This removes the disposed-flag branch from the hot path (S-10).
+    internal static readonly ServiceRegistry DisposedSentinel = new();
+
+    private ServiceRegistry()
+    {
+        disposedSentinel = true;
+        typeTable = new FixedTypeServiceTable([]);
+        keyedTable = new FixedKeyedServiceTable([]);
+        descriptors = [];
+        exactMap = [];
+        keyedServiceTypes = [];
+    }
+
     public ServiceRegistry(IEnumerable<ServiceDescriptor> source, ResolverServiceProvider provider)
     {
         // ウォームアップ中は空テーブルを置く。null 許容にすると解決のホット経路に null チェックが乗るため
@@ -176,6 +194,8 @@ internal sealed class ServiceRegistry
     [MethodImpl(MethodImplOptions.NoInlining)]
     private ServiceAccessor? GetEntrySlow(ServiceIdentifier id)
     {
+        ObjectDisposedException.ThrowIf(disposedSentinel, typeof(IServiceProvider));
+
         if (entries.TryGetValue(id, out var existing))
         {
             // ウォームアップ中に実現された派生エントリはテーブル未収載のことがあるため、ここでも昇格する
