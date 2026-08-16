@@ -132,6 +132,41 @@ public abstract class ResolverBenchmarkBase
         EnumerateMultipleSingleton();
     }
 
+    // 列挙コストの分離測定用: T[] 実体 (BunnyTail / MEDI) は配列として直接列挙し、
+    // enumerator 割当とインタフェースディスパッチを避ける (AOT で効く消費側の形)。
+    // 遅延実体化のプロバイダ (Smart) は従来の列挙へフォールバックする
+    // Separates the enumeration cost: providers materializing T[] (BunnyTail / MEDI) enumerate the array directly,
+    // avoiding the enumerator allocation and interface dispatch (the consumer shape that pays off on AOT).
+    // Providers with lazy materialization (Smart) fall back to ordinary enumeration.
+    [Benchmark(OperationsPerInvoke = 5)]
+    public void MultipleSingletonArray()
+    {
+        EnumerateMultipleSingletonArray();
+        EnumerateMultipleSingletonArray();
+        EnumerateMultipleSingletonArray();
+        EnumerateMultipleSingletonArray();
+        EnumerateMultipleSingletonArray();
+    }
+
+    private void EnumerateMultipleSingletonArray()
+    {
+        var services = (IEnumerable<IMultipleSingletonService>)provider.GetService(typeof(IEnumerable<IMultipleSingletonService>))!;
+        if (services is IMultipleSingletonService[] array)
+        {
+            foreach (var service in array)
+            {
+                _ = service;
+            }
+        }
+        else
+        {
+            foreach (var service in services)
+            {
+                _ = service;
+            }
+        }
+    }
+
     private void EnumerateMultipleSingleton()
     {
         foreach (var service in (IEnumerable<IMultipleSingletonService>)provider.GetService(typeof(IEnumerable<IMultipleSingletonService>))!)

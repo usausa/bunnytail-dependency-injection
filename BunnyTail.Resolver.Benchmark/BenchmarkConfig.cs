@@ -22,6 +22,9 @@ public sealed class BenchmarkConfig : ManualConfig
             StatisticColumn.Error,
             StatisticColumn.StdDev);
         _ = AddDiagnoser(MemoryDiagnoser.Default);
-        _ = AddJob(Job.MediumRun.WithJit(Jit.RyuJit).WithPlatform(Platform.X64));
+        if (Environment.GetEnvironmentVariable("BUNNYTAIL_BENCH_AOT_ONLY") != "1")
+        {
+            _ = AddJob(Job.MediumRun.WithJit(Jit.RyuJit).WithPlatform(Platform.X64));
+        }
     }
 }
