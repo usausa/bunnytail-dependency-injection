@@ -105,6 +105,14 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         "BunnyTail.Resolver",
         DiagnosticSeverity.Warning,
         true);
+
+    private static readonly DiagnosticDescriptor ValueTypeRuntimeGeneric = new(
+        "BTRS0010",
+        "Closed generic with value type arguments on the runtime path",
+        "The closed generic type '{0}' has value type arguments but no generated factory, so it resolves through the runtime path, which is not supported on NativeAOT",
+        "BunnyTail.Resolver",
+        DiagnosticSeverity.Warning,
+        true);
 #pragma warning restore RS2008
 
     // ------------------------------------------------------------
@@ -151,6 +159,15 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             .Where(static x => x is not null)
             .Select(static (x, _) => x!);
 
+        // コンストラクタ引数・プロパティ型に現れる closed generic も usage として収集する (依存駆動の発見)
+        // Closed generics appearing as constructor parameter or property types are collected as usages too (dependency driven discovery).
+        var dependencyUsageProvider = context.SyntaxProvider
+            .CreateSyntaxProvider(
+                static (node, _) => IsGenericDependencySyntax(node),
+                static (ctx, _) => CreateDependencyUsageModel(ctx))
+            .Where(static x => x is not null)
+            .Select(static (x, _) => x!);
+
         // Compilation 依存の値は狭い Select で切り出し、値等価な形にしてから最終 Combine に載せる。
         // Compilation 自体を Combine すると毎編集で Execute (出力構築) がフル再実行されるため。
         // 毎コンパイルで再計算されるのは以下の 3 つ (アセンブリ名 / closed generic 解決 / 参照モジュール走査) のみで、
@@ -167,8 +184,9 @@ public sealed class ResolverGenerator : IIncrementalGenerator
 
         var closedFactoriesProvider = openGenericProvider.Collect()
             .Combine(closedUsageProvider.Collect())
+            .Combine(dependencyUsageProvider.Collect())
             .Combine(context.CompilationProvider)
-            .Select(static (source, _) => new EquatableArray<FactoryModel>(DiscoverClosedGenericFactories(source.Left.Left, source.Left.Right, source.Right).ToArray()));
+            .Select(static (source, _) => DiscoverClosedGenericFactories(source.Left.Left.Left, source.Left.Left.Right, source.Left.Right, source.Right));
 
         // Assembly 指定つき規約パターンの外部走査。要求 (メソッド属性から抽出、値等価) が空なら即空を返す軽量パス。
         // 要求がある場合のみ対象アセンブリを走査し、結果も値等価なので Execute は変化時だけ再実行される
@@ -828,7 +846,50 @@ public sealed class ResolverGenerator : IIncrementalGenerator
     private static ClosedGenericUsageModel? CreateClosedGenericUsageModel(GeneratorSyntaxContext context)
     {
         var typeOf = (TypeOfExpressionSyntax)context.Node;
-        if (context.SemanticModel.GetTypeInfo(typeOf.Type).Type is not INamedTypeSymbol closed
+        return CreateUsageModel(context.SemanticModel.GetTypeInfo(typeOf.Type).Type, typeOf);
+    }
+
+    // コンストラクタ引数・プロパティの型構文に generic 名が含まれるか (軽量な構文プリフィルタ)
+    // Whether the parameter or property type syntax contains a generic name (a lightweight syntax pre-filter).
+    private static bool IsGenericDependencySyntax(SyntaxNode node)
+    {
+        var type = node switch
+        {
+            ParameterSyntax parameter => parameter.Type,
+            PropertyDeclarationSyntax property => property.Type,
+            _ => null,
+        };
+        return ContainsGenericName(type);
+    }
+
+    private static bool ContainsGenericName(TypeSyntax? type) => type switch
+    {
+        GenericNameSyntax => true,
+        QualifiedNameSyntax qualified => ContainsGenericName(qualified.Right) || ContainsGenericName(qualified.Left),
+        NullableTypeSyntax nullable => ContainsGenericName(nullable.ElementType),
+        AliasQualifiedNameSyntax alias => ContainsGenericName(alias.Name),
+        _ => false,
+    };
+
+    private static ClosedGenericUsageModel? CreateDependencyUsageModel(GeneratorSyntaxContext context)
+    {
+        var type = context.Node switch
+        {
+            ParameterSyntax parameter => parameter.Type,
+            PropertyDeclarationSyntax property => property.Type,
+            _ => null,
+        };
+        if (type is null)
+        {
+            return null;
+        }
+
+        return CreateUsageModel(context.SemanticModel.GetTypeInfo(type).Type, context.Node);
+    }
+
+    private static ClosedGenericUsageModel? CreateUsageModel(ITypeSymbol? type, SyntaxNode locationNode)
+    {
+        if (type is not INamedTypeSymbol closed
             || !closed.IsGenericType
             || closed.IsUnboundGenericType)
         {
@@ -838,6 +899,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         // 全型引数がメタデータ名で往復できる場合のみ (それ以外は互換経路で解決される)
         // Collected only when every type argument round-trips through a metadata name (others stay on the runtime path).
         var arguments = new string[closed.TypeArguments.Length];
+        var hasValueType = false;
         for (var i = 0; i < closed.TypeArguments.Length; i++)
         {
             var name = TryGetMetadataName(closed.TypeArguments[i]);
@@ -847,13 +909,16 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             }
 
             arguments[i] = name;
+            hasValueType = hasValueType || closed.TypeArguments[i].IsValueType;
         }
 
         return new ClosedGenericUsageModel(
             DefinitionKey(closed),
             new EquatableArray<string>(arguments),
-            typeOf.SyntaxTree.FilePath,
-            typeOf.SpanStart);
+            hasValueType,
+            locationNode.SyntaxTree.FilePath,
+            locationNode.SpanStart,
+            LocationInfo.CreateFrom(locationNode));
     }
 
     // ------------------------------------------------------------
@@ -985,7 +1050,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         ImmutableArray<Result<MethodModel>> methods,
         ImmutableArray<CandidateModel> candidates,
         ExternalScanResult externalScan,
-        EquatableArray<FactoryModel> closedFactories,
+        ClosedGenericScanResult closedGenerics,
         string assemblyName,
         EquatableArray<string> referencedModules)
     {
@@ -1076,7 +1141,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
 
         // コンパイル時診断 (循環 / 未解決 / captive / 曖昧 ctor)
         // Compile-time diagnostics (cycles / unresolved / captive / ambiguous constructors).
-        ReportAnalysisDiagnostics(context, components, sortedCollected, conventionMatches);
+        ReportAnalysisDiagnostics(context, components, sortedCollected, conventionMatches, closedGenerics.DefinitionKeys);
 
         // ---- GeneratedComponents.g.cs (登録メソッド + 生成ファクトリ / registration method + generated factories) ----
 
@@ -1129,16 +1194,23 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         }
 
         // open generic 登録の閉型使用から作られた生成ファクトリ (パイプライン側で解決済み)。実行時は open generic 実現
-        // (MakeGenericType → 閉じた実装型) が採用フック (TryGet) で自動的にこれを拾う
+        // (MakeGenericType → 閉じた実装型) が採用フック (TryGet) で自動的にこれを拾う。
+        // 値型引数のまま実行時経路に残る使用は NativeAOT で失敗するため BTRS0010 を報告する
         // Generated factories built from closed usages of open generic registrations (resolved on the pipeline side).
         // At runtime the open generic realization (MakeGenericType into the closed implementation) picks them up
-        // through the adoption hook (TryGet).
-        foreach (var factory in closedFactories)
+        // through the adoption hook (TryGet). Usages left on the runtime path with value type arguments fail on
+        // NativeAOT, so BTRS0010 is reported for them.
+        foreach (var factory in closedGenerics.Factories)
         {
             if (emittedUnkeyed.Add(factory.ImplementationType))
             {
                 unkeyedFactories.Add(factory);
             }
+        }
+
+        foreach (var warning in closedGenerics.Warnings)
+        {
+            context.ReportDiagnostic(new DiagnosticInfo(ValueTypeRuntimeGeneric, warning.Location, warning.DisplayName).ToDiagnostic());
         }
 
         var inlineTargetMap = BuildInlineTargetMap(components, sortedCollected, conventionMatches);
@@ -1278,36 +1350,57 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         return models;
     }
 
-    private static List<FactoryModel> DiscoverClosedGenericFactories(
+    private static ClosedGenericScanResult DiscoverClosedGenericFactories(
         ImmutableArray<OpenGenericModel> openGenerics,
         ImmutableArray<ClosedGenericUsageModel> closedUsages,
+        ImmutableArray<ClosedGenericUsageModel> dependencyUsages,
         Compilation compilation)
     {
         var factories = new List<FactoryModel>();
-        if (openGenerics.IsEmpty || closedUsages.IsEmpty)
-        {
-            return factories;
-        }
+        var warnings = new List<ClosedGenericWarningModel>();
 
-        // 定義キー → 実装 (同一キーの再登録は後勝ち: 実行時の last-wins と一致)
-        // Definition key -> implementation (re-registrations are last-wins, matching runtime behavior).
+        // 定義キー → 実装 (同一キーの再登録は後勝ち: 実行時の last-wins と一致)。キー集合は使用が無くても
+        // BTRS0004 の解決可能性判定に使うため常に返す
+        // Definition key -> implementation (re-registrations are last-wins, matching runtime behavior). The key set
+        // is always returned because BTRS0004 resolvability checks need it even without usages.
         var registrations = new Dictionary<string, OpenGenericModel>(StringComparer.Ordinal);
         foreach (var model in openGenerics.OrderBy(static x => x.FilePath, StringComparer.Ordinal).ThenBy(static x => x.SpanStart))
         {
             registrations[model.ServiceDefinitionKey] = model;
         }
 
+        var definitionKeys = new EquatableArray<string>(registrations.Keys.OrderBy(static x => x, StringComparer.Ordinal).ToArray());
+        if (openGenerics.IsEmpty || (closedUsages.IsEmpty && dependencyUsages.IsEmpty))
+        {
+            return new ClosedGenericScanResult(new EquatableArray<FactoryModel>([]), new EquatableArray<ClosedGenericWarningModel>([]), definitionKeys);
+        }
+
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var usage in closedUsages.OrderBy(static x => x.FilePath, StringComparer.Ordinal).ThenBy(static x => x.SpanStart))
+        var warned = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var usage in closedUsages
+            .Concat(dependencyUsages)
+            .OrderBy(static x => x.FilePath, StringComparer.Ordinal)
+            .ThenBy(static x => x.SpanStart))
         {
             if (!registrations.TryGetValue(usage.ServiceDefinitionKey, out var registration))
             {
                 continue;
             }
 
+            // 値型引数のまま生成できない使用は NativeAOT の実行時経路で失敗するため警告対象
+            // Usages that cannot be generated and carry value type arguments fail on the NativeAOT runtime path, so they are warned about.
+            void Warn(string displayName)
+            {
+                if (usage.HasValueTypeArgument && warned.Add(displayName))
+                {
+                    warnings.Add(new ClosedGenericWarningModel(displayName, usage.Location));
+                }
+            }
+
             var definition = compilation.GetTypeByMetadataName(registration.ImplementationMetadataName);
             if ((definition is null) || (definition.Arity != usage.TypeArgumentMetadataNames.Count))
             {
+                Warn(usage.ServiceDefinitionKey);
                 continue;
             }
 
@@ -1327,35 +1420,89 @@ public sealed class ResolverGenerator : IIncrementalGenerator
 
             if (!resolved)
             {
+                Warn(usage.ServiceDefinitionKey);
                 continue;
             }
 
             var closedImplementation = definition.Construct(argumentSymbols);
-            if (!compilation.IsSymbolAccessibleWithin(closedImplementation, compilation.Assembly))
+            var displayName = closedImplementation.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            if (seen.Contains(displayName))
             {
                 continue;
             }
 
+            if (!compilation.IsSymbolAccessibleWithin(closedImplementation, compilation.Assembly))
+            {
+                Warn(displayName);
+                continue;
+            }
+
             var factory = CreateFactoryModel(closedImplementation, compilation.Assembly);
-            if (factory.EligibleUnkeyed && seen.Add(factory.ImplementationType))
+            if (!factory.EligibleUnkeyed)
+            {
+                Warn(displayName);
+                continue;
+            }
+
+            if (seen.Add(factory.ImplementationType))
             {
                 factories.Add(factory);
             }
         }
 
-        return factories;
+        return new ClosedGenericScanResult(new EquatableArray<FactoryModel>(factories.ToArray()), new EquatableArray<ClosedGenericWarningModel>(warnings.ToArray()), definitionKeys);
     }
 
     // ------------------------------------------------------------
     // Diagnostics (compile-time analysis / コンパイル時解析)
     // ------------------------------------------------------------
 
+    // 表示名 "global::Ns.IRepo<Foo, Bar>" が open generic 登録の閉型かを定義キーで判定する
+    // Determines from the definition keys whether a display name like "global::Ns.IRepo<Foo, Bar>" is a closed form of an open generic registration.
+    private static bool IsOpenGenericClosedForm(string typeName, HashSet<string> openGenericKeys)
+    {
+        if (openGenericKeys.Count == 0)
+        {
+            return false;
+        }
+
+        var start = typeName.IndexOf('<');
+        if ((start < 0) || !typeName.EndsWith(">", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var arity = 1;
+        var depth = 0;
+        for (var i = start + 1; i < typeName.Length - 1; i++)
+        {
+            var c = typeName[i];
+            if (c == '<')
+            {
+                depth++;
+            }
+            else if (c == '>')
+            {
+                depth--;
+            }
+            else if ((c == ',') && (depth == 0))
+            {
+                arity++;
+            }
+        }
+
+        return openGenericKeys.Contains(typeName.Substring(0, start) + "`" + arity.ToString(System.Globalization.CultureInfo.InvariantCulture));
+    }
+
     private static void ReportAnalysisDiagnostics(
         SourceProductionContext context,
         ComponentModel[] components,
         CollectedModel[] collected,
-        List<(MethodModel Method, List<(CandidateModel Candidate, string Lifetime)> Matches)> conventionMatches)
+        List<(MethodModel Method, List<(CandidateModel Candidate, string Lifetime)> Matches)> conventionMatches,
+        EquatableArray<string> openGenericDefinitionKeys)
     {
+        var openGenericKeys = new HashSet<string>(openGenericDefinitionKeys, StringComparer.Ordinal);
+
         // 登録マップ: サービス型 → (実装型, lifetime)。登録順で last-wins
         // Registration map: service type -> (implementation type, lifetime). Last registration wins.
         var serviceMap = new Dictionary<string, (string Impl, string Lifetime)>(StringComparer.Ordinal);
@@ -1478,10 +1625,14 @@ public sealed class ResolverGenerator : IIncrementalGenerator
                         context.ReportDiagnostic(new DiagnosticInfo(CaptiveDependency, component.Location, Display(component.Factory.ImplementationType), Display(typeName)).ToDiagnostic());
                     }
                 }
-                else if (inCompilation && !typeName.StartsWith("global::System.", StringComparison.Ordinal))
+                else if (inCompilation
+                    && !typeName.StartsWith("global::System.", StringComparison.Ordinal)
+                    && !IsOpenGenericClosedForm(typeName, openGenericKeys))
                 {
-                    // コンパイル対象アセンブリ内の型で、コンパイル時に見える登録に無いもののみ警告 (実行時登録は見えないため Warning)
-                    // Warns only for types inside the compiling assembly missing from compile-time visible registrations (runtime registrations are invisible, hence Warning).
+                    // コンパイル対象アセンブリ内の型で、コンパイル時に見える登録に無いもののみ警告
+                    // (実行時登録は見えないため Warning。open generic 登録の閉型は解決可能なので除外)
+                    // Warns only for types inside the compiling assembly missing from compile-time visible registrations
+                    // (runtime registrations are invisible, hence Warning; closed forms of open generic registrations resolve, so they are exempt).
                     context.ReportDiagnostic(new DiagnosticInfo(UnresolvedDependency, component.Location, Display(typeName), Display(component.Factory.ImplementationType)).ToDiagnostic());
                 }
             }

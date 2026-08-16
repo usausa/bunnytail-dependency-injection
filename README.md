@@ -202,14 +202,12 @@ When the provider is built, every `ServiceDescriptor` is verified against the ge
 | BTRS0007 | Error | The `PostConstruct` method is missing or is not a public parameterless instance method returning void |
 | BTRS0008 | Error | Conflicting `PostConstruct` specifications across lifetime attributes |
 | BTRS0009 | Warning | Assembly named on `[ComponentRegistration]` is not referenced by the project |
+| BTRS0010 | Warning | Closed generic with value type arguments has no generated factory and resolves through the runtime path, which fails on NativeAOT |
 
 ## Limitations
 
 * Runtime targets .NET 10 or later (the generator itself is netstandard2.0)
-* Open generic definition registrations (`typeof(IRepository<>)`): closed forms appearing as `typeof(IRepository<Foo>)` in code get generated factories and are fully AOT safe, including value type arguments. Closed forms known only at runtime are served by the runtime path, where value type arguments are not supported on NativeAOT
+* Open generic definition registrations (`typeof(IRepository<>)`): closed forms appearing in code — as `typeof(IRepository<Foo>)`, constructor parameters or property types — get generated factories and are fully AOT safe, including value type arguments. Closed forms known only at runtime are served by the runtime path, where value type arguments are not supported on NativeAOT (`BTRS0010` warns about compile-time visible cases)
 * Method injection is not supported
 * On trimmed applications, `[Inject]` properties are only guaranteed for types with compile-time visible registrations
 
-## TODO
-
-- [ ] Open generic definitions: extend closed-form discovery to constructor dependencies (currently `typeof(IRepository<Foo>)` usages are collected), plus a diagnostic for closed forms that stay on the runtime path with value type arguments

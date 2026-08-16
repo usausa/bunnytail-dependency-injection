@@ -114,13 +114,29 @@ internal sealed record OpenGenericModel(
     string FilePath,
     int SpanStart);
 
-// 登録済み open generic の閉型使用 (typeof(IRepo<Foo>))。型引数はメタデータ名で保持し、Execute 側でシンボルへ解決する
-// Closed usage of a registered open generic (typeof(IRepo<Foo>)). Type arguments are kept as metadata names and resolved back to symbols in Execute.
+// 登録済み open generic の閉型使用 (typeof(IRepo<Foo>) またはコンストラクタ/プロパティ依存)。
+// 型引数はメタデータ名で保持し、パイプライン側でシンボルへ解決する
+// Closed usage of a registered open generic (typeof(IRepo<Foo>) or a constructor/property dependency).
+// Type arguments are kept as metadata names and resolved back to symbols on the pipeline side.
 internal sealed record ClosedGenericUsageModel(
     string ServiceDefinitionKey,
     EquatableArray<string> TypeArgumentMetadataNames,
+    bool HasValueTypeArgument,
     string FilePath,
-    int SpanStart);
+    int SpanStart,
+    LocationInfo? Location);
+
+// closed generic 発見の結果。生成できた factory と、値型引数のまま実行時経路に残る使用への警告 (BTRS0010)
+// Result of closed generic discovery: generated factories plus warnings for usages left on the runtime path
+// with value type arguments (BTRS0010).
+internal sealed record ClosedGenericScanResult(
+    EquatableArray<FactoryModel> Factories,
+    EquatableArray<ClosedGenericWarningModel> Warnings,
+    EquatableArray<string> DefinitionKeys);
+
+internal sealed record ClosedGenericWarningModel(
+    string DisplayName,
+    LocationInfo? Location);
 
 // [ComponentRegistration] のパターン指定
 // Pattern specification of [ComponentRegistration].

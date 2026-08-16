@@ -75,6 +75,10 @@ using (var provider = services.BuildResolverServiceProvider())
     // Closed forms of an open generic (value type arguments are AOT safe only through the generated factory).
     Assert(provider.GetService(typeof(IAotGeneric<string>)) is AotGeneric<string>, "open generic closed reference");
     Assert(provider.GetService(typeof(IAotGeneric<int>)) is AotGeneric<int>, "open generic closed value type");
+
+    // typeof の出現なし: コンストラクタ依存だけから発見された閉型 (依存駆動の発見)
+    // No typeof usage: the closed form discovered from the constructor dependency alone (dependency driven discovery).
+    Assert(provider.GetRequiredService<AotGenericConsumer>().Value is AotGeneric<double>, "open generic closed by dependency");
 }
 
 // disposal
@@ -134,6 +138,14 @@ namespace BunnyTail.Resolver.AotTests
     public interface IAotGeneric<T>;
 
     public sealed class AotGeneric<T> : IAotGeneric<T>;
+
+    // IAotGeneric<double> は typeof で一度も書かれず、この ctor 依存だけが出現箇所
+    // IAotGeneric<double> is never written in a typeof; this constructor dependency is its only occurrence.
+    [Transient]
+    public sealed class AotGenericConsumer(IAotGeneric<double> value)
+    {
+        public IAotGeneric<double> Value { get; } = value;
+    }
 
     [Transient]
     public sealed class AotGraphDep;

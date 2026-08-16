@@ -575,6 +575,91 @@ public sealed class GeneratorOutputTest
     // ---- open generic の閉型生成 / closed factories from open generic registrations ----
 
     [Fact]
+    public void ClosedGenericFactoriesAreDiscoveredFromConstructorDependencies()
+    {
+        // typeof の出現なし。コンストラクタ依存だけから閉型ファクトリが発見される
+        // No typeof usage anywhere; the closed factory is discovered from the constructor dependency alone.
+        const string Source = """
+            using Microsoft.Extensions.DependencyInjection;
+
+            namespace Demo;
+
+            public interface IRepository<T>;
+
+            public sealed class Repository<T> : IRepository<T>;
+
+            public sealed class Consumer(IRepository<int> repository)
+            {
+                public IRepository<int> Repository { get; } = repository;
+            }
+
+            public static class Setup
+            {
+                public static void Configure(IServiceCollection services)
+                {
+                    services.AddTransient(typeof(IRepository<>), typeof(Repository<>));
+                    services.AddTransient<Consumer>();
+                }
+            }
+            """;
+
+        var result = CreateRunner()
+            .VerifyCompiles()
+            .Run(Source);
+
+        var generated = result.GeneratedSource("GeneratedComponents.g.cs");
+
+        Assert.Contains("typeof(global::Demo.Repository<int>)", generated, StringComparison.Ordinal);
+        Assert.Contains("new global::Demo.Repository<int>())", generated, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ValueTypeRuntimeGenericIsReported()
+    {
+        // 既定値付き ctor で生成不適格 → 値型引数の閉型が実行時経路に残る → BTRS0010。
+        // 参照型引数側は AOT でも動くため警告しない
+        // A default-valued constructor makes generation ineligible, leaving the closed forms on the runtime path.
+        // The value type argument case reports BTRS0010; the reference type case works on AOT and stays silent.
+        const string Source = """
+            using Microsoft.Extensions.DependencyInjection;
+
+            namespace Demo;
+
+            public interface IRepository<T>;
+
+            public sealed class Repository<T> : IRepository<T>
+            {
+                public Repository(int retries = 3)
+                {
+                    _ = retries;
+                }
+            }
+
+            public sealed class Consumer(IRepository<int> intRepository, IRepository<string> stringRepository)
+            {
+                public IRepository<int> IntRepository { get; } = intRepository;
+
+                public IRepository<string> StringRepository { get; } = stringRepository;
+            }
+
+            public static class Setup
+            {
+                public static void Configure(IServiceCollection services)
+                {
+                    services.AddTransient(typeof(IRepository<>), typeof(Repository<>));
+                    services.AddTransient<Consumer>();
+                }
+            }
+            """;
+
+        var result = CreateRunner().Run(Source);
+
+        var diagnostics = result.Diagnostics(["BTRS"]).Where(static x => x.Id == "BTRS0010").ToArray();
+        Assert.Single(diagnostics);
+        Assert.Contains("Repository<int>", diagnostics[0].GetMessage(null), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ClosedGenericFactoriesAreGeneratedFromOpenGenericRegistrations()
     {
         const string Source = """
