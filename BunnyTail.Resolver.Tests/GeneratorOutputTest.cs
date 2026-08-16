@@ -353,6 +353,64 @@ public sealed class GeneratorOutputTest
         Assert.Contains(".GetValue<global::Demo.First>(scope)", generated, StringComparison.Ordinal);
     }
 
+    // ---- Add* 収集の拡張形 / expanded Add* collection shapes ----
+
+    [Fact]
+    public void ExpandedAddShapesGenerateFactories()
+    {
+        // typeof オーバーロード / TryAddEnumerable + descriptor / keyed / Add(descriptor) の 4 形式
+        // Four shapes: typeof overloads, TryAddEnumerable with a descriptor, keyed and Add(descriptor).
+        const string Source = """
+            using Microsoft.Extensions.DependencyInjection;
+            using Microsoft.Extensions.DependencyInjection.Extensions;
+
+            namespace Demo;
+
+            public interface IThing;
+
+            public sealed class ThingA : IThing;
+
+            public sealed class ThingB : IThing;
+
+            public sealed class ThingC : IThing;
+
+            public sealed class ThingD : IThing;
+
+            public sealed class SelfThing;
+
+            public static class Registrations
+            {
+                public static void Register(IServiceCollection services)
+                {
+                    services.AddTransient(typeof(IThing), typeof(ThingA));
+                    services.TryAddEnumerable(ServiceDescriptor.Transient<IThing, ThingB>());
+                    services.AddKeyedSingleton<IThing, ThingC>("key");
+                    services.Add(ServiceDescriptor.Singleton<IThing, ThingD>());
+                    services.AddSingleton(typeof(SelfThing));
+                }
+            }
+            """;
+
+        var result = CreateRunner()
+            .VerifyCompiles()
+            .Run(Source);
+
+        var generated = result.GeneratedSource("GeneratedComponents.g.cs");
+
+        // 非 keyed 形はすべて Register、keyed 形は RegisterKeyed のファクトリになる
+        // Non-keyed shapes get Register factories; the keyed shape gets a RegisterKeyed factory.
+        Assert.Contains("typeof(global::Demo.ThingA)", generated, StringComparison.Ordinal);
+        Assert.Contains("typeof(global::Demo.ThingB)", generated, StringComparison.Ordinal);
+        Assert.Contains("typeof(global::Demo.ThingD)", generated, StringComparison.Ordinal);
+        Assert.Contains("typeof(global::Demo.SelfThing)", generated, StringComparison.Ordinal);
+        var keyedIndex = generated.IndexOf("RegisterKeyed(", StringComparison.Ordinal);
+        Assert.True((keyedIndex >= 0) && (generated.IndexOf("typeof(global::Demo.ThingC)", keyedIndex, StringComparison.Ordinal) > keyedIndex));
+
+        // TryAddEnumerable は enumerable 前提を毒化するため、IThing の enumerable ファクトリは生成されない
+        // TryAddEnumerable poisons the enumerable assumption, so no enumerable factory is generated for IThing.
+        Assert.DoesNotContain("RegisterEnumerable(", generated, StringComparison.Ordinal);
+    }
+
     // ---- Assembly 指定の規約登録 / assembly scoped convention registration ----
 
     [Fact]

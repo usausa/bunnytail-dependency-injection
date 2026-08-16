@@ -100,7 +100,14 @@ public static partial class ServiceCollectionExtensions
 
 ### Existing Add* registrations
 
-`AddSingleton<TService, TImplementation>()` style calls in user code are detected by the generator, and reflection-free factories are generated for the implementation types automatically. Existing MEDI registration code benefits from the generated path without any changes.
+Registration calls in user code are detected by the generator, and reflection-free factories are generated for the implementation types automatically. Existing MEDI registration code benefits from the generated path without any changes. Collected shapes:
+
+* `Add{Lifetime}` / `TryAdd{Lifetime}` — generic overloads and non-generic `typeof` overloads (including single-argument self registration)
+* `AddKeyed{Lifetime}` / `TryAddKeyed{Lifetime}` — generic and `typeof` overloads
+* `Add` / `TryAdd` / `TryAddEnumerable` taking `ServiceDescriptor.{Lifetime}<TService, TImplementation>()`
+* Open generic definition pairs such as `AddTransient(typeof(IRepository<>), typeof(Repository<>))`
+
+Factory, instance and `ServiceDescriptor.Describe` based registrations are not collected — they resolve through the runtime path with identical semantics.
 
 ### Multi-project modules
 
@@ -206,4 +213,3 @@ When the provider is built, every `ServiceDescriptor` is verified against the ge
 ## TODO
 
 - [ ] Open generic definitions: extend closed-form discovery to constructor dependencies (currently `typeof(IRepository<Foo>)` usages are collected), plus a diagnostic for closed forms that stay on the runtime path with value type arguments
-- [ ] `Add*` collection coverage: non-generic `typeof` overloads, `TryAddEnumerable`, `ServiceDescriptor` based registrations and `AddKeyed*`

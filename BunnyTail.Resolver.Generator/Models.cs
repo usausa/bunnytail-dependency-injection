@@ -69,7 +69,19 @@ internal sealed record CollectedModel(
     string ServiceType,
     string Lifetime,
     string FilePath,
-    int SpanStart);
+    int SpanStart,
+    int Kind);
+
+// CollectedModel.Kind の値。Direct はインライン/enumerable の前提に参加し、FactoryOnly (TryAddEnumerable 由来)
+// はファクトリ生成のみ + 前提の毒化、Keyed は keyed ファクトリ生成のみ
+// Values of CollectedModel.Kind. Direct participates in inline and enumerable assumptions; FactoryOnly
+// (from TryAddEnumerable) only generates factories and poisons assumptions; Keyed only generates keyed factories.
+internal static class CollectedKinds
+{
+    public const int Direct = 0;
+    public const int FactoryOnly = 1;
+    public const int Keyed = 2;
+}
 
 // 規約マッチの候補クラス (アセンブリ内の具象クラス全て)
 // Convention match candidate (every concrete class in the assembly).

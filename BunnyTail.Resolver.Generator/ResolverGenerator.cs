@@ -26,6 +26,8 @@ public sealed class ResolverGenerator : IIncrementalGenerator
     private const string ServiceCollectionExtensionsName = "Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions";
     private const string ServiceCollectionDescriptorExtensionsName = "Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions";
     private const string ServiceCollectionName = "Microsoft.Extensions.DependencyInjection.IServiceCollection";
+    private const string ServiceDescriptorName = "Microsoft.Extensions.DependencyInjection.ServiceDescriptor";
+    private const string ServiceDescriptorCollectionName = "System.Collections.Generic.ICollection<Microsoft.Extensions.DependencyInjection.ServiceDescriptor>";
 
     // ------------------------------------------------------------
     // Diagnostics
@@ -540,53 +542,147 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             return null;
         }
 
-        // MEDI の登録拡張メソッドのみ対象 (keyed 登録 API は対象外)
-        // Only MEDI registration extension methods are collected (keyed registration APIs are excluded).
         var methodName = method.Name;
-        var lifetime = methodName switch
+        var containingType = method.ContainingType?.ToDisplayString();
+
+        // ServiceDescriptor 引数形: Add / TryAdd / TryAddEnumerable(ServiceDescriptor.{Lifetime}<S, I>())。
+        // Describe や typeof 形の descriptor は lifetime が定数で読めないか稀なため対象外
+        // ServiceDescriptor argument shapes: Add / TryAdd / TryAddEnumerable(ServiceDescriptor.{Lifetime}<S, I>()).
+        // Describe and typeof shaped descriptors are excluded (the lifetime is not a readable constant, or they are rare).
+        if (methodName is "Add" or "TryAdd" or "TryAddEnumerable")
         {
-            "AddSingleton" or "TryAddSingleton" => "Singleton",
-            "AddScoped" or "TryAddScoped" => "Scoped",
-            "AddTransient" or "TryAddTransient" => "Transient",
-            _ => null,
+            if (containingType is not (ServiceDescriptorCollectionName or ServiceCollectionDescriptorExtensionsName))
+            {
+                return null;
+            }
+
+            if ((invocation.ArgumentList.Arguments.Count != 1)
+                || (invocation.ArgumentList.Arguments[0].Expression is not InvocationExpressionSyntax descriptorInvocation)
+                || (context.SemanticModel.GetSymbolInfo(descriptorInvocation).Symbol is not IMethodSymbol descriptorMethod)
+                || (descriptorMethod.ContainingType?.ToDisplayString() != ServiceDescriptorName))
+            {
+                return null;
+            }
+
+            var descriptorLifetime = descriptorMethod.Name switch
+            {
+                "Singleton" => "Singleton",
+                "Scoped" => "Scoped",
+                "Transient" => "Transient",
+                _ => null,
+            };
+            if ((descriptorLifetime is null) || (descriptorMethod.TypeArguments.Length == 0))
+            {
+                return null;
+            }
+
+            if (HasFactoryOrInstanceParameter(descriptorMethod))
+            {
+                return null;
+            }
+
+            // TryAddEnumerable は複数登録の合成が前提なので、前提には参加させずファクトリ生成のみ
+            // TryAddEnumerable implies multi-registration composition, so it only generates factories and never joins assumptions.
+            var descriptorKind = methodName == "TryAddEnumerable" ? CollectedKinds.FactoryOnly : CollectedKinds.Direct;
+            return CreateCollectedModelCore(
+                context,
+                invocation,
+                descriptorMethod.TypeArguments[0],
+                descriptorMethod.TypeArguments[descriptorMethod.TypeArguments.Length - 1],
+                descriptorLifetime,
+                descriptorKind);
+        }
+
+        // Add* / TryAdd* / AddKeyed* / TryAddKeyed* (ジェネリック + 非ジェネリック typeof オーバーロード)
+        // Add* / TryAdd* / AddKeyed* / TryAddKeyed* (generic and non-generic typeof overloads).
+        var (lifetime, keyed) = methodName switch
+        {
+            "AddSingleton" or "TryAddSingleton" => ("Singleton", false),
+            "AddScoped" or "TryAddScoped" => ("Scoped", false),
+            "AddTransient" or "TryAddTransient" => ("Transient", false),
+            "AddKeyedSingleton" or "TryAddKeyedSingleton" => ("Singleton", true),
+            "AddKeyedScoped" or "TryAddKeyedScoped" => ("Scoped", true),
+            "AddKeyedTransient" or "TryAddKeyedTransient" => ("Transient", true),
+            _ => (null, false),
         };
         if (lifetime is null)
         {
             return null;
         }
 
-        var containingType = method.ContainingType?.ToDisplayString();
         if (containingType is not (ServiceCollectionExtensionsName or ServiceCollectionDescriptorExtensionsName))
         {
             return null;
         }
 
-        // ジェネリックオーバーロードのみ対象。factory/instance オーバーロード (delegate / 型引数の実引数) は
-        // コンテナが型をインスタンス化しないため対象外
-        // Only generic overloads are collected. Factory/instance overloads (delegates or instance arguments) are
-        // excluded because the container does not instantiate the type.
-        if (method.TypeArguments.Length == 0)
+        // factory/instance オーバーロード (delegate / 型引数の実引数) はコンテナが型をインスタンス化しないため対象外
+        // Factory/instance overloads (delegates or instance arguments) are excluded because the container does not instantiate the type.
+        if (HasFactoryOrInstanceParameter(method))
         {
             return null;
         }
 
+        ITypeSymbol serviceArgument;
+        ITypeSymbol implementationArgument;
+        if (method.TypeArguments.Length > 0)
+        {
+            serviceArgument = method.TypeArguments[0];
+            implementationArgument = method.TypeArguments[method.TypeArguments.Length - 1];
+        }
+        else
+        {
+            // 非ジェネリック typeof オーバーロード。typeof 引数の先頭 = サービス、末尾 = 実装 (1 つなら自己登録)。
+            // open generic 定義は openGenericProvider の担当なのでここでは対象外 (下の unbound 判定で除外)
+            // Non-generic typeof overloads: the first typeof argument is the service and the last the implementation
+            // (self registration when only one). Open generic definitions belong to openGenericProvider and are
+            // rejected by the unbound check below.
+            var typeofTypes = new List<ITypeSymbol>();
+            foreach (var argument in invocation.ArgumentList.Arguments)
+            {
+                if ((argument.Expression is TypeOfExpressionSyntax typeOf)
+                    && (context.SemanticModel.GetTypeInfo(typeOf.Type).Type is ITypeSymbol typeSymbol))
+                {
+                    typeofTypes.Add(typeSymbol);
+                }
+            }
+
+            if (typeofTypes.Count == 0)
+            {
+                return null;
+            }
+
+            serviceArgument = typeofTypes[0];
+            implementationArgument = typeofTypes[typeofTypes.Count - 1];
+        }
+
+        return CreateCollectedModelCore(context, invocation, serviceArgument, implementationArgument, lifetime, keyed ? CollectedKinds.Keyed : CollectedKinds.Direct);
+    }
+
+    private static bool HasFactoryOrInstanceParameter(IMethodSymbol method)
+    {
         foreach (var parameter in method.Parameters)
         {
             if ((parameter.Type.TypeKind == TypeKind.Delegate) || (parameter.Type is ITypeParameterSymbol))
             {
-                return null;
+                return true;
             }
         }
 
-        var implementationType = method.TypeArguments[method.TypeArguments.Length - 1];
-        if (implementationType is not INamedTypeSymbol implementationSymbol)
+        return false;
+    }
+
+    private static CollectedModel? CreateCollectedModelCore(GeneratorSyntaxContext context, InvocationExpressionSyntax invocation, ITypeSymbol serviceArgument, ITypeSymbol implementationArgument, string lifetime, int kind)
+    {
+        if (implementationArgument is not INamedTypeSymbol implementationSymbol)
         {
             return null;
         }
 
-        // closed generic は対象 (new Foo<int>() は生成可能)。型パラメータを含む場合は対象外
-        // Closed generics are eligible (new Foo<int>() can be generated); types containing type parameters are not.
-        if (implementationSymbol.IsAbstract
+        // closed generic は対象 (new Foo<int>() は生成可能)。open generic 定義と型パラメータを含む場合は対象外
+        // Closed generics are eligible (new Foo<int>() can be generated); open generic definitions and types
+        // containing type parameters are not.
+        if (implementationSymbol.IsUnboundGenericType
+            || implementationSymbol.IsAbstract
             || (implementationSymbol.TypeKind != TypeKind.Class)
             || ContainsTypeParameter(implementationSymbol))
         {
@@ -601,13 +697,13 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         }
 
         var factory = CreateFactoryModel(implementationSymbol, context.SemanticModel.Compilation.Assembly);
-        if (!factory.EligibleUnkeyed)
+        if (kind == CollectedKinds.Keyed ? !factory.EligibleKeyed : !factory.EligibleUnkeyed)
         {
             return null;
         }
 
-        var serviceType = method.TypeArguments[0].ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-        return new CollectedModel(factory, serviceType, lifetime, invocation.SyntaxTree.FilePath, invocation.SpanStart);
+        var serviceType = serviceArgument.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        return new CollectedModel(factory, serviceType, lifetime, invocation.SyntaxTree.FilePath, invocation.SpanStart, kind);
     }
 
     // ------------------------------------------------------------
@@ -1008,7 +1104,14 @@ public sealed class ResolverGenerator : IIncrementalGenerator
 
         foreach (var model in sortedCollected)
         {
-            if (emittedUnkeyed.Add(model.Factory.ImplementationType))
+            if (model.Kind == CollectedKinds.Keyed)
+            {
+                if (model.Factory.EligibleKeyed && emittedKeyed.Add(model.Factory.ImplementationType))
+                {
+                    keyedFactories.Add(model.Factory);
+                }
+            }
+            else if (emittedUnkeyed.Add(model.Factory.ImplementationType))
             {
                 unkeyedFactories.Add(model.Factory);
             }
@@ -1102,6 +1205,21 @@ public sealed class ResolverGenerator : IIncrementalGenerator
 
         foreach (var model in collected)
         {
+            if (model.Kind == CollectedKinds.Keyed)
+            {
+                continue;
+            }
+
+            if (model.Kind == CollectedKinds.FactoryOnly)
+            {
+                // TryAddEnumerable は実行時の重複排除で構成が構文順と一致しない可能性があるため、
+                // null factory (検証不能要素) として enumerable 生成を不成立にする
+                // TryAddEnumerable composition can differ from syntax order due to runtime de-duplication, so a null
+                // factory (an unverifiable element) disqualifies enumerable generation for the service.
+                Append(model.ServiceType, null, model.Lifetime);
+                continue;
+            }
+
             Append(model.ServiceType, model.Factory, model.Lifetime);
         }
 
@@ -1508,10 +1626,24 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             }
         }
 
-        // Add* 呼び出し収集 (ジェネリックオーバーロードのみ = 全て direct)
-        // Add* invocation collection (generic overloads only = all direct).
+        // Add* 呼び出し収集。Direct のみ前提に参加し、TryAddEnumerable (FactoryOnly) は同一サービスの
+        // 単独前提を成立させないよう非 direct として毒化する。keyed は非 keyed 解決に影響しない
+        // Add* invocation collection. Only Direct entries join the assumptions; TryAddEnumerable (FactoryOnly)
+        // poisons the service as non-direct so no single-registration assumption survives. Keyed entries do not
+        // affect non-keyed resolution.
         foreach (var model in collected)
         {
+            if (model.Kind == CollectedKinds.Keyed)
+            {
+                continue;
+            }
+
+            if (model.Kind == CollectedKinds.FactoryOnly)
+            {
+                Add(model.ServiceType, model.Factory.ImplementationType, model.Lifetime, direct: false);
+                continue;
+            }
+
             factories[model.Factory.ImplementationType] = model.Factory;
             Add(model.ServiceType, model.Factory.ImplementationType, model.Lifetime, direct: true);
         }
