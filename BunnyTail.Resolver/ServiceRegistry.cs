@@ -148,6 +148,29 @@ internal sealed class ServiceRegistry
         return fixedAccessor ?? GetEntrySlow(id);
     }
 
+    // 解決のホット経路。テーブルヒットは定数短絡込みでテーブル側が解決し、ミスのみ realization へ回る
+    // Hot resolution path. Table hits resolve inside the table (constant short-circuit included); only misses go to realization.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public object? Resolve(ServiceIdentifier id, ServiceProviderScope scope)
+    {
+        if (id.Key is null)
+        {
+            if (typeTable.TryResolve(id.ServiceType, scope, out var value))
+            {
+                return value;
+            }
+        }
+        else
+        {
+            if (keyedTable.TryResolve(id.ServiceType, id.Key, scope, out var value))
+            {
+                return value;
+            }
+        }
+
+        return GetEntrySlow(id)?.GetValue(scope);
+    }
+
     // 主テーブルに無いもの: 派生エントリ (IEnumerable / closed generic / AnyKey 派生)、未実現の登録、未登録型
     // Not in the main tables: derived entries (IEnumerable / closed generics / AnyKey derivations), unrealized registrations and unknown types.
     [MethodImpl(MethodImplOptions.NoInlining)]

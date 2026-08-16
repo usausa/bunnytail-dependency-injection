@@ -19,6 +19,10 @@ internal sealed class FixedTypeServiceTable
     {
         public readonly Type Key;
         public readonly ServiceAccessor Accessor;
+
+        // Root 解決済みインスタンス (WrapSlotValue 済み)。初回 Root 解決時に書き戻され、以後は accessor を経由しない
+        // Resolved Root instance (already wrapped). Back-filled on the first Root resolution; later reads skip the accessor.
+        public object? Constant;
         public Node? Next;
 
         public Node(Type key, ServiceAccessor accessor)
@@ -87,6 +91,43 @@ internal sealed class FixedTypeServiceTable
 
         return null;
     }
+
+    // 解決のホット経路。Root 解決済みは定数読みだけで返す (accessor の仮想呼び出しなし)。
+    // Root の初回解決時にノードへ書き戻す。COW 再構築で定数は失われるが、次の解決で再充填される
+    // Hot resolution path: resolved Root entries return with a constant read alone (no virtual accessor call).
+    // Back-filled on the first Root resolution; constants lost by a COW rebuild are refilled on the next resolution.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool TryResolve(Type key, ServiceProviderScope scope, out object? value)
+    {
+        var node = nodes[RuntimeHelpers.GetHashCode(key) & mask];
+        do
+        {
+            if (ReferenceEquals(node.Key, key))
+            {
+                var constant = node.Constant;
+                if (constant is not null)
+                {
+                    value = ServiceProviderScope.UnwrapSlotValue(constant);
+                    return true;
+                }
+
+                var accessor = node.Accessor;
+                value = accessor.GetValue(scope);
+                if (accessor.Cache == ResultCache.Root)
+                {
+                    Volatile.Write(ref node.Constant, ServiceProviderScope.WrapSlotValue(value));
+                }
+
+                return true;
+            }
+
+            node = node.Next;
+        }
+        while (node is not null);
+
+        value = null;
+        return false;
+    }
 }
 
 // keyed 用。(Type, key) の複合ハッシュ 1 テーブル (Sandbox の KeyedLookupBenchmark で確定)
@@ -103,6 +144,10 @@ internal sealed class FixedKeyedServiceTable
         public readonly Type Type;
         public readonly object Key;
         public readonly ServiceAccessor Accessor;
+
+        // Root 解決済みインスタンス (WrapSlotValue 済み)
+        // Resolved Root instance (already wrapped).
+        public object? Constant;
         public Node? Next;
 
         public Node(Type type, object key, ServiceAccessor accessor)
@@ -174,5 +219,40 @@ internal sealed class FixedKeyedServiceTable
         while (node is not null);
 
         return null;
+    }
+
+    // 解決のホット経路 (非 keyed 側と同形。詳細は FixedTypeServiceTable.TryResolve を参照)
+    // Hot resolution path (same shape as the non-keyed table; see FixedTypeServiceTable.TryResolve).
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool TryResolve(Type type, object key, ServiceProviderScope scope, out object? value)
+    {
+        var node = nodes[Hash(type, key) & mask];
+        do
+        {
+            if (ReferenceEquals(node.Type, type) && node.Key.Equals(key))
+            {
+                var constant = node.Constant;
+                if (constant is not null)
+                {
+                    value = ServiceProviderScope.UnwrapSlotValue(constant);
+                    return true;
+                }
+
+                var accessor = node.Accessor;
+                value = accessor.GetValue(scope);
+                if (accessor.Cache == ResultCache.Root)
+                {
+                    Volatile.Write(ref node.Constant, ServiceProviderScope.WrapSlotValue(value));
+                }
+
+                return true;
+            }
+
+            node = node.Next;
+        }
+        while (node is not null);
+
+        value = null;
+        return false;
     }
 }

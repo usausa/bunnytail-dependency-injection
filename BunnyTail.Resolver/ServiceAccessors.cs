@@ -96,8 +96,11 @@ internal abstract class ServiceAccessor
                 storage.CaptureDisposableUnderLock(value);
             }
 
-            // 構築完了後に release 公開 (読み出し側はロックなしの素の読み)
-            // Published with release semantics after construction completes (readers use a plain lock-free read).
+            // 構築完了後に release 公開。読み出し側はロックなしの素の読みでよい: .NET のメモリモデルは
+            // 参照の release 公開後、参照経由の従属読みの順序を全対応アーキテクチャ (ARM64 含む) で保証する
+            // Published with release semantics after construction completes. Plain lock-free reads are sufficient:
+            // the .NET memory model guarantees ordering of dependent reads through the reference after a release
+            // publication on all supported architectures, including ARM64.
             Volatile.Write(ref rootCached, ServiceProviderScope.WrapSlotValue(value));
             return value;
         }

@@ -25,11 +25,7 @@ public sealed class ResolverServiceProvider :
         registry = new ServiceRegistry(descriptors, this);
     }
 
-    internal object? ResolveService(ServiceIdentifier id, ServiceProviderScope scope)
-    {
-        var entry = registry.GetEntry(id);
-        return entry?.GetValue(scope);
-    }
+    internal object? ResolveService(ServiceIdentifier id, ServiceProviderScope scope) => registry.Resolve(id, scope);
 
     //--------------------------------------------------------------------------------
     // IServiceProvider / IKeyedServiceProvider (root スコープへ委譲 / delegated to the root scope)
