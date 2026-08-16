@@ -81,6 +81,23 @@ internal sealed record CandidateModel(
     string FilePath,
     int SpanStart);
 
+// open generic 定義登録 (typeof オーバーロード経由。例: AddTransient(typeof(IRepo<>), typeof(Repo<>)))
+// Open generic definition registration through the typeof overload (e.g. AddTransient(typeof(IRepo<>), typeof(Repo<>))).
+internal sealed record OpenGenericModel(
+    string ServiceDefinitionKey,
+    string ImplementationMetadataName,
+    string Lifetime,
+    string FilePath,
+    int SpanStart);
+
+// 登録済み open generic の閉型使用 (typeof(IRepo<Foo>))。型引数はメタデータ名で保持し、Execute 側でシンボルへ解決する
+// Closed usage of a registered open generic (typeof(IRepo<Foo>)). Type arguments are kept as metadata names and resolved back to symbols in Execute.
+internal sealed record ClosedGenericUsageModel(
+    string ServiceDefinitionKey,
+    EquatableArray<string> TypeArgumentMetadataNames,
+    string FilePath,
+    int SpanStart);
+
 // [ComponentRegistration] のパターン指定
 // Pattern specification of [ComponentRegistration].
 internal sealed record PatternModel(

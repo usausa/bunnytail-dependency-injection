@@ -353,6 +353,54 @@ public sealed class GeneratorOutputTest
         Assert.Contains("scope.GetRequiredService<global::Demo.First>()", generated, StringComparison.Ordinal);
     }
 
+    // ---- open generic の閉型生成 / closed factories from open generic registrations ----
+
+    [Fact]
+    public void ClosedGenericFactoriesAreGeneratedFromOpenGenericRegistrations()
+    {
+        const string Source = """
+            using System;
+
+            using Microsoft.Extensions.DependencyInjection;
+
+            namespace Demo;
+
+            public interface IRepository<T>
+            {
+            }
+
+            public sealed class Repository<T> : IRepository<T>
+            {
+            }
+
+            public static class Setup
+            {
+                public static void Configure(IServiceCollection services)
+                {
+                    services.AddTransient(typeof(IRepository<>), typeof(Repository<>));
+                }
+
+                public static void Use(IServiceProvider provider)
+                {
+                    _ = provider.GetService(typeof(IRepository<string>));
+                    _ = provider.GetService(typeof(IRepository<int>));
+                }
+            }
+            """;
+
+        var result = CreateRunner()
+            .VerifyCompiles()
+            .Run(Source);
+
+        var generated = result.GeneratedSource("GeneratedComponents.g.cs");
+
+        // 閉型使用ごとに閉じた実装型の生成ファクトリが出力される (値型引数も AOT 安全になる)
+        // A generated factory is emitted per closed usage (value type arguments become AOT safe as well).
+        Assert.Contains("typeof(global::Demo.Repository<string>)", generated, StringComparison.Ordinal);
+        Assert.Contains("typeof(global::Demo.Repository<int>)", generated, StringComparison.Ordinal);
+        Assert.Contains("new global::Demo.Repository<string>())", generated, StringComparison.Ordinal);
+    }
+
     // ---- 初期化コールバック / initialization callbacks ----
 
     [Fact]

@@ -159,12 +159,12 @@ When the provider is built, every `ServiceDescriptor` is verified against the ge
 ## Limitations
 
 * Runtime targets .NET 10 or later (the generator itself is netstandard2.0)
-* Open generic definition registrations (`typeof(IRepository<>)`) are served by the runtime path; on NativeAOT, value type arguments for such registrations are not supported
+* Open generic definition registrations (`typeof(IRepository<>)`): closed forms appearing as `typeof(IRepository<Foo>)` in code get generated factories and are fully AOT safe, including value type arguments. Closed forms known only at runtime are served by the runtime path, where value type arguments are not supported on NativeAOT
 * Method injection is not supported
 * On trimmed applications, `[Inject]` properties are only guaranteed for types with compile-time visible registrations
 
 ## TODO
 
-- [ ] Open generic definition registrations: collect the closed types reachable at compile time and serve them through generated factories (currently served by the runtime path), plus a diagnostic for the NativeAOT value type argument limitation
+- [ ] Open generic definitions: extend closed-form discovery to constructor dependencies (currently `typeof(IRepository<Foo>)` usages are collected), plus a diagnostic for closed forms that stay on the runtime path with value type arguments
 - [ ] `Add*` collection coverage: non-generic `typeof` overloads, `TryAddEnumerable`, `ServiceDescriptor` based registrations and `AddKeyed*`
 - [ ] `[ComponentRegistration]` `Assembly` parameter (referenced assembly scan)

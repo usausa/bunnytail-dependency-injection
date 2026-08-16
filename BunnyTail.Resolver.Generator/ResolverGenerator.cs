@@ -127,8 +127,19 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             .Where(static x => x is not null)
             .Select(static (x, _) => x!);
 
-        var assemblyNameProvider = context.CompilationProvider
-            .Select(static (compilation, _) => compilation.AssemblyName ?? "Generated");
+        var openGenericProvider = context.SyntaxProvider
+            .CreateSyntaxProvider(
+                static (node, _) => IsAddInvocationSyntax(node),
+                static (ctx, _) => CreateOpenGenericModel(ctx))
+            .Where(static x => x is not null)
+            .Select(static (x, _) => x!);
+
+        var closedUsageProvider = context.SyntaxProvider
+            .CreateSyntaxProvider(
+                static (node, _) => node is TypeOfExpressionSyntax { Type: GenericNameSyntax },
+                static (ctx, _) => CreateClosedGenericUsageModel(ctx))
+            .Where(static x => x is not null)
+            .Select(static (x, _) => x!);
 
         var source = singletonProvider.Collect()
             .Combine(scopedProvider.Collect())
@@ -136,12 +147,16 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             .Combine(collectedProvider.Collect())
             .Combine(methodProvider.Collect())
             .Combine(candidateProvider.Collect())
-            .Combine(assemblyNameProvider);
+            .Combine(openGenericProvider.Collect())
+            .Combine(closedUsageProvider.Collect())
+            .Combine(context.CompilationProvider);
 
         context.RegisterSourceOutput(source, static (context, source) =>
             Execute(
                 context,
-                source.Left.Left.Left.Left.Left.Left,
+                source.Left.Left.Left.Left.Left.Left.Left.Left,
+                source.Left.Left.Left.Left.Left.Left.Left.Right,
+                source.Left.Left.Left.Left.Left.Left.Right,
                 source.Left.Left.Left.Left.Left.Right,
                 source.Left.Left.Left.Left.Right,
                 source.Left.Left.Left.Right,
@@ -557,6 +572,156 @@ public sealed class ResolverGenerator : IIncrementalGenerator
     }
 
     // ------------------------------------------------------------
+    // Parser : open generic registrations (open generic 登録と閉型使用)
+    // ------------------------------------------------------------
+
+    // 定義キー: "global::Ns.Name`arity"。unbound と constructed の両方から同じキーを作る
+    // Definition key "global::Ns.Name`arity", produced identically from unbound and constructed symbols.
+    private static string DefinitionKey(INamedTypeSymbol symbol)
+    {
+        var display = symbol.ConstructedFrom.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        var index = display.IndexOf('<');
+        var name = index >= 0 ? display.Substring(0, index) : display;
+        return name + "`" + symbol.Arity.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    // GetTypeByMetadataName で解決できるメタデータ名 (ネスト型は '+' 区切り)。型引数付き・配列などは対象外
+    // Metadata name resolvable by GetTypeByMetadataName (nested types joined by '+'). Generic instantiations and arrays are excluded.
+    private static string? TryGetMetadataName(ITypeSymbol type)
+    {
+        if (type is not INamedTypeSymbol { Arity: 0, IsAnonymousType: false } named || type.TypeKind == TypeKind.TypeParameter)
+        {
+            return null;
+        }
+
+        var parts = new List<string> { named.MetadataName };
+        for (var containing = named.ContainingType; containing is not null; containing = containing.ContainingType)
+        {
+            parts.Insert(0, containing.MetadataName);
+        }
+
+        var ns = named.ContainingNamespace;
+        var nested = string.Join("+", parts);
+        return (ns is null) || ns.IsGlobalNamespace ? nested : ns.ToDisplayString() + "." + nested;
+    }
+
+    private static OpenGenericModel? CreateOpenGenericModel(GeneratorSyntaxContext context)
+    {
+        var invocation = (InvocationExpressionSyntax)context.Node;
+        if (context.SemanticModel.GetSymbolInfo(invocation).Symbol is not IMethodSymbol method)
+        {
+            return null;
+        }
+
+        var lifetime = method.Name switch
+        {
+            "AddSingleton" or "TryAddSingleton" => "Singleton",
+            "AddScoped" or "TryAddScoped" => "Scoped",
+            "AddTransient" or "TryAddTransient" => "Transient",
+            _ => null,
+        };
+        if (lifetime is null || (method.TypeArguments.Length != 0))
+        {
+            return null;
+        }
+
+        var containingType = method.ContainingType?.ToDisplayString();
+        if (containingType is not (ServiceCollectionExtensionsName or ServiceCollectionDescriptorExtensionsName))
+        {
+            return null;
+        }
+
+        // typeof(IRepo<>) と typeof(Repo<>) の 2 引数形のみ対象
+        // Only the two-argument form with unbound typeof expressions is collected.
+        var arguments = invocation.ArgumentList.Arguments;
+        if (arguments.Count != 2
+            || arguments[0].Expression is not TypeOfExpressionSyntax serviceTypeOf
+            || arguments[1].Expression is not TypeOfExpressionSyntax implementationTypeOf)
+        {
+            return null;
+        }
+
+        if (context.SemanticModel.GetTypeInfo(serviceTypeOf.Type).Type is not INamedTypeSymbol service
+            || context.SemanticModel.GetTypeInfo(implementationTypeOf.Type).Type is not INamedTypeSymbol implementation
+            || !service.IsUnboundGenericType
+            || !implementation.IsUnboundGenericType
+            || (service.Arity != implementation.Arity))
+        {
+            return null;
+        }
+
+        var implementationDefinition = implementation.ConstructedFrom;
+        if (implementationDefinition.IsAbstract || (implementationDefinition.TypeKind != TypeKind.Class))
+        {
+            return null;
+        }
+
+        var metadataName = TryGetMetadataNameForDefinition(implementationDefinition);
+        if (metadataName is null)
+        {
+            return null;
+        }
+
+        return new OpenGenericModel(
+            DefinitionKey(service),
+            metadataName,
+            lifetime,
+            invocation.SyntaxTree.FilePath,
+            invocation.SpanStart);
+    }
+
+    // open generic 定義自体のメタデータ名 ("Ns.Repo`1")
+    // Metadata name of the open generic definition itself ("Ns.Repo`1").
+    private static string? TryGetMetadataNameForDefinition(INamedTypeSymbol definition)
+    {
+        var parts = new List<string> { definition.MetadataName };
+        for (var containing = definition.ContainingType; containing is not null; containing = containing.ContainingType)
+        {
+            if (containing.Arity != 0)
+            {
+                return null;
+            }
+
+            parts.Insert(0, containing.MetadataName);
+        }
+
+        var ns = definition.ContainingNamespace;
+        var nested = string.Join("+", parts);
+        return (ns is null) || ns.IsGlobalNamespace ? nested : ns.ToDisplayString() + "." + nested;
+    }
+
+    private static ClosedGenericUsageModel? CreateClosedGenericUsageModel(GeneratorSyntaxContext context)
+    {
+        var typeOf = (TypeOfExpressionSyntax)context.Node;
+        if (context.SemanticModel.GetTypeInfo(typeOf.Type).Type is not INamedTypeSymbol closed
+            || !closed.IsGenericType
+            || closed.IsUnboundGenericType)
+        {
+            return null;
+        }
+
+        // 全型引数がメタデータ名で往復できる場合のみ (それ以外は互換経路で解決される)
+        // Collected only when every type argument round-trips through a metadata name (others stay on the runtime path).
+        var arguments = new string[closed.TypeArguments.Length];
+        for (var i = 0; i < closed.TypeArguments.Length; i++)
+        {
+            var name = TryGetMetadataName(closed.TypeArguments[i]);
+            if (name is null)
+            {
+                return null;
+            }
+
+            arguments[i] = name;
+        }
+
+        return new ClosedGenericUsageModel(
+            DefinitionKey(closed),
+            new EquatableArray<string>(arguments),
+            typeOf.SyntaxTree.FilePath,
+            typeOf.SpanStart);
+    }
+
+    // ------------------------------------------------------------
     // Parser : convention registration method (規約登録メソッド)
     // ------------------------------------------------------------
 
@@ -678,8 +843,12 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         ImmutableArray<CollectedModel> collected,
         ImmutableArray<Result<MethodModel>> methods,
         ImmutableArray<CandidateModel> candidates,
-        string assemblyName)
+        ImmutableArray<OpenGenericModel> openGenerics,
+        ImmutableArray<ClosedGenericUsageModel> closedUsages,
+        Compilation compilation)
     {
+        var assemblyName = compilation.AssemblyName ?? "Generated";
+
         foreach (var method in methods)
         {
             foreach (var info in method.Diagnostics)
@@ -798,6 +967,18 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             }
         }
 
+        // open generic 登録の閉型使用から生成ファクトリを作る。実行時は open generic 実現
+        // (MakeGenericType → 閉じた実装型) が採用フック (TryGet) で自動的にこれを拾う
+        // Builds generated factories for closed usages of open generic registrations. At runtime the open generic
+        // realization (MakeGenericType into the closed implementation) picks them up through the adoption hook (TryGet).
+        foreach (var factory in DiscoverClosedGenericFactories(openGenerics, closedUsages, compilation))
+        {
+            if (emittedUnkeyed.Add(factory.ImplementationType))
+            {
+                unkeyedFactories.Add(factory);
+            }
+        }
+
         if ((components.Length > 0) || (unkeyedFactories.Count > 0) || (keyedFactories.Count > 0))
         {
             var inlineMap = BuildInlineTargetMap(components, sortedCollected, conventionMatches);
@@ -810,6 +991,74 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         {
             EmitConventionMethod(context, method, matches);
         }
+    }
+
+    private static List<FactoryModel> DiscoverClosedGenericFactories(
+        ImmutableArray<OpenGenericModel> openGenerics,
+        ImmutableArray<ClosedGenericUsageModel> closedUsages,
+        Compilation compilation)
+    {
+        var factories = new List<FactoryModel>();
+        if (openGenerics.IsEmpty || closedUsages.IsEmpty)
+        {
+            return factories;
+        }
+
+        // 定義キー → 実装 (同一キーの再登録は後勝ち: 実行時の last-wins と一致)
+        // Definition key -> implementation (re-registrations are last-wins, matching runtime behavior).
+        var registrations = new Dictionary<string, OpenGenericModel>(StringComparer.Ordinal);
+        foreach (var model in openGenerics.OrderBy(static x => x.FilePath, StringComparer.Ordinal).ThenBy(static x => x.SpanStart))
+        {
+            registrations[model.ServiceDefinitionKey] = model;
+        }
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var usage in closedUsages.OrderBy(static x => x.FilePath, StringComparer.Ordinal).ThenBy(static x => x.SpanStart))
+        {
+            if (!registrations.TryGetValue(usage.ServiceDefinitionKey, out var registration))
+            {
+                continue;
+            }
+
+            var definition = compilation.GetTypeByMetadataName(registration.ImplementationMetadataName);
+            if ((definition is null) || (definition.Arity != usage.TypeArgumentMetadataNames.Count))
+            {
+                continue;
+            }
+
+            var argumentSymbols = new ITypeSymbol[usage.TypeArgumentMetadataNames.Count];
+            var resolved = true;
+            for (var i = 0; i < usage.TypeArgumentMetadataNames.Count; i++)
+            {
+                var argument = compilation.GetTypeByMetadataName(usage.TypeArgumentMetadataNames[i]);
+                if (argument is null)
+                {
+                    resolved = false;
+                    break;
+                }
+
+                argumentSymbols[i] = argument;
+            }
+
+            if (!resolved)
+            {
+                continue;
+            }
+
+            var closedImplementation = definition.Construct(argumentSymbols);
+            if (!compilation.IsSymbolAccessibleWithin(closedImplementation, compilation.Assembly))
+            {
+                continue;
+            }
+
+            var factory = CreateFactoryModel(closedImplementation, compilation.Assembly);
+            if (factory.EligibleUnkeyed && seen.Add(factory.ImplementationType))
+            {
+                factories.Add(factory);
+            }
+        }
+
+        return factories;
     }
 
     // ------------------------------------------------------------

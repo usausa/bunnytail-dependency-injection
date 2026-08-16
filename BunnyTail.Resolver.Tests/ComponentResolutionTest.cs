@@ -157,6 +157,29 @@ public sealed class ComponentResolutionTest
         Assert.Same(consumer.Dependency, provider.GetRequiredService<LazyProbeSingleton>());
     }
 
+    // ---- open generic の閉型生成 / closed factories from open generic registrations ----
+
+    public interface IGenericContainer<T>;
+
+    public sealed class GenericContainer<T> : IGenericContainer<T>;
+
+    [Fact]
+    public void OpenGenericClosedUsageResolvesThroughGeneratedFactory()
+    {
+        // このテスト内の typeof(IGenericContainer<string>) が閉型使用として収集され、生成ファクトリが出力される
+        // The typeof(IGenericContainer<string>) in this test doubles as the collected closed usage that produces a generated factory.
+        IServiceCollection services = new ServiceCollection();
+        services.AddTransient(typeof(IGenericContainer<>), typeof(GenericContainer<>));
+        using var provider = services.BuildResolverServiceProvider();
+
+        Assert.IsType<GenericContainer<string>>(provider.GetService(typeof(IGenericContainer<string>)));
+
+        // コンパイル時に見えない閉型は従来どおり互換経路で解決される
+        // Closed forms invisible at compile time keep resolving through the runtime path.
+        var runtimeClosed = typeof(IGenericContainer<>).MakeGenericType(typeof(Guid));
+        Assert.IsType<GenericContainer<Guid>>(provider.GetService(runtimeClosed));
+    }
+
     [Fact]
     public void ValueTypeEnumerableUsesFallbackPath()
     {

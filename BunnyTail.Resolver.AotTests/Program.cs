@@ -24,7 +24,8 @@ void Assert(bool condition, string name)
 // AddComponents = attribute components (generated registration method) / AddTransient = Add* collection -> generated factory.
 var services = new ServiceCollection()
     .AddComponents()
-    .AddTransient<RuntimeRegistered>();
+    .AddTransient<RuntimeRegistered>()
+    .AddTransient(typeof(IAotGeneric<>), typeof(AotGeneric<>));
 
 using (var provider = services.BuildResolverServiceProvider())
 {
@@ -69,6 +70,11 @@ using (var provider = services.BuildResolverServiceProvider())
     // 初期化コールバック / initialization callbacks
     Assert(provider.GetRequiredService<AotPostConstruct>().Initialized, "post construct method");
     Assert(provider.GetRequiredService<AotInitializable>().Initialized, "initializable interface");
+
+    // open generic の閉型 (値型引数は生成ファクトリでのみ AOT 安全になる)
+    // Closed forms of an open generic (value type arguments are AOT safe only through the generated factory).
+    Assert(provider.GetService(typeof(IAotGeneric<string>)) is AotGeneric<string>, "open generic closed reference");
+    Assert(provider.GetService(typeof(IAotGeneric<int>)) is AotGeneric<int>, "open generic closed value type");
 }
 
 // disposal
@@ -124,6 +130,10 @@ namespace BunnyTail.Resolver.AotTests
 
         public void Initialize() => Initialized = true;
     }
+
+    public interface IAotGeneric<T>;
+
+    public sealed class AotGeneric<T> : IAotGeneric<T>;
 
     [Transient]
     public sealed class AotGraphDep;
