@@ -26,3 +26,19 @@ public static class LibraryModule
         return services;
     }
 }
+
+// [ComponentRegistration] の Assembly 指定 (参照アセンブリのメタデータ走査) の対象。
+// モジュールにも属性にも載っていない素の型で、アプリ側の規約で登録される
+// Target of the [ComponentRegistration] Assembly parameter (referenced assembly metadata scan).
+// A plain type carried by neither the module nor attributes; the application registers it by convention.
+public sealed class ExternalWorker
+{
+    private readonly IMessageSource source;
+
+    public ExternalWorker(IMessageSource source)
+    {
+        this.source = source;
+    }
+
+    public string Describe() => $"external worker ({source.GetMessage()})";
+}

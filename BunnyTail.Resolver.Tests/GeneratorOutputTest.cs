@@ -353,6 +353,66 @@ public sealed class GeneratorOutputTest
         Assert.Contains(".GetValue<global::Demo.First>(scope)", generated, StringComparison.Ordinal);
     }
 
+    // ---- Assembly 指定の規約登録 / assembly scoped convention registration ----
+
+    [Fact]
+    public void AssemblyScopedConventionRegistersExternalTypes()
+    {
+        // このテストアセンブリのメタデータから規約で候補を拾う (Generator 非参照ライブラリ相当)
+        // Picks candidates from this test assembly's metadata, standing in for a library without the generator.
+        const string Source = """
+            using BunnyTail.Resolver;
+
+            using Microsoft.Extensions.DependencyInjection;
+
+            namespace Demo;
+
+            public static partial class Registrations
+            {
+                [ComponentRegistration(Lifetime.Transient, "^MultiLeafA$", Assembly = "BunnyTail.Resolver.Tests")]
+                public static partial IServiceCollection AddExternal(this IServiceCollection services);
+            }
+            """;
+
+        var result = GeneratorTestRunner.For<ResolverGenerator>()
+            .WithAssemblyName("Demo")
+            .WithReference(typeof(SingletonAttribute).Assembly)
+            .WithReference(typeof(IServiceCollection).Assembly)
+            .WithReference(typeof(GeneratorOutputTest).Assembly)
+            .VerifyCompiles()
+            .Run(Source);
+
+        var generated = result.GeneratedSource("Demo_Registrations.g.cs");
+
+        // 外部型が規約メソッド本体に登録され、生成ファクトリも作られる
+        // The external type is registered in the convention method body and gets a generated factory.
+        Assert.Contains("global::BunnyTail.Resolver.Tests.Components.MultiLeafA", generated, StringComparison.Ordinal);
+        var components = result.GeneratedSource("GeneratedComponents.g.cs");
+        Assert.Contains("typeof(global::BunnyTail.Resolver.Tests.Components.MultiLeafA)", components, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MissingAssemblyIsReported()
+    {
+        const string Source = """
+            using BunnyTail.Resolver;
+
+            using Microsoft.Extensions.DependencyInjection;
+
+            namespace Demo;
+
+            public static partial class Registrations
+            {
+                [ComponentRegistration(Lifetime.Transient, ".*", Assembly = "No.Such.Assembly")]
+                public static partial IServiceCollection AddExternal(this IServiceCollection services);
+            }
+            """;
+
+        var result = CreateRunner().Run(Source);
+
+        Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0009");
+    }
+
     // ---- モジュール集約 / module aggregation ----
 
     [Fact]

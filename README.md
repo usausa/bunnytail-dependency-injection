@@ -96,6 +96,7 @@ public static partial class ServiceCollectionExtensions
 | `Lifetime` | Service lifetime: `Transient`, `Singleton`, or `Scoped` |
 | `Pattern` | Regex pattern to match class names to register |
 | `Namespace` | Namespace prefix to filter classes |
+| `Assembly` | Name of a referenced assembly to scan instead of the current project. Types are taken from metadata (publicly accessible classes only), so libraries without the generator can be registered by convention. An unreferenced assembly name is reported as `BTRS0009` |
 
 ### Existing Add* registrations
 
@@ -193,6 +194,7 @@ When the provider is built, every `ServiceDescriptor` is verified against the ge
 | BTRS0006 | Error | Multiple public constructors with the same maximum parameter count |
 | BTRS0007 | Error | The `PostConstruct` method is missing or is not a public parameterless instance method returning void |
 | BTRS0008 | Error | Conflicting `PostConstruct` specifications across lifetime attributes |
+| BTRS0009 | Warning | Assembly named on `[ComponentRegistration]` is not referenced by the project |
 
 ## Limitations
 
@@ -205,4 +207,3 @@ When the provider is built, every `ServiceDescriptor` is verified against the ge
 
 - [ ] Open generic definitions: extend closed-form discovery to constructor dependencies (currently `typeof(IRepository<Foo>)` usages are collected), plus a diagnostic for closed forms that stay on the runtime path with value type arguments
 - [ ] `Add*` collection coverage: non-generic `typeof` overloads, `TryAddEnumerable`, `ServiceDescriptor` based registrations and `AddKeyed*`
-- [ ] `[ComponentRegistration]` `Assembly` parameter (referenced assembly scan)

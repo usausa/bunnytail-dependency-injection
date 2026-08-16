@@ -79,7 +79,19 @@ internal sealed record CandidateModel(
     FactoryModel Factory,
     EquatableArray<string> Interfaces,
     string FilePath,
-    int SpanStart);
+    int SpanStart,
+    string? Assembly);
+
+// Assembly 指定つき規約パターンの外部走査要求と結果 (値等価: 変化した時だけ下流が再実行される)
+// External scan request and result for assembly-scoped convention patterns (value-equatable so downstream reruns only on change).
+internal sealed record ExternalRequest(
+    string Assembly,
+    string Pattern,
+    string? Namespace);
+
+internal sealed record ExternalScanResult(
+    EquatableArray<CandidateModel> Candidates,
+    EquatableArray<string> MissingAssemblies);
 
 // open generic 定義登録 (typeof オーバーロード経由。例: AddTransient(typeof(IRepo<>), typeof(Repo<>)))
 // Open generic definition registration through the typeof overload (e.g. AddTransient(typeof(IRepo<>), typeof(Repo<>))).
@@ -103,7 +115,8 @@ internal sealed record ClosedGenericUsageModel(
 internal sealed record PatternModel(
     string Lifetime,
     string Pattern,
-    string? Namespace);
+    string? Namespace,
+    string? Assembly);
 
 // [ComponentRegistration] 付き partial メソッド
 // Partial method annotated with [ComponentRegistration].

@@ -95,6 +95,14 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         "BunnyTail.Resolver",
         DiagnosticSeverity.Error,
         true);
+
+    private static readonly DiagnosticDescriptor AssemblyNotFound = new(
+        "BTRS0009",
+        "Referenced assembly not found",
+        "The assembly '{0}' specified on [ComponentRegistration] is not referenced by this project",
+        "BunnyTail.Resolver",
+        DiagnosticSeverity.Warning,
+        true);
 #pragma warning restore RS2008
 
     // ------------------------------------------------------------
@@ -160,12 +168,23 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             .Combine(context.CompilationProvider)
             .Select(static (source, _) => new EquatableArray<FactoryModel>(DiscoverClosedGenericFactories(source.Left.Left, source.Left.Right, source.Right).ToArray()));
 
+        // Assembly 指定つき規約パターンの外部走査。要求 (メソッド属性から抽出、値等価) が空なら即空を返す軽量パス。
+        // 要求がある場合のみ対象アセンブリを走査し、結果も値等価なので Execute は変化時だけ再実行される
+        // External scan for assembly-scoped convention patterns. The requests (extracted from method attributes,
+        // value-equatable) short-circuit to an empty result when absent. Only requested assemblies are scanned and
+        // the result is value-equatable, so Execute reruns only when it changes.
+        var externalCandidatesProvider = methodProvider.Collect()
+            .Select(static (methods, _) => CollectExternalRequests(methods))
+            .Combine(context.CompilationProvider)
+            .Select(static (source, _) => CollectExternalCandidates(source.Left, source.Right));
+
         var source = singletonProvider.Collect()
             .Combine(scopedProvider.Collect())
             .Combine(transientProvider.Collect())
             .Combine(collectedProvider.Collect())
             .Combine(methodProvider.Collect())
             .Combine(candidateProvider.Collect())
+            .Combine(externalCandidatesProvider)
             .Combine(closedFactoriesProvider)
             .Combine(assemblyNameProvider)
             .Combine(referencedModulesProvider);
@@ -173,7 +192,8 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         context.RegisterSourceOutput(source, static (context, source) =>
             Execute(
                 context,
-                source.Left.Left.Left.Left.Left.Left.Left.Left,
+                source.Left.Left.Left.Left.Left.Left.Left.Left.Left,
+                source.Left.Left.Left.Left.Left.Left.Left.Left.Right,
                 source.Left.Left.Left.Left.Left.Left.Left.Right,
                 source.Left.Left.Left.Left.Left.Left.Right,
                 source.Left.Left.Left.Left.Left.Right,
@@ -775,15 +795,20 @@ public sealed class ResolverGenerator : IIncrementalGenerator
                 : "Transient";
             var pattern = attribute.ConstructorArguments[1].Value as string ?? string.Empty;
             string? ns = null;
+            string? assembly = null;
             foreach (var argument in attribute.NamedArguments)
             {
                 if (argument.Key == "Namespace")
                 {
                     ns = argument.Value.Value as string;
                 }
+                else if (argument.Key == "Assembly")
+                {
+                    assembly = argument.Value.Value as string;
+                }
             }
 
-            patterns.Add(new PatternModel(lifetime, pattern, ns));
+            patterns.Add(new PatternModel(lifetime, pattern, ns, assembly));
         }
 
         var containingNamespace = symbol.ContainingType.ContainingNamespace.IsGlobalNamespace
@@ -847,7 +872,8 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             CreateFactoryModel(symbol, context.SemanticModel.Compilation.Assembly),
             CollectInterfaces(symbol),
             syntax.SyntaxTree.FilePath,
-            syntax.SpanStart);
+            syntax.SpanStart,
+            null);
     }
 
     // ------------------------------------------------------------
@@ -862,6 +888,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         ImmutableArray<CollectedModel> collected,
         ImmutableArray<Result<MethodModel>> methods,
         ImmutableArray<CandidateModel> candidates,
+        ExternalScanResult externalScan,
         EquatableArray<FactoryModel> closedFactories,
         string assemblyName,
         EquatableArray<string> referencedModules)
@@ -890,6 +917,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             .OrderBy(static x => x.FilePath, StringComparer.Ordinal)
             .ThenBy(static x => x.SpanStart)
             .ToArray();
+        var allCandidates = sortedCandidates.Concat(externalScan.Candidates).ToArray();
         var conventionMatches = new List<(MethodModel Method, List<(CandidateModel Candidate, string Lifetime)> Matches)>();
         foreach (var method in methods)
         {
@@ -913,8 +941,21 @@ public sealed class ResolverGenerator : IIncrementalGenerator
                     continue;
                 }
 
-                foreach (var candidate in sortedCandidates)
+                if ((pattern.Assembly is not null) && externalScan.MissingAssemblies.Contains(pattern.Assembly))
                 {
+                    context.ReportDiagnostic(new DiagnosticInfo(AssemblyNotFound, method.Value.Location, pattern.Assembly).ToDiagnostic());
+                    continue;
+                }
+
+                foreach (var candidate in allCandidates)
+                {
+                    // パターンの走査対象 (自コンパイル or 指定アセンブリ) と候補の出自を一致させる
+                    // The candidate origin must match the pattern's scan target (current compilation or the named assembly).
+                    if (!string.Equals(candidate.Assembly, pattern.Assembly, StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
                     if (!regex.IsMatch(candidate.Name))
                     {
                         continue;
@@ -1559,6 +1600,175 @@ public sealed class ResolverGenerator : IIncrementalGenerator
     // ------------------------------------------------------------
     // Emit
     // ------------------------------------------------------------
+
+    // Assembly 指定つき規約パターンの要求抽出。メソッド属性のみが入力なので、属性が変わらない限り値は安定
+    // Extraction of assembly-scoped convention requests. Only method attributes feed this, so the value stays stable
+    // unless the attributes change.
+    private static EquatableArray<ExternalRequest> CollectExternalRequests(ImmutableArray<Result<MethodModel>> methods)
+    {
+        var requests = new List<ExternalRequest>();
+        foreach (var method in methods)
+        {
+            if (!method.HasValue)
+            {
+                continue;
+            }
+
+            foreach (var pattern in method.Value.Patterns)
+            {
+                if (pattern.Assembly is null)
+                {
+                    continue;
+                }
+
+                var request = new ExternalRequest(pattern.Assembly, pattern.Pattern, pattern.Namespace);
+                if (!requests.Contains(request))
+                {
+                    requests.Add(request);
+                }
+            }
+        }
+
+        requests.Sort(static (x, y) =>
+        {
+            var result = string.CompareOrdinal(x.Assembly, y.Assembly);
+            if (result != 0)
+            {
+                return result;
+            }
+
+            result = string.CompareOrdinal(x.Pattern, y.Pattern);
+            return result != 0 ? result : string.CompareOrdinal(x.Namespace, y.Namespace);
+        });
+        return new EquatableArray<ExternalRequest>(requests.ToArray());
+    }
+
+    // 外部アセンブリの候補走査。要求されたアセンブリだけを歩き、名前と名前空間で絞ってから
+    // FactoryModel を構築する (シンボル解析は一致した型のみ)。不正な正規表現はここでは無視し、
+    // 診断は Execute 側の BTRS0002 が報告する
+    // Candidate scan of external assemblies. Only requested assemblies are walked, and names and namespaces are
+    // filtered before FactoryModel construction (symbol analysis touches matched types only). Invalid regexes are
+    // ignored here; BTRS0002 in Execute reports them.
+    private static ExternalScanResult CollectExternalCandidates(EquatableArray<ExternalRequest> requests, Compilation compilation)
+    {
+        if (requests.Count == 0)
+        {
+            return new ExternalScanResult(new EquatableArray<CandidateModel>([]), new EquatableArray<string>([]));
+        }
+
+        var requestMap = new Dictionary<string, List<(Regex Regex, string? Namespace)>>(StringComparer.Ordinal);
+        foreach (var request in requests)
+        {
+            Regex regex;
+            try
+            {
+                regex = new Regex(request.Pattern);
+            }
+            catch (ArgumentException)
+            {
+                continue;
+            }
+
+            if (!requestMap.TryGetValue(request.Assembly, out var list))
+            {
+                list = [];
+                requestMap[request.Assembly] = list;
+            }
+
+            list.Add((regex, request.Namespace));
+        }
+
+        var candidates = new List<CandidateModel>();
+        var missing = new List<string>();
+        foreach (var pair in requestMap.OrderBy(static x => x.Key, StringComparer.Ordinal))
+        {
+            IAssemblySymbol? assembly = null;
+            foreach (var reference in compilation.References)
+            {
+                if ((compilation.GetAssemblyOrModuleSymbol(reference) is IAssemblySymbol symbol)
+                    && string.Equals(symbol.Name, pair.Key, StringComparison.Ordinal))
+                {
+                    assembly = symbol;
+                    break;
+                }
+            }
+
+            if (assembly is null)
+            {
+                missing.Add(pair.Key);
+                continue;
+            }
+
+            CollectNamespaceCandidates(assembly.GlobalNamespace, pair.Key, pair.Value, compilation, candidates);
+        }
+
+        candidates.Sort(static (x, y) => string.CompareOrdinal(x.Factory.ImplementationType, y.Factory.ImplementationType));
+        missing.Sort(StringComparer.Ordinal);
+        return new ExternalScanResult(new EquatableArray<CandidateModel>(candidates.ToArray()), new EquatableArray<string>(missing.ToArray()));
+    }
+
+    private static void CollectNamespaceCandidates(INamespaceSymbol ns, string assemblyName, List<(Regex Regex, string? Namespace)> filters, Compilation compilation, List<CandidateModel> candidates)
+    {
+        foreach (var member in ns.GetMembers())
+        {
+            if (member is INamespaceSymbol nested)
+            {
+                CollectNamespaceCandidates(nested, assemblyName, filters, compilation, candidates);
+            }
+            else if (member is INamedTypeSymbol type)
+            {
+                CollectTypeCandidates(type, assemblyName, filters, compilation, candidates);
+            }
+        }
+    }
+
+    private static void CollectTypeCandidates(INamedTypeSymbol type, string assemblyName, List<(Regex Regex, string? Namespace)> filters, Compilation compilation, List<CandidateModel> candidates)
+    {
+        // 入れ子型も対象 (ローカル候補の構文述語と揃える) / nested types included, matching the local candidate predicate
+        foreach (var nested in type.GetTypeMembers())
+        {
+            CollectTypeCandidates(nested, assemblyName, filters, compilation, candidates);
+        }
+
+        if ((type.TypeKind != TypeKind.Class) || type.IsAbstract || type.IsStatic || (type.TypeParameters.Length > 0))
+        {
+            return;
+        }
+
+        var namespaceName = type.ContainingNamespace.IsGlobalNamespace ? string.Empty : type.ContainingNamespace.ToDisplayString();
+        var matchedFilter = false;
+        foreach (var (regex, filterNamespace) in filters)
+        {
+            if (!regex.IsMatch(type.Name))
+            {
+                continue;
+            }
+
+            if ((filterNamespace is not null)
+                && (namespaceName != filterNamespace)
+                && !namespaceName.StartsWith(filterNamespace + ".", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            matchedFilter = true;
+            break;
+        }
+
+        if (!matchedFilter || !compilation.IsSymbolAccessibleWithin(type, compilation.Assembly))
+        {
+            return;
+        }
+
+        candidates.Add(new CandidateModel(
+            type.Name,
+            namespaceName,
+            CreateFactoryModel(type, compilation.Assembly),
+            CollectInterfaces(type),
+            string.Empty,
+            0,
+            assemblyName));
+    }
 
     // 参照アセンブリの ComponentModule マーカーから生成モジュール型を収集する (AddAllComponents の集約対象)。
     // アセンブリ属性の走査のみで参照内の型列挙は行わないため、増分ビルドへの影響は参照 1 件あたり属性リスト 1 回分。

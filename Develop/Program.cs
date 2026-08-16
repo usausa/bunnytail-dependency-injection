@@ -44,6 +44,7 @@ internal static class Program
     {
         var services = new ServiceCollection();
         services.AddAllComponents();
+        services.AddLibraryWorkers();
 
         using (var provider = services.BuildResolverServiceProvider())
         {
@@ -68,6 +69,11 @@ internal static class Program
             var messageSource = provider.GetRequiredService<Develop.Library2.IMessageSource>();
             Assert(messageSource.GetMessage() == "manual module", "manual module registration");
             Assert(ReferenceEquals(messageSource, provider.GetRequiredService<Develop.Library2.IMessageSource>()), "manual module singleton identity");
+
+            // Assembly 指定の規約登録 (Generator 非参照ライブラリの素の型) / assembly scoped convention registration
+            var worker = provider.GetRequiredService<Develop.Library2.ExternalWorker>();
+            Assert(worker.Describe() == "external worker (manual module)", "assembly scoped convention registration");
+            Assert(!ReferenceEquals(worker, provider.GetRequiredService<Develop.Library2.ExternalWorker>()), "assembly scoped convention transient");
 
             // scoped はスコープ内共有・スコープ間分離 / scoped instances are shared inside a scope and distinct across scopes
             using var scope1 = provider.CreateScope();

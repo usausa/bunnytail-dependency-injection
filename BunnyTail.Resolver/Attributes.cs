@@ -58,6 +58,10 @@ public sealed class ComponentRegistrationAttribute : Attribute
 
     public string? Namespace { get; set; }
 
+    // 指定した参照アセンブリのメタデータから候補を走査する (省略時は自コンパイル)
+    // Scans candidates from the metadata of the named referenced assembly (defaults to the current compilation).
+    public string? Assembly { get; set; }
+
     public ComponentRegistrationAttribute(
         Lifetime lifetime,
         [System.Diagnostics.CodeAnalysis.StringSyntax(System.Diagnostics.CodeAnalysis.StringSyntaxAttribute.Regex)] string pattern)
