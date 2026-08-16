@@ -130,8 +130,12 @@ internal sealed class FixedTypeServiceTable
     }
 }
 
-// keyed 用。(Type, key) の複合ハッシュ 1 テーブル (Sandbox の KeyedLookupBenchmark で確定)
-// Keyed variant. Single table with a composite (Type, key) hash, settled by KeyedLookupBenchmark in the sandbox.
+// keyed 用。1 テーブル方式は Sandbox の KeyedLookupBenchmark で確定。バケット選択は key ハッシュのみで行い、
+// 型は連結内の参照比較で棄却する (type の identity hash 呼び出しをホット経路から除去)。
+// ノードに key ハッシュをキャッシュし、Equals の前に int 比較で棄却する
+// Keyed variant. The single-table design was settled by KeyedLookupBenchmark in the sandbox. Buckets are selected by
+// the key hash alone and types are rejected by reference comparison inside the chain (removing the identity-hash call
+// for the type from the hot path). Nodes cache the key hash so mismatches are rejected by an int compare before Equals.
 internal sealed class FixedKeyedServiceTable
 {
 #pragma warning disable CA1812
@@ -141,6 +145,7 @@ internal sealed class FixedKeyedServiceTable
 #pragma warning disable SA1401
     private sealed class Node
     {
+        public readonly int Hash;
         public readonly Type Type;
         public readonly object Key;
         public readonly ServiceAccessor Accessor;
@@ -152,6 +157,7 @@ internal sealed class FixedKeyedServiceTable
 
         public Node(Type type, object key, ServiceAccessor accessor)
         {
+            Hash = key.GetHashCode();
             Type = type;
             Key = key;
             Accessor = accessor;
@@ -181,8 +187,8 @@ internal sealed class FixedKeyedServiceTable
 
         foreach (var (type, key, accessor) in source)
         {
-            var index = Hash(type, key) & mask;
             var node = new Node(type, key, accessor);
+            var index = node.Hash & mask;
             if (nodes[index] == EmptyNode)
             {
                 nodes[index] = node;
@@ -201,15 +207,13 @@ internal sealed class FixedKeyedServiceTable
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int Hash(Type type, object key) => (RuntimeHelpers.GetHashCode(type) * 397) ^ key.GetHashCode();
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ServiceAccessor? Get(Type type, object key)
     {
-        var node = nodes[Hash(type, key) & mask];
+        var hash = key.GetHashCode();
+        var node = nodes[hash & mask];
         do
         {
-            if (ReferenceEquals(node.Type, type) && node.Key.Equals(key))
+            if (hash == node.Hash && ReferenceEquals(node.Type, type) && node.Key.Equals(key))
             {
                 return node.Accessor;
             }
@@ -226,10 +230,11 @@ internal sealed class FixedKeyedServiceTable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryResolve(Type type, object key, ServiceProviderScope scope, out object? value)
     {
-        var node = nodes[Hash(type, key) & mask];
+        var hash = key.GetHashCode();
+        var node = nodes[hash & mask];
         do
         {
-            if (ReferenceEquals(node.Type, type) && node.Key.Equals(key))
+            if (hash == node.Hash && ReferenceEquals(node.Type, type) && node.Key.Equals(key))
             {
                 var constant = node.Constant;
                 if (constant is not null)

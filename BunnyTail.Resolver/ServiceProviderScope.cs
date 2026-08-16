@@ -1,5 +1,6 @@
 namespace BunnyTail.Resolver;
 
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -49,14 +50,14 @@ public sealed class ServiceProviderScope :
     // Resolve (解決)
     //--------------------------------------------------------------------------------
 
-    public object? GetService(Type serviceType) => registry.Resolve(new ServiceIdentifier(serviceType, null), this);
+    public object? GetService(Type serviceType) => registry.ResolveType(serviceType, this);
 
     public object GetRequiredService(Type serviceType)
     {
         var service = GetService(serviceType);
         if (service is null)
         {
-            throw new InvalidOperationException($"No service for type '{serviceType}' has been registered.");
+            ThrowNoService(serviceType);
         }
 
         return service;
@@ -71,10 +72,10 @@ public sealed class ServiceProviderScope :
 
         if (ReferenceEquals(serviceKey, KeyedService.AnyKey) && !IsEnumerableService(serviceType))
         {
-            throw new InvalidOperationException("KeyedService.AnyKey can only be used to retrieve an IEnumerable of keyed services.");
+            ThrowAnyKeyNotEnumerable();
         }
 
-        return registry.Resolve(new ServiceIdentifier(serviceType, serviceKey), this);
+        return registry.ResolveKeyed(serviceType, serviceKey, this);
     }
 
     public object GetRequiredKeyedService(Type serviceType, object? serviceKey)
@@ -82,9 +83,7 @@ public sealed class ServiceProviderScope :
         var service = GetKeyedService(serviceType, serviceKey);
         if (service is null)
         {
-            throw serviceKey is null
-                ? new InvalidOperationException($"No service for type '{serviceType}' has been registered.")
-                : new InvalidOperationException($"No service for type '{serviceType}' and service key '{serviceKey}' has been registered.");
+            ThrowNoKeyedService(serviceType, serviceKey);
         }
 
         return service;
@@ -92,6 +91,27 @@ public sealed class ServiceProviderScope :
 
     private static bool IsEnumerableService(Type serviceType) =>
         serviceType.IsConstructedGenericType && serviceType.GetGenericTypeDefinition() == typeof(IEnumerable<>);
+
+    // throw は NoInlining ヘルパへ分離する。文字列補間の展開が呼び出し元のインライン化予算を食い潰さないようにするため
+    // Throws live in NoInlining helpers so the interpolated-string expansion does not eat the callers' inlining budget.
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ThrowNoService(Type serviceType) =>
+        throw new InvalidOperationException($"No service for type '{serviceType}' has been registered.");
+
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ThrowNoKeyedService(Type serviceType, object? serviceKey)
+    {
+        throw serviceKey is null
+            ? new InvalidOperationException($"No service for type '{serviceType}' has been registered.")
+            : new InvalidOperationException($"No service for type '{serviceType}' and service key '{serviceKey}' has been registered.");
+    }
+
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ThrowAnyKeyNotEnumerable() =>
+        throw new InvalidOperationException("KeyedService.AnyKey can only be used to retrieve an IEnumerable of keyed services.");
 
     // 生成コード用の型付き解決。sealed クラスへの直接呼び出しになり、MEDI 拡張メソッドが行う
     // ISupportRequiredService の型テストとインタフェース二重ディスパッチを回避する

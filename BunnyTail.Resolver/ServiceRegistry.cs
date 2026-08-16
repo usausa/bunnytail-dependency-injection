@@ -166,27 +166,31 @@ internal sealed class ServiceRegistry
         return fixedAccessor ?? GetEntrySlow(id);
     }
 
-    // 解決のホット経路。テーブルヒットは定数短絡込みでテーブル側が解決し、ミスのみ realization へ回る
-    // Hot resolution path. Table hits resolve inside the table (constant short-circuit included); only misses go to realization.
+    // 解決のホット経路。テーブルヒットは定数短絡込みでテーブル側が解決し、ミスのみ realization へ回る。
+    // 非 keyed / keyed でメソッドを分け、各経路に相手側テーブルの死にコードと ServiceIdentifier 構築を持ち込まない
+    // Hot resolution paths. Table hits resolve inside the table (constant short-circuit included); only misses go to
+    // realization. Split into non-keyed and keyed methods so neither path carries the other table's dead code or a
+    // ServiceIdentifier construction.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public object? Resolve(ServiceIdentifier id, ServiceProviderScope scope)
+    public object? ResolveType(Type serviceType, ServiceProviderScope scope)
     {
-        if (id.Key is null)
+        if (typeTable.TryResolve(serviceType, scope, out var value))
         {
-            if (typeTable.TryResolve(id.ServiceType, scope, out var value))
-            {
-                return value;
-            }
-        }
-        else
-        {
-            if (keyedTable.TryResolve(id.ServiceType, id.Key, scope, out var value))
-            {
-                return value;
-            }
+            return value;
         }
 
-        return GetEntrySlow(id)?.GetValue(scope);
+        return GetEntrySlow(new ServiceIdentifier(serviceType, null))?.GetValue(scope);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public object? ResolveKeyed(Type serviceType, object serviceKey, ServiceProviderScope scope)
+    {
+        if (keyedTable.TryResolve(serviceType, serviceKey, scope, out var value))
+        {
+            return value;
+        }
+
+        return GetEntrySlow(new ServiceIdentifier(serviceType, serviceKey))?.GetValue(scope);
     }
 
     // 主テーブルに無いもの: 派生エントリ (IEnumerable / closed generic / AnyKey 派生)、未実現の登録、未登録型
