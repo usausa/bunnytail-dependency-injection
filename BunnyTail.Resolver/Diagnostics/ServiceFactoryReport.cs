@@ -39,6 +39,12 @@ public sealed class ServiceFactoryReportEntry
 
     public ServiceFactoryStatus Status { get; }
 
+    // [GenerateComponentFactory] の対象にできるか。生成コードは実装型を直接 new するため、
+    // アセンブリ外から見える型でなければ指定しても BTRS0004 になる
+    // Whether the entry can be a [GenerateComponentFactory] target. The generated code news the implementation type
+    // up directly, so a type not visible outside its assembly would only report BTRS0004.
+    public bool CanGenerateFactory { get; }
+
     internal ServiceFactoryReportEntry(Type serviceType, Type? implementationType, object? serviceKey, ServiceLifetime lifetime, ServiceFactoryStatus status)
     {
         ServiceType = serviceType;
@@ -46,6 +52,24 @@ public sealed class ServiceFactoryReportEntry
         ServiceKey = serviceKey;
         Lifetime = lifetime;
         Status = status;
+        CanGenerateFactory = (implementationType is not null) && IsPubliclyVisible(implementationType);
+    }
+
+    // 生成コードは対象型を直接 new するため、アセンブリ外から見える型だけが候補になる
+    // The generated code news the type up directly, so only types visible outside their assembly are candidates.
+    private static bool IsPubliclyVisible(Type type)
+    {
+        while (type.IsNested)
+        {
+            if (!type.IsNestedPublic || (type.DeclaringType is null))
+            {
+                return false;
+            }
+
+            type = type.DeclaringType;
+        }
+
+        return type.IsPublic;
     }
 }
 
@@ -64,25 +88,41 @@ public static class ServiceFactoryReportExtensions
         return provider.Registry.CreateFactoryReport();
     }
 
-    // [GenerateComponentFactory] の追加候補だけを、そのまま貼り付けられる属性行として書き出す
-    // Writes the [GenerateComponentFactory] candidates as attribute lines ready to paste.
-    public static string DescribeRuntimeFallbacks(this ResolverServiceProvider provider)
+    // [GenerateComponentFactory] の追加候補だけを、そのまま貼り付けられる属性行として書き出す。
+    // 実行時経路かつ生成可能なエントリが対象で、predicate を渡すとさらに絞り込める
+    // (例: singleton は一度しか構築されないため除く、特定アセンブリだけに限る、など)。
+    // formatter を渡すと 1 行の書式を差し替えられる。C# として正しい型名 (入れ子は '.'、構築済み
+    // ジェネリックは山かっこ) が渡されるので、整形をやり直す必要はない
+    // Writes the [GenerateComponentFactory] candidates as attribute lines ready to paste. Entries on the runtime
+    // path that can actually be generated are considered, and a predicate narrows the set further (for example
+    // excluding singletons, which are constructed once, or limiting it to one assembly). A formatter replaces the
+    // per-line format; it receives a type name already valid in C# (nesting as '.', constructed generics in angle
+    // brackets), so it never has to redo the formatting.
+    public static string DescribeRuntimeFallbacks(
+        this ResolverServiceProvider provider,
+        Func<ServiceFactoryReportEntry, bool>? predicate = null,
+        Func<ServiceFactoryReportEntry, string, string>? formatter = null)
     {
         var builder = new StringBuilder();
+        var typeName = new StringBuilder();
         var written = new HashSet<Type>();
         foreach (var entry in provider.CreateFactoryReport())
         {
             if ((entry.Status != ServiceFactoryStatus.RuntimeFallback)
+                || !entry.CanGenerateFactory
                 || (entry.ImplementationType is null)
-                || !IsPubliclyVisible(entry.ImplementationType)
+                || ((predicate is not null) && !predicate(entry))
                 || !written.Add(entry.ImplementationType))
             {
                 continue;
             }
 
-            _ = builder.Append("[assembly: global::BunnyTail.Resolver.GenerateComponentFactory(typeof(global::");
-            AppendTypeName(builder, entry.ImplementationType);
-            _ = builder.AppendLine("))]");
+            _ = typeName.Clear();
+            AppendTypeName(typeName, entry.ImplementationType);
+
+            _ = formatter is null
+                ? builder.Append("[assembly: global::BunnyTail.Resolver.GenerateComponentFactory(typeof(global::").Append(typeName).AppendLine("))]")
+                : builder.AppendLine(formatter(entry, typeName.ToString()));
         }
 
         return builder.ToString();
@@ -127,22 +167,5 @@ public static class ServiceFactoryReportExtensions
         }
 
         _ = builder.Append('>');
-    }
-
-    // 生成コードは対象型を直接 new するため、アセンブリ外から見える型だけが候補になる
-    // The generated code news the type up directly, so only types visible outside their assembly are candidates.
-    private static bool IsPubliclyVisible(Type type)
-    {
-        while (type.IsNested)
-        {
-            if (!type.IsNestedPublic || (type.DeclaringType is null))
-            {
-                return false;
-            }
-
-            type = type.DeclaringType;
-        }
-
-        return type.IsPublic;
     }
 }

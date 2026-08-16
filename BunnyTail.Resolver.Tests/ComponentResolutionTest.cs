@@ -92,6 +92,38 @@ public sealed class ComponentResolutionTest
     }
 
     [Fact]
+    public void FactoryReportDescribeAcceptsPredicate()
+    {
+        var services = new ServiceCollection().AddGeneratedComponents();
+        services.Add(ServiceDescriptor.Describe(typeof(UntrackedProbe), typeof(UntrackedProbe), ServiceLifetime.Transient));
+        using var provider = services.BuildGeneratedServiceProvider();
+
+        // 述語で絞り込める (ここでは transient を除外するので候補が消える)
+        // A predicate narrows the set; excluding transients here leaves no candidate.
+        var all = provider.DescribeRuntimeFallbacks();
+        var filtered = provider.DescribeRuntimeFallbacks(static x => x.Lifetime != ServiceLifetime.Transient);
+
+        Assert.Contains(typeof(UntrackedProbe).FullName!, all, StringComparison.Ordinal);
+        Assert.DoesNotContain(typeof(UntrackedProbe).FullName!, filtered, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FactoryReportDescribeAcceptsFormatter()
+    {
+        var services = new ServiceCollection().AddGeneratedComponents();
+        services.Add(ServiceDescriptor.Describe(typeof(UntrackedProbe), typeof(UntrackedProbe), ServiceLifetime.Transient));
+        using var provider = services.BuildGeneratedServiceProvider();
+
+        // 書式を差し替えられる。型名は C# として正しい形で渡される
+        // The format can be replaced; the type name arrives already valid in C#.
+        var text = provider.DescribeRuntimeFallbacks(
+            formatter: static (entry, typeName) => $"{entry.Lifetime}: {typeName}");
+
+        Assert.Contains($"Transient: {typeof(UntrackedProbe).FullName!.Replace('+', '.')}", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("[assembly:", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void SingletonIsSameAcrossScopes()
     {
         using var provider = CreateProvider();

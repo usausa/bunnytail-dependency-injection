@@ -43,8 +43,10 @@ if (app.Services is ResolverServiceProvider resolverProvider)
         _ = text.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"{entry.Lifetime,-9} {entry.ServiceType.Name} -> {entry.ImplementationType?.Name}");
     }
 
-    _ = text.AppendLine("---- suggested attributes ----")
-        .Append(resolverProvider.DescribeRuntimeFallbacks())
+    // singleton は起動時に一度しか構築されないため、効果が出る transient / scoped だけに絞る
+    // Singletons are constructed once at startup, so the suggestion is narrowed to the transient and scoped ones that pay off.
+    _ = text.AppendLine("---- suggested attributes (transient / scoped only) ----")
+        .Append(resolverProvider.DescribeRuntimeFallbacks(static x => x.Lifetime != ServiceLifetime.Singleton))
         .AppendLine("--------------------------------");
     Console.Write(text.ToString());
 }

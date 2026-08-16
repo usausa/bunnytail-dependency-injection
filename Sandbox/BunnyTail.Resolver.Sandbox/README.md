@@ -12,6 +12,7 @@ DI 固有の設計判断を検証するためのベンチマーク。ライブ�
 | `DisposalTrackingBenchmark` | transient の disposal 追跡コスト | 「transient も追跡して破棄する」は MEDI 互換のための制約。追跡要否を生成時に型で確定する効果を測る |
 | `EnumerableMaterializationBenchmark` | `IEnumerable<T>` 実体化の配列生成方式 | 要素型が実行時にしか判らないのに `T[]` の実体を返す必要があり、transient 要素は解決のたびに再構築するという DI 固有の制約下の比較 |
 | `ResolutionEntryBenchmark` | 解決エントリの形状(accessor 仮想呼び出し vs 定数短絡) | サービステーブルのエントリが「lifetime 管理する仮想層」を持つか「解決済みインスタンスを直接持つか」という DI コンテナ固有の設計比較(逆アセンブル付き) |
+| `EnumerableConsumptionBenchmark` | 解決した `IEnumerable<T>` の消費形状(インタフェース列挙 vs `T[]` キャスト列挙) | コンテナは MEDI 互換のため `T[]` を実体化して返すのに、利用側がインタフェース越しに列挙すると enumerator 確保が乗る。NativeAOT では escape analysis が効かず差が表面化する(AOT 実測: 44.5ns/32B → 12.0ns/0B) |
 
 ## dotnet-performance を参照する項目
 

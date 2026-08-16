@@ -96,7 +96,7 @@ public static partial class ServiceCollectionExtensions
 | `Lifetime` | Service lifetime: `Transient`, `Singleton`, or `Scoped` |
 | `Pattern` | Regex pattern to match class names to register |
 | `Namespace` | Namespace prefix to filter classes |
-| `Assembly` | Name of a referenced assembly to scan instead of the current project. Types are taken from metadata (publicly accessible classes only), so libraries without the generator can be registered by convention. An unreferenced assembly name is reported as `BTRS0009` |
+| `Assembly` | Name of a referenced assembly to scan instead of the current project. Types are taken from metadata (publicly accessible classes only), so libraries without the generator can be registered by convention. An unreferenced assembly name is reported as `BTRS0003` |
 
 ### Existing Add* registrations
 
@@ -126,7 +126,7 @@ A `PostConstruct` method name can be specified for types you cannot annotate. It
 [assembly: GenerateComponentFactory(typeof(SomeLibrary.SomeService), PostConstruct = nameof(SomeLibrary.SomeService.Initialize))]
 ```
 
-Only publicly accessible concrete classes with a usable public constructor are eligible; anything else reports `BTRS0011`, and an invalid `PostConstruct` name reports `BTRS0007`.
+Only publicly accessible concrete classes with a usable public constructor are eligible; anything else reports `BTRS0004`, and an invalid `PostConstruct` name reports `BTRS0006`.
 
 To find the types worth marking, ask the built provider which registrations fell back at runtime. This is a development-time diagnostic — it realizes every entry (without creating instances), so keep it out of release paths:
 
@@ -135,6 +135,9 @@ using BunnyTail.Resolver.Diagnostics;
 
 // Ready-to-paste attribute lines, limited to types the generated code can actually construct
 Console.Write(provider.DescribeRuntimeFallbacks());
+
+// A predicate narrows it further — singletons are constructed once, so they rarely pay off
+Console.Write(provider.DescribeRuntimeFallbacks(static x => x.Lifetime != ServiceLifetime.Singleton));
 
 // Or inspect the full classification
 foreach (var entry in provider.CreateFactoryReport())
@@ -320,17 +323,17 @@ When the provider is built, every `ServiceDescriptor` is verified against the ge
 
 | ID | Severity | Description |
 |---|---|---|
-| BTRS0001 | Error | Registration method must be a static partial extension method with an `IServiceCollection` parameter and return type |
+| BTRS0001 | Error | `[ComponentRegistration]` method is not a static partial extension method with the required signature |
 | BTRS0002 | Warning | Registration pattern is not a valid regular expression |
-| BTRS0003 | Error | Circular dependency detected at compile time |
-| BTRS0004 | Warning | Dependency cannot be resolved from the registrations visible at compile time |
-| BTRS0005 | Warning | Captive dependency (singleton component depends on a scoped service) |
-| BTRS0006 | Error | Multiple public constructors with the same maximum parameter count |
-| BTRS0007 | Error | The `PostConstruct` method is missing or is not a public parameterless instance method returning void |
-| BTRS0008 | Error | Conflicting `PostConstruct` specifications across lifetime attributes |
-| BTRS0009 | Warning | Assembly named on `[ComponentRegistration]` is not referenced by the project |
-| BTRS0010 | Warning | Closed generic with value type arguments has no generated factory and resolves through the runtime path, which fails on NativeAOT |
-| BTRS0011 | Warning | `[GenerateComponentFactory]` target is not a publicly accessible concrete class with a usable public constructor |
+| BTRS0003 | Warning | Assembly named on `[ComponentRegistration]` is not referenced by the project |
+| BTRS0004 | Warning | `[GenerateComponentFactory]` target is not a publicly accessible concrete class with a usable public constructor |
+| BTRS0005 | Error | Multiple public constructors share the same maximum parameter count |
+| BTRS0006 | Error | `PostConstruct` method is not a public parameterless instance method returning void |
+| BTRS0007 | Error | Conflicting `PostConstruct` specifications across lifetime attributes |
+| BTRS0008 | Error | Circular dependency between components |
+| BTRS0009 | Warning | Dependency cannot be resolved from the registrations visible at compile time |
+| BTRS0010 | Warning | Captive dependency: a singleton depends on a scoped service |
+| BTRS0011 | Warning | Closed generic with value type arguments has no generated factory and resolves through the runtime path, which fails on NativeAOT |
 
 ## Samples
 
@@ -344,7 +347,7 @@ When the provider is built, every `ServiceDescriptor` is verified against the ge
 ## Limitations
 
 * Runtime targets .NET 10 or later (the generator itself is netstandard2.0)
-* Open generic definition registrations (`typeof(IRepository<>)`): closed forms appearing in code — as `typeof(IRepository<Foo>)`, constructor parameters or property types — get generated factories and are fully AOT safe, including value type arguments. Closed forms known only at runtime are served by the runtime path, where value type arguments are not supported on NativeAOT (`BTRS0010` warns about compile-time visible cases)
+* Open generic definition registrations (`typeof(IRepository<>)`): closed forms appearing in code — as `typeof(IRepository<Foo>)`, constructor parameters or property types — get generated factories and are fully AOT safe, including value type arguments. Closed forms known only at runtime are served by the runtime path, where value type arguments are not supported on NativeAOT (`BTRS0011` warns about compile-time visible cases)
 * Method injection is not supported
 * On trimmed applications, `[Inject]` properties are only guaranteed for types with compile-time visible registrations
 * Resolved `IEnumerable<T>` services are materialized `T[]` arrays (MEDI compatible). On NativeAOT, enumerating through the interface allocates the enumerator (32 B) and dispatches per element; casting the result to `T[]` enumerates allocation-free and roughly 3x faster on hot paths

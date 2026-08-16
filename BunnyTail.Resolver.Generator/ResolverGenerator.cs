@@ -35,6 +35,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
     // ------------------------------------------------------------
 
 #pragma warning disable RS2008
+    // 指定の解析 (BTRS0001-0004) / directive parsing
     private static readonly DiagnosticDescriptor InvalidMethodDefinition = new(
         "BTRS0001",
         "Invalid registration method",
@@ -51,56 +52,8 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         DiagnosticSeverity.Warning,
         true);
 
-    private static readonly DiagnosticDescriptor CircularDependency = new(
-        "BTRS0003",
-        "Circular dependency",
-        "A circular dependency was detected: {0}",
-        "BunnyTail.Resolver",
-        DiagnosticSeverity.Error,
-        true);
-
-    private static readonly DiagnosticDescriptor UnresolvedDependency = new(
-        "BTRS0004",
-        "Unresolved dependency",
-        "Unable to resolve dependency '{0}' required by '{1}' from the registrations visible at compile time",
-        "BunnyTail.Resolver",
-        DiagnosticSeverity.Warning,
-        true);
-
-    private static readonly DiagnosticDescriptor CaptiveDependency = new(
-        "BTRS0005",
-        "Captive dependency",
-        "Singleton component '{0}' depends on scoped service '{1}'",
-        "BunnyTail.Resolver",
-        DiagnosticSeverity.Warning,
-        true);
-
-    private static readonly DiagnosticDescriptor AmbiguousConstructor = new(
-        "BTRS0006",
-        "Ambiguous constructor",
-        "Type '{0}' has multiple public constructors with the same maximum parameter count",
-        "BunnyTail.Resolver",
-        DiagnosticSeverity.Error,
-        true);
-
-    private static readonly DiagnosticDescriptor InvalidPostConstruct = new(
-        "BTRS0007",
-        "Invalid PostConstruct method",
-        "The PostConstruct method '{0}' on type '{1}' must be a public parameterless instance method returning void",
-        "BunnyTail.Resolver",
-        DiagnosticSeverity.Error,
-        true);
-
-    private static readonly DiagnosticDescriptor ConflictingPostConstruct = new(
-        "BTRS0008",
-        "Conflicting PostConstruct specifications",
-        "Type '{0}' has conflicting PostConstruct specifications across its lifetime attributes",
-        "BunnyTail.Resolver",
-        DiagnosticSeverity.Error,
-        true);
-
     private static readonly DiagnosticDescriptor AssemblyNotFound = new(
-        "BTRS0009",
+        "BTRS0003",
         "Referenced assembly not found",
         "The assembly '{0}' specified on [ComponentRegistration] is not referenced by this project",
         "BunnyTail.Resolver",
@@ -108,15 +61,66 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         true);
 
     private static readonly DiagnosticDescriptor InvalidGenerateComponentFactoryTarget = new(
-        "BTRS0011",
+        "BTRS0004",
         "Invalid GenerateComponentFactory target",
         "The type '{0}' specified on [GenerateComponentFactory] must be a publicly accessible concrete class with a usable public constructor",
         "BunnyTail.Resolver",
         DiagnosticSeverity.Warning,
         true);
 
-    private static readonly DiagnosticDescriptor ValueTypeRuntimeGeneric = new(
+    // 型の解析 (BTRS0005-0007) / per-type analysis
+    private static readonly DiagnosticDescriptor AmbiguousConstructor = new(
+        "BTRS0005",
+        "Ambiguous constructor",
+        "Type '{0}' has multiple public constructors with the same maximum parameter count",
+        "BunnyTail.Resolver",
+        DiagnosticSeverity.Error,
+        true);
+
+    private static readonly DiagnosticDescriptor InvalidPostConstruct = new(
+        "BTRS0006",
+        "Invalid PostConstruct method",
+        "The PostConstruct method '{0}' on type '{1}' must be a public parameterless instance method returning void",
+        "BunnyTail.Resolver",
+        DiagnosticSeverity.Error,
+        true);
+
+    private static readonly DiagnosticDescriptor ConflictingPostConstruct = new(
+        "BTRS0007",
+        "Conflicting PostConstruct specifications",
+        "Type '{0}' has conflicting PostConstruct specifications across its lifetime attributes",
+        "BunnyTail.Resolver",
+        DiagnosticSeverity.Error,
+        true);
+
+    // 依存グラフの解析 (BTRS0008-0010) / dependency graph analysis
+    private static readonly DiagnosticDescriptor CircularDependency = new(
+        "BTRS0008",
+        "Circular dependency",
+        "A circular dependency was detected: {0}",
+        "BunnyTail.Resolver",
+        DiagnosticSeverity.Error,
+        true);
+
+    private static readonly DiagnosticDescriptor UnresolvedDependency = new(
+        "BTRS0009",
+        "Unresolved dependency",
+        "Unable to resolve dependency '{0}' required by '{1}' from the registrations visible at compile time",
+        "BunnyTail.Resolver",
+        DiagnosticSeverity.Warning,
+        true);
+
+    private static readonly DiagnosticDescriptor CaptiveDependency = new(
         "BTRS0010",
+        "Captive dependency",
+        "Singleton component '{0}' depends on scoped service '{1}'",
+        "BunnyTail.Resolver",
+        DiagnosticSeverity.Warning,
+        true);
+
+    // 生成の限界 (BTRS0011) / generation limit
+    private static readonly DiagnosticDescriptor ValueTypeRuntimeGeneric = new(
+        "BTRS0011",
         "Closed generic with value type arguments on the runtime path",
         "The closed generic type '{0}' has value type arguments but no generated factory, so it resolves through the runtime path, which is not supported on NativeAOT",
         "BunnyTail.Resolver",
@@ -268,8 +272,8 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             .ToArray();
         var constructor = constructors.Length > 0 ? constructors[0] : null;
 
-        // 同数の最大コンストラクタが複数あり、互いに superset でない場合は曖昧 (BTRS0006)
-        // Ambiguous when multiple constructors share the maximum parameter count and are not supersets of each other (BTRS0006).
+        // 同数の最大コンストラクタが複数あり、互いに superset でない場合は曖昧 (BTRS0005)
+        // Ambiguous when multiple constructors share the maximum parameter count and are not supersets of each other (BTRS0005).
         var ambiguous = false;
         if ((constructors.Length > 1) && (constructors[0].Parameters.Length == constructors[1].Parameters.Length))
         {
@@ -355,8 +359,8 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             }
         }
 
-        // 初期化コールバック: ライフタイム属性の PostConstruct 指定を収集する (相違があれば BTRS0008)
-        // Initialization callback: collect PostConstruct from lifetime attributes (BTRS0008 when they disagree).
+        // 初期化コールバック: ライフタイム属性の PostConstruct 指定を収集する (相違があれば BTRS0007)
+        // Initialization callback: collect PostConstruct from lifetime attributes (BTRS0007 when they disagree).
         string? postConstruct = null;
         var conflictingPostConstruct = false;
         foreach (var attribute in symbol.GetAttributes())
@@ -986,8 +990,8 @@ public sealed class ResolverGenerator : IIncrementalGenerator
                 continue;
             }
 
-            // PostConstruct 指定は属性由来の値より優先する。妥当でなければ BTRS0007
-            // The PostConstruct specification wins over the attribute derived value; an invalid one reports BTRS0007.
+            // PostConstruct 指定は属性由来の値より優先する。妥当でなければ BTRS0006
+            // The PostConstruct specification wins over the attribute derived value; an invalid one reports BTRS0006.
             if (postConstruct is not null)
             {
                 if (!HasValidPostConstructMethod(type, postConstruct))
@@ -1280,11 +1284,11 @@ public sealed class ResolverGenerator : IIncrementalGenerator
 
         // open generic 登録の閉型使用から作られた生成ファクトリ (パイプライン側で解決済み)。実行時は open generic 実現
         // (MakeGenericType → 閉じた実装型) が採用フック (TryGet) で自動的にこれを拾う。
-        // 値型引数のまま実行時経路に残る使用は NativeAOT で失敗するため BTRS0010 を報告する
+        // 値型引数のまま実行時経路に残る使用は NativeAOT で失敗するため BTRS0011 を報告する
         // Generated factories built from closed usages of open generic registrations (resolved on the pipeline side).
         // At runtime the open generic realization (MakeGenericType into the closed implementation) picks them up
         // through the adoption hook (TryGet). Usages left on the runtime path with value type arguments fail on
-        // NativeAOT, so BTRS0010 is reported for them.
+        // NativeAOT, so BTRS0011 is reported for them.
         foreach (var factory in closedGenerics.Factories)
         {
             if (emittedUnkeyed.Add(factory.ImplementationType))
@@ -1473,9 +1477,9 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         var warnings = new List<ClosedGenericWarningModel>();
 
         // 定義キー → 実装 (同一キーの再登録は後勝ち: 実行時の last-wins と一致)。キー集合は使用が無くても
-        // BTRS0004 の解決可能性判定に使うため常に返す
+        // BTRS0009 の解決可能性判定に使うため常に返す
         // Definition key -> implementation (re-registrations are last-wins, matching runtime behavior). The key set
-        // is always returned because BTRS0004 resolvability checks need it even without usages.
+        // is always returned because BTRS0009 resolvability checks need it even without usages.
         var registrations = new Dictionary<string, OpenGenericModel>(StringComparer.Ordinal);
         foreach (var model in openGenerics.OrderBy(static x => x.FilePath, StringComparer.Ordinal).ThenBy(static x => x.SpanStart))
         {
@@ -1705,8 +1709,8 @@ public sealed class ResolverGenerator : IIncrementalGenerator
 
         static string Display(string typeName) => typeName.StartsWith("global::", StringComparison.Ordinal) ? typeName.Substring(8) : typeName;
 
-        // BTRS0004 (未解決) / BTRS0005 (captive) / BTRS0006 (曖昧 ctor) — 属性コンポーネント起点
-        // BTRS0004 (unresolved) / BTRS0005 (captive) / BTRS0006 (ambiguous ctor) reported from attribute components.
+        // BTRS0009 (未解決) / BTRS0010 (captive) / BTRS0005 (曖昧 ctor) — 属性コンポーネント起点
+        // BTRS0009 (unresolved) / BTRS0010 (captive) / BTRS0005 (ambiguous ctor) reported from attribute components.
         foreach (var component in components)
         {
             if (component.Factory.AmbiguousConstructor)
@@ -1751,8 +1755,8 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             }
         }
 
-        // BTRS0003 (循環) — 生成対象ノード全体で DFS
-        // BTRS0003 (cycles) — DFS over all generation target nodes.
+        // BTRS0008 (循環) — 生成対象ノード全体で DFS
+        // BTRS0008 (cycles) — DFS over all generation target nodes.
         var state = new Dictionary<string, int>(StringComparer.Ordinal);   // 0=未訪問 1=探索中 2=完了 / 0=unvisited 1=visiting 2=done
         var reported = new HashSet<string>(StringComparer.Ordinal);
         foreach (var node in nodes.Keys)
@@ -1976,7 +1980,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         var factory = map.GetTarget(serviceTypeName);
         if ((factory is null) || stack.Contains(factory.ImplementationType))
         {
-            return null;   // 展開不可 or 循環 / not expandable or cyclic (cycles themselves error separately via BTRS0003)
+            return null;   // 展開不可 or 循環 / not expandable or cyclic (cycles themselves error separately via BTRS0008)
         }
 
         stack.Add(factory.ImplementationType);

@@ -146,9 +146,9 @@ internal sealed class ServiceRegistry
 
     private int NextSlot() => Interlocked.Increment(ref slotCounter) - 1;
 
-    // 開発時診断 (ServiceFactoryReport)。各登録を実現して、生成ファクトリが採用されたかを分類する。
+    // 開発時診断 (Diagnostics.ServiceFactoryReportExtensions)。各登録を実現して、生成ファクトリが採用されたかを分類する。
     // 実現は accessor の構築までで、インスタンスは生成しない
-    // Development-time diagnostics (ServiceFactoryReport): realizes every registration and classifies whether a
+    // Development-time diagnostics (Diagnostics.ServiceFactoryReportExtensions): realizes every registration and classifies whether a
     // generated factory was adopted. Realization builds accessors only and never creates instances.
     internal List<Diagnostics.ServiceFactoryReportEntry> CreateFactoryReport()
     {

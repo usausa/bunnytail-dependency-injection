@@ -168,7 +168,7 @@ public sealed class GeneratorOutputTest
 
         var result = CreateRunner().Run(Source);
 
-        Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0003");
+        Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0008");
     }
 
     [Fact]
@@ -187,7 +187,7 @@ public sealed class GeneratorOutputTest
 
         var result = CreateRunner().Run(Source);
 
-        Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0004");
+        Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0009");
     }
 
     [Fact]
@@ -207,7 +207,7 @@ public sealed class GeneratorOutputTest
 
         var result = CreateRunner().Run(Source);
 
-        Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0005");
+        Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0010");
     }
 
     [Fact]
@@ -235,7 +235,7 @@ public sealed class GeneratorOutputTest
 
         var result = CreateRunner().Run(Source);
 
-        Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0006");
+        Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0005");
     }
 
     [Fact]
@@ -329,8 +329,8 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void TransientCycleDoesNotBreakInlineExpansion()
     {
-        // 循環は BTRS0003 (Error) だが、インライン展開自体は無限再帰せず生成が完了すること
-        // Cycles are BTRS0003 (Error), but inline expansion itself must finish generation without infinite recursion.
+        // 循環は BTRS0008 (Error) だが、インライン展開自体は無限再帰せず生成が完了すること
+        // Cycles are BTRS0008 (Error), but inline expansion itself must finish generation without infinite recursion.
         const string Source = """
             using BunnyTail.Resolver;
 
@@ -345,7 +345,7 @@ public sealed class GeneratorOutputTest
 
         var result = CreateRunner().Run(Source);
 
-        Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0003");
+        Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0008");
 
         // 循環箇所はアクセサスロットへフォールバックして出力される (実行時は採用検証が循環を検出する)
         // The cyclic edge falls back to an accessor slot (adoption validation detects the cycle at runtime).
@@ -494,7 +494,7 @@ public sealed class GeneratorOutputTest
 
         var result = CreateRunner().Run(Source);
 
-        Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0007");
+        Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0006");
     }
 
     [Fact]
@@ -512,7 +512,7 @@ public sealed class GeneratorOutputTest
 
         var result = CreateRunner().Run(Source);
 
-        Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0011");
+        Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0004");
     }
 
     // ---- Assembly 指定の規約登録 / assembly scoped convention registration ----
@@ -572,7 +572,7 @@ public sealed class GeneratorOutputTest
 
         var result = CreateRunner().Run(Source);
 
-        Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0009");
+        Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0003");
     }
 
     // ---- モジュール集約 / module aggregation ----
@@ -720,10 +720,10 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void ValueTypeRuntimeGenericIsReported()
     {
-        // 既定値付き ctor で生成不適格 → 値型引数の閉型が実行時経路に残る → BTRS0010。
+        // 既定値付き ctor で生成不適格 → 値型引数の閉型が実行時経路に残る → BTRS0011。
         // 参照型引数側は AOT でも動くため警告しない
         // A default-valued constructor makes generation ineligible, leaving the closed forms on the runtime path.
-        // The value type argument case reports BTRS0010; the reference type case works on AOT and stays silent.
+        // The value type argument case reports BTRS0011; the reference type case works on AOT and stays silent.
         const string Source = """
             using Microsoft.Extensions.DependencyInjection;
 
@@ -758,7 +758,7 @@ public sealed class GeneratorOutputTest
 
         var result = CreateRunner().Run(Source);
 
-        var diagnostics = result.Diagnostics(["BTRS"]).Where(static x => x.Id == "BTRS0010").ToArray();
+        var diagnostics = result.Diagnostics(["BTRS"]).Where(static x => x.Id == "BTRS0011").ToArray();
         Assert.Single(diagnostics);
         Assert.Contains("Repository<int>", diagnostics[0].GetMessage(null), StringComparison.Ordinal);
     }
@@ -873,7 +873,7 @@ public sealed class GeneratorOutputTest
 
         var result = CreateRunner().Run(Source);
 
-        Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0007");
+        Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0006");
     }
 
     [Fact]
@@ -900,7 +900,7 @@ public sealed class GeneratorOutputTest
 
         var result = CreateRunner().Run(Source);
 
-        Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0008");
+        Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0007");
     }
 
     [Fact]

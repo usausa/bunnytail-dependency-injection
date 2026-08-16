@@ -126,9 +126,9 @@ internal sealed record ClosedGenericUsageModel(
     int SpanStart,
     LocationInfo? Location);
 
-// closed generic 発見の結果。生成できた factory と、値型引数のまま実行時経路に残る使用への警告 (BTRS0010)
+// closed generic 発見の結果。生成できた factory と、値型引数のまま実行時経路に残る使用への警告 (BTRS0011)
 // Result of closed generic discovery: generated factories plus warnings for usages left on the runtime path
-// with value type arguments (BTRS0010).
+// with value type arguments (BTRS0011).
 internal sealed record ClosedGenericScanResult(
     EquatableArray<FactoryModel> Factories,
     EquatableArray<ClosedGenericWarningModel> Warnings,
