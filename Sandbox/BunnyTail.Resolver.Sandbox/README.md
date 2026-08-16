@@ -10,6 +10,8 @@ DI 固有の設計判断を検証するためのベンチマーク。ライブ�
 |---|---|---|
 | `KeyedLookupBenchmark` | keyed services の `(Type, key)` lookup 構造 | MEDI の keyed services は「同一サービス型 × 複数キー」という形状を持ち、単一 `Type` キーのテーブルでは答えが出ない |
 | `DisposalTrackingBenchmark` | transient の disposal 追跡コスト | 「transient も追跡して破棄する」は MEDI 互換のための制約。追跡要否を生成時に型で確定する効果を測る |
+| `EnumerableMaterializationBenchmark` | `IEnumerable<T>` 実体化の配列生成方式 | 要素型が実行時にしか判らないのに `T[]` の実体を返す必要があり、transient 要素は解決のたびに再構築するという DI 固有の制約下の比較 |
+| `ResolutionEntryBenchmark` | 解決エントリの形状(accessor 仮想呼び出し vs 定数短絡) | サービステーブルのエントリが「lifetime 管理する仮想層」を持つか「解決済みインスタンスを直接持つか」という DI コンテナ固有の設計比較(逆アセンブル付き) |
 
 ## dotnet-performance を参照する項目
 

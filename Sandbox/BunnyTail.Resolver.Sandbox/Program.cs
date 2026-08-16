@@ -6,12 +6,6 @@ using BunnyTail.Resolver.Sandbox;
 // Equivalence of all candidates is verified before every measurement.
 Verify.RunAll();
 
-if (args.Contains("--diagnose"))
-{
-    Diagnose.Run();
-    return;
-}
-
 if (args.Contains("--verify"))
 {
     return;
