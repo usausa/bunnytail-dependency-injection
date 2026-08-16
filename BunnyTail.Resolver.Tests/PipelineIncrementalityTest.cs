@@ -66,7 +66,11 @@ public sealed class PipelineIncrementalityTest
     public void UnrelatedEditKeepsOutputCached()
     {
         var parseOptions = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview);
-        var componentTree = CSharpSyntaxTree.ParseText(ComponentSource, parseOptions, path: "Components.cs");
+        var componentTree = CSharpSyntaxTree.ParseText(
+            ComponentSource,
+            parseOptions,
+            path: "Components.cs",
+            cancellationToken: TestContext.Current.CancellationToken);
         var bodyTree = CSharpSyntaxTree.ParseText(
             """
             namespace Demo;
@@ -77,10 +81,11 @@ public sealed class PipelineIncrementalityTest
             }
             """,
             parseOptions,
-            path: "Runner.cs");
+            path: "Runner.cs",
+            cancellationToken: TestContext.Current.CancellationToken);
 
         var compilation = CreateCompilation(componentTree, bodyTree);
-        var driver = CreateDriver().RunGenerators(compilation);
+        var driver = CreateDriver().RunGenerators(compilation, TestContext.Current.CancellationToken);
 
         // メソッド本体だけの編集 (モデル不変) / a method body only edit that leaves every model unchanged
         var editedBody = CSharpSyntaxTree.ParseText(
@@ -93,8 +98,9 @@ public sealed class PipelineIncrementalityTest
             }
             """,
             parseOptions,
-            path: "Runner.cs");
-        driver = driver.RunGenerators(compilation.ReplaceSyntaxTree(bodyTree, editedBody));
+            path: "Runner.cs",
+            cancellationToken: TestContext.Current.CancellationToken);
+        driver = driver.RunGenerators(compilation.ReplaceSyntaxTree(bodyTree, editedBody), TestContext.Current.CancellationToken);
 
         // Assembly 指定の外部走査を含む状態でも、出力段はすべて Cached = Execute は再実行されない
         // Even with the assembly-scoped external scan active, every output stays cached and Execute is not rerun.
@@ -107,10 +113,14 @@ public sealed class PipelineIncrementalityTest
     public void ComponentEditRegeneratesOutput()
     {
         var parseOptions = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview);
-        var componentTree = CSharpSyntaxTree.ParseText(ComponentSource, parseOptions, path: "Components.cs");
+        var componentTree = CSharpSyntaxTree.ParseText(
+            ComponentSource,
+            parseOptions,
+            path: "Components.cs",
+            cancellationToken: TestContext.Current.CancellationToken);
 
         var compilation = CreateCompilation(componentTree);
-        var driver = CreateDriver().RunGenerators(compilation);
+        var driver = CreateDriver().RunGenerators(compilation, TestContext.Current.CancellationToken);
 
         // コンポーネント追加 (モデル変化) では出力が再生成されること (追跡が空振りしていない対照)
         // Adding a component (a model change) must regenerate the output, proving the tracking is not vacuous.
@@ -125,8 +135,9 @@ public sealed class PipelineIncrementalityTest
             }
             """,
             parseOptions,
-            path: "Components.cs");
-        driver = driver.RunGenerators(compilation.ReplaceSyntaxTree(componentTree, editedTree));
+            path: "Components.cs",
+            cancellationToken: TestContext.Current.CancellationToken);
+        driver = driver.RunGenerators(compilation.ReplaceSyntaxTree(componentTree, editedTree), TestContext.Current.CancellationToken);
 
         var reasons = OutputReasons(driver);
         Assert.NotEmpty(reasons);

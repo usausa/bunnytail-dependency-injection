@@ -55,7 +55,7 @@ public sealed class HostIntegrationTest
             .ConfigureServices(static services => services.AddComponents())
             .Build();
 
-        await host.StartAsync();
-        await host.StopAsync();
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        await host.StopAsync(TestContext.Current.CancellationToken);
     }
 }
