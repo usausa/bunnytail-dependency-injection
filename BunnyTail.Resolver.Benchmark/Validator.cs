@@ -37,12 +37,16 @@ public static class Validator
         Ensure(ReferenceEquals(complex.Singleton1, provider.GetRequiredService<ISingleton1>()), "complex dependency");
         Ensure(ReferenceEquals(complex.Combined2.Singleton, provider.GetRequiredService<ISingleton2>()), "complex dependency");
 
-        // Generics: closed 型の解決 + transient の個別性 / closed type resolution and transient distinctness
-        Ensure(provider.GetRequiredService<IGenericObject<string>>() is GenericObject<string>, "generics");
-        Ensure(provider.GetRequiredService<IGenericObject<int>>() is GenericObject<int>, "generics");
-        Ensure(
-            !ReferenceEquals(provider.GetRequiredService<IGenericObject<string>>(), provider.GetRequiredService<IGenericObject<string>>()),
-            "generics transient");
+        // Generics: closed 型の解決 + transient の個別性 (AOT 比較サブセットでは登録ごと除外)
+        // Generics: closed type resolution and transient distinctness (excluded together with the registration in the AOT comparison subset).
+        if (!Registrations.SkipGenerics)
+        {
+            Ensure(provider.GetRequiredService<IGenericObject<string>>() is GenericObject<string>, "generics");
+            Ensure(provider.GetRequiredService<IGenericObject<int>>() is GenericObject<int>, "generics");
+            Ensure(
+                !ReferenceEquals(provider.GetRequiredService<IGenericObject<string>>(), provider.GetRequiredService<IGenericObject<string>>()),
+                "generics transient");
+        }
 
         // MultipleSingleton: 登録順 5 件 + 同一インスタンス / five in registration order, same instances
         var singletons1 = provider.GetServices<IMultipleSingletonService>().ToArray();

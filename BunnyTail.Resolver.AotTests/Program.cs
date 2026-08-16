@@ -71,10 +71,14 @@ using (var provider = services.BuildResolverServiceProvider())
     Assert(provider.GetRequiredService<AotPostConstruct>().Initialized, "post construct method");
     Assert(provider.GetRequiredService<AotInitializable>().Initialized, "initializable interface");
 
-    // open generic の閉型 (値型引数は生成ファクトリでのみ AOT 安全になる)
+    // open generic の閉型 (値型引数は生成ファクトリでのみ AOT 安全になる)。Type ベース経路を意図的に使う
+    // (typeof は閉型 usage の収集元も兼ねる)
     // Closed forms of an open generic (value type arguments are AOT safe only through the generated factory).
-    Assert(provider.GetService(typeof(IAotGeneric<string>)) is AotGeneric<string>, "open generic closed reference");
-    Assert(provider.GetService(typeof(IAotGeneric<int>)) is AotGeneric<int>, "open generic closed value type");
+    // The Type based path is intentional, and the typeof expressions double as the collected closed usages.
+    var closedReference = typeof(IAotGeneric<string>);
+    var closedValueType = typeof(IAotGeneric<int>);
+    Assert(provider.GetService(closedReference) is AotGeneric<string>, "open generic closed reference");
+    Assert(provider.GetService(closedValueType) is AotGeneric<int>, "open generic closed value type");
 
     // typeof の出現なし: コンストラクタ依存だけから発見された閉型 (依存駆動の発見)
     // No typeof usage: the closed form discovered from the constructor dependency alone (dependency driven discovery).

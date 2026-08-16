@@ -8,6 +8,12 @@ using Microsoft.Extensions.DependencyInjection;
 // Registrations shared by all providers. The same IServiceCollection is handed to the MEDI / BunnyTail / Smart factories for comparison.
 internal static class Registrations
 {
+    // MEDI は open generic + 値型引数を NativeAOT で解決できないため、AOT 比較サブセット実行時は
+    // generics シナリオを除外する (BUNNYTAIL_BENCH_NO_GENERICS=1)。static readonly なので JIT/AOT とも定数化される
+    // MEDI cannot resolve open generics with value type arguments on NativeAOT, so the AOT comparison subset
+    // excludes the generics scenario (BUNNYTAIL_BENCH_NO_GENERICS=1). Being static readonly it folds to a constant on JIT and AOT alike.
+    internal static readonly bool SkipGenerics = Environment.GetEnvironmentVariable("BUNNYTAIL_BENCH_NO_GENERICS") == "1";
+
     public static IServiceCollection AddBenchmarkComponents(this IServiceCollection services)
     {
         services.AddSingleton<ISingleton1, Singleton1>();
@@ -26,7 +32,11 @@ internal static class Registrations
         services.AddTransient<Combined4>();
         services.AddTransient<Combined5>();
         services.AddTransient<Complex>();
-        services.AddTransient(typeof(IGenericObject<>), typeof(GenericObject<>));
+        if (!SkipGenerics)
+        {
+            services.AddTransient(typeof(IGenericObject<>), typeof(GenericObject<>));
+        }
+
         services.AddSingleton<IMultipleSingletonService, MultipleSingletonService1>();
         services.AddSingleton<IMultipleSingletonService, MultipleSingletonService2>();
         services.AddSingleton<IMultipleSingletonService, MultipleSingletonService3>();

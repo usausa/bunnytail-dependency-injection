@@ -1,5 +1,7 @@
 namespace BunnyTail.Resolver;
 
+using System.Runtime.CompilerServices;
+
 using Microsoft.Extensions.DependencyInjection;
 
 // ルートプロバイダ。状態 (Singleton 等) はインスタンスメンバとして保持する (プロセス static は使わない)
@@ -41,6 +43,22 @@ public sealed class ResolverServiceProvider :
     public object? GetKeyedService(Type serviceType, object? serviceKey) => RootScope.GetKeyedService(serviceType, serviceKey);
 
     public object GetRequiredKeyedService(Type serviceType, object? serviceKey) => RootScope.GetRequiredKeyedService(serviceType, serviceKey);
+
+    // 型付き解決 (インスタンスメソッドは MEDI 拡張メソッドより優先して束縛される)。
+    // ISupportRequiredService の型テストとインタフェース二重ディスパッチを回避する
+    // Typed resolution (instance methods bind ahead of the MEDI extension methods),
+    // avoiding the ISupportRequiredService type test and the double interface dispatch.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public T? GetService<T>() => RootScope.GetService<T>();
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public T GetRequiredService<T>() => RootScope.GetRequiredService<T>();
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public T? GetKeyedService<T>(object? serviceKey) => RootScope.GetKeyedService<T>(serviceKey);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public T GetRequiredKeyedService<T>(object? serviceKey) => RootScope.GetRequiredKeyedService<T>(serviceKey);
 
     //--------------------------------------------------------------------------------
     // IServiceScopeFactory

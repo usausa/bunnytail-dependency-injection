@@ -113,12 +113,18 @@ public sealed class ServiceProviderScope :
     private static void ThrowAnyKeyNotEnumerable() =>
         throw new InvalidOperationException("KeyedService.AnyKey can only be used to retrieve an IEnumerable of keyed services.");
 
-    // 生成コード用の型付き解決。sealed クラスへの直接呼び出しになり、MEDI 拡張メソッドが行う
-    // ISupportRequiredService の型テストとインタフェース二重ディスパッチを回避する
-    // Typed resolution for generated code. Direct calls on a sealed class, avoiding the
+    // 型付き解決 (生成コードと利用者コードの両方が使う)。sealed クラスへの直接呼び出しになり、
+    // MEDI 拡張メソッドが行う ISupportRequiredService の型テストとインタフェース二重ディスパッチを回避する
+    // Typed resolution used by generated and user code alike. Direct calls on a sealed class, avoiding the
     // ISupportRequiredService type test and the double interface dispatch of the MEDI extension methods.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public T? GetService<T>() => (T?)GetService(typeof(T));
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public T GetRequiredService<T>() => (T)GetRequiredService(typeof(T));
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public T? GetKeyedService<T>(object? serviceKey) => (T?)GetKeyedService(typeof(T), serviceKey);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public T GetRequiredKeyedService<T>(object? serviceKey) => (T)GetRequiredKeyedService(typeof(T), serviceKey);

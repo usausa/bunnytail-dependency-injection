@@ -15,6 +15,22 @@ public sealed class ComponentResolutionTest
         new ServiceCollection().AddComponents().BuildResolverServiceProvider();
 
     [Fact]
+    public void TypedResolutionMatchesTypeBasedResolution()
+    {
+        // S-5: provider / scope の型付きインスタンスメソッドが Type ベース解決と同一の結果を返す
+        // S-5: the typed instance methods on the provider and scope return the same results as Type based resolution.
+        using var provider = CreateProvider();
+
+        Assert.Same(((IServiceProvider)provider).GetRequiredService(typeof(SingletonComponent)), provider.GetRequiredService<SingletonComponent>());
+        Assert.Same(provider.GetRequiredService<SingletonComponent>(), provider.GetService<SingletonComponent>());
+        Assert.Null(provider.GetService<ComponentResolutionTest>());
+
+        using var scope = provider.CreateScope();
+        var scopeProvider = (ServiceProviderScope)scope.ServiceProvider;
+        Assert.Same(provider.GetRequiredService<SingletonComponent>(), scopeProvider.GetService<SingletonComponent>());
+    }
+
+    [Fact]
     public void SingletonIsSameAcrossScopes()
     {
         using var provider = CreateProvider();
@@ -207,7 +223,8 @@ public sealed class ComponentResolutionTest
         services.AddTransient(typeof(IGenericContainer<>), typeof(GenericContainer<>));
         using var provider = services.BuildResolverServiceProvider();
 
-        Assert.IsType<GenericContainer<string>>(provider.GetService(typeof(IGenericContainer<string>)));
+        var closedType = typeof(IGenericContainer<string>);
+        Assert.IsType<GenericContainer<string>>(provider.GetService(closedType));
 
         // コンパイル時に見えない閉型は従来どおり互換経路で解決される
         // Closed forms invisible at compile time keep resolving through the runtime path.

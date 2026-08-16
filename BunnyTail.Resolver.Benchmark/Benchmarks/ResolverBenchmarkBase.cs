@@ -86,6 +86,13 @@ public abstract class ResolverBenchmarkBase
     [Benchmark(OperationsPerInvoke = 5)]
     public void Generics()
     {
+        // AOT 比較サブセットでは no-op (行は無効値になる)。static readonly なので通常実行では定数畳み込みされゼロコスト
+        // A no-op in the AOT comparison subset (the row becomes meaningless there). Being static readonly, normal runs fold the check away.
+        if (Registrations.SkipGenerics)
+        {
+            return;
+        }
+
         _ = provider.GetService(typeof(IGenericObject<string>));
         _ = provider.GetService(typeof(IGenericObject<int>));
         _ = provider.GetService(typeof(IGenericObject<string>));
