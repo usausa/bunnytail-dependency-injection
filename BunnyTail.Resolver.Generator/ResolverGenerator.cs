@@ -141,15 +141,34 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             .Where(static x => x is not null)
             .Select(static (x, _) => x!);
 
+        // Compilation 依存の値は狭い Select で切り出し、値等価な形にしてから最終 Combine に載せる。
+        // Compilation 自体を Combine すると毎編集で Execute (出力構築) がフル再実行されるため。
+        // 毎コンパイルで再計算されるのは以下の 3 つ (アセンブリ名 / closed generic 解決 / 参照モジュール走査) のみで、
+        // いずれも軽量。値が変わらない限り Execute はスキップされる
+        // Compilation dependent values are extracted through narrow Selects into value-equatable shapes before the
+        // final combine. Combining the Compilation itself would rerun Execute (output construction) on every edit.
+        // Only these three (assembly name, closed generic resolution and the referenced module scan) recompute per
+        // compilation, and all are lightweight; Execute is skipped as long as the values stay equal.
+        var assemblyNameProvider = context.CompilationProvider
+            .Select(static (compilation, _) => compilation.AssemblyName ?? "Generated");
+
+        var referencedModulesProvider = context.CompilationProvider
+            .Select(static (compilation, _) => CollectReferencedModules(compilation));
+
+        var closedFactoriesProvider = openGenericProvider.Collect()
+            .Combine(closedUsageProvider.Collect())
+            .Combine(context.CompilationProvider)
+            .Select(static (source, _) => new EquatableArray<FactoryModel>(DiscoverClosedGenericFactories(source.Left.Left, source.Left.Right, source.Right).ToArray()));
+
         var source = singletonProvider.Collect()
             .Combine(scopedProvider.Collect())
             .Combine(transientProvider.Collect())
             .Combine(collectedProvider.Collect())
             .Combine(methodProvider.Collect())
             .Combine(candidateProvider.Collect())
-            .Combine(openGenericProvider.Collect())
-            .Combine(closedUsageProvider.Collect())
-            .Combine(context.CompilationProvider);
+            .Combine(closedFactoriesProvider)
+            .Combine(assemblyNameProvider)
+            .Combine(referencedModulesProvider);
 
         context.RegisterSourceOutput(source, static (context, source) =>
             Execute(
@@ -843,12 +862,10 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         ImmutableArray<CollectedModel> collected,
         ImmutableArray<Result<MethodModel>> methods,
         ImmutableArray<CandidateModel> candidates,
-        ImmutableArray<OpenGenericModel> openGenerics,
-        ImmutableArray<ClosedGenericUsageModel> closedUsages,
-        Compilation compilation)
+        EquatableArray<FactoryModel> closedFactories,
+        string assemblyName,
+        EquatableArray<string> referencedModules)
     {
-        var assemblyName = compilation.AssemblyName ?? "Generated";
-
         foreach (var method in methods)
         {
             foreach (var info in method.Diagnostics)
@@ -967,11 +984,12 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             }
         }
 
-        // open generic 登録の閉型使用から生成ファクトリを作る。実行時は open generic 実現
+        // open generic 登録の閉型使用から作られた生成ファクトリ (パイプライン側で解決済み)。実行時は open generic 実現
         // (MakeGenericType → 閉じた実装型) が採用フック (TryGet) で自動的にこれを拾う
-        // Builds generated factories for closed usages of open generic registrations. At runtime the open generic
-        // realization (MakeGenericType into the closed implementation) picks them up through the adoption hook (TryGet).
-        foreach (var factory in DiscoverClosedGenericFactories(openGenerics, closedUsages, compilation))
+        // Generated factories built from closed usages of open generic registrations (resolved on the pipeline side).
+        // At runtime the open generic realization (MakeGenericType into the closed implementation) picks them up
+        // through the adoption hook (TryGet).
+        foreach (var factory in closedFactories)
         {
             if (emittedUnkeyed.Add(factory.ImplementationType))
             {
@@ -981,7 +999,6 @@ public sealed class ResolverGenerator : IIncrementalGenerator
 
         var inlineTargetMap = BuildInlineTargetMap(components, sortedCollected, conventionMatches);
         var enumerableModels = BuildEnumerableModels(components, sortedCollected, conventionMatches);
-        var referencedModules = CollectReferencedModules(compilation);
         if ((components.Length > 0) || (unkeyedFactories.Count > 0) || (keyedFactories.Count > 0) || (enumerableModels.Count > 0) || (referencedModules.Count > 0))
         {
             EmitGeneratedComponents(context, assemblyName, components, unkeyedFactories, keyedFactories, enumerableModels, inlineTargetMap, referencedModules);
@@ -1550,7 +1567,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
     // for AddAllComponents). Only assembly attributes are inspected, never the types inside the references, so the
     // incremental cost is one attribute list per reference. SDK projects flow references transitively into the
     // compilation, so indirectly referenced modules are enumerated flat as well.
-    private static List<string> CollectReferencedModules(Compilation compilation)
+    private static EquatableArray<string> CollectReferencedModules(Compilation compilation)
     {
         var modules = new List<string>();
         foreach (var reference in compilation.References)
@@ -1579,10 +1596,10 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         }
 
         modules.Sort(StringComparer.Ordinal);
-        return modules;
+        return new EquatableArray<string>(modules.ToArray());
     }
 
-    private static void EmitGeneratedComponents(SourceProductionContext context, string assemblyName, ComponentModel[] components, List<FactoryModel> unkeyedFactories, List<FactoryModel> keyedFactories, List<(string ElementServiceType, List<FactoryModel> Elements)> enumerableModels, InlineTargetMap inlineMap, List<string> referencedModules)
+    private static void EmitGeneratedComponents(SourceProductionContext context, string assemblyName, ComponentModel[] components, List<FactoryModel> unkeyedFactories, List<FactoryModel> keyedFactories, List<(string ElementServiceType, List<FactoryModel> Elements)> enumerableModels, InlineTargetMap inlineMap, EquatableArray<string> referencedModules)
     {
         var builder = new SourceBuilder();
         builder.AutoGenerated();
