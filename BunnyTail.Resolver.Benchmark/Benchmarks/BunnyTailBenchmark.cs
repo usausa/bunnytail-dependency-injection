@@ -6,5 +6,5 @@ using Microsoft.Extensions.DependencyInjection;
 public class BunnyTailBenchmark : ResolverBenchmarkBase
 {
     protected override IServiceProvider CreateProvider() =>
-        new ServiceCollection().AddBenchmarkComponents().BuildResolverServiceProvider();
+        new ServiceCollection().AddBenchmarkComponents().BuildGeneratedServiceProvider();
 }

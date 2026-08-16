@@ -146,6 +146,55 @@ internal sealed class ServiceRegistry
 
     private int NextSlot() => Interlocked.Increment(ref slotCounter) - 1;
 
+    // 開発時診断 (ServiceFactoryReport)。各登録を実現して、生成ファクトリが採用されたかを分類する。
+    // 実現は accessor の構築までで、インスタンスは生成しない
+    // Development-time diagnostics (ServiceFactoryReport): realizes every registration and classifies whether a
+    // generated factory was adopted. Realization builds accessors only and never creates instances.
+    internal List<Diagnostics.ServiceFactoryReportEntry> CreateFactoryReport()
+    {
+        var entries = new List<Diagnostics.ServiceFactoryReportEntry>();
+        foreach (var pair in exactMap)
+        {
+            // 実際に解決されるのは同一 (サービス型, キー) の最後の登録 (MEDI の last-wins)
+            // The registration actually resolved is the last one for the same (service type, key) pair (MEDI last-wins).
+            var descriptor = pair.Value[^1];
+            var key = descriptor.IsKeyedService ? descriptor.ServiceKey : null;
+            var implementationType = descriptor.IsKeyedService ? descriptor.KeyedImplementationType : descriptor.ImplementationType;
+
+            // コンテナが型を構築しない登録 (ファクトリ・インスタンス・open generic 定義) は生成対象外。
+            // 実装型を持つ登録だけが分類対象なので、生成ファクトリとユーザーデリゲートが混同されることはない
+            // Registrations where the container does not construct the type (factories, instances, open generic
+            // definitions) have nothing to generate. Only registrations carrying an implementation type are
+            // classified, so generated factories are never confused with user delegates.
+            if ((implementationType is null) || implementationType.IsGenericTypeDefinition || descriptor.ServiceType.IsGenericTypeDefinition)
+            {
+                entries.Add(new Diagnostics.ServiceFactoryReportEntry(descriptor.ServiceType, implementationType, key, descriptor.Lifetime, Diagnostics.ServiceFactoryStatus.NotApplicable));
+                continue;
+            }
+
+            ServiceAccessor? accessor;
+            try
+            {
+                accessor = GetEntry(new ServiceIdentifier(descriptor.ServiceType, key));
+            }
+            catch (InvalidOperationException)
+            {
+                accessor = null;
+            }
+
+            var status = accessor switch
+            {
+                FactoryAccessor or DepsFactoryAccessor or KeyedFactoryAccessor or KeyedDepsFactoryAccessor => Diagnostics.ServiceFactoryStatus.Generated,
+                ConstructorAccessor => Diagnostics.ServiceFactoryStatus.RuntimeFallback,
+                null => Diagnostics.ServiceFactoryStatus.Unresolvable,
+                _ => Diagnostics.ServiceFactoryStatus.NotApplicable,
+            };
+            entries.Add(new Diagnostics.ServiceFactoryReportEntry(descriptor.ServiceType, implementationType, key, descriptor.Lifetime, status));
+        }
+
+        return entries;
+    }
+
     //--------------------------------------------------------------------------------
     // Entry realization (エントリ実現)
     //--------------------------------------------------------------------------------
@@ -536,6 +585,13 @@ internal sealed class ServiceRegistry
                 name = candidate;
                 break;
             }
+        }
+
+        // [GenerateComponentFactory(PostConstruct = ...)] の指定は属性より優先する (属性を付けられない型のための指定)
+        // A [GenerateComponentFactory(PostConstruct = ...)] specification wins over attributes (it exists for types that cannot be annotated).
+        if (GeneratedComponentRegistry.TryGetInitializer(implType, out var registered))
+        {
+            name = registered;
         }
 
         if (name is not null)

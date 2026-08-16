@@ -72,9 +72,9 @@ public sealed class ComponentRegistrationAttribute : Attribute
 }
 
 // 生成コードが埋め込むアセンブリレベルのマーカー。属性コンポーネントを持つアセンブリの生成モジュール型
-// (GeneratedComponents) を示し、参照側のジェネレータが AddAllComponents の集約に使う
+// (GeneratedComponents) を示し、参照側のジェネレータが AddAllGeneratedComponents の集約に使う
 // Assembly level marker embedded by generated code. Points to the generated module type (GeneratedComponents)
-// of an assembly containing attribute components; referencing projects' generators use it to build AddAllComponents.
+// of an assembly containing attribute components; referencing projects' generators use it to build AddAllGeneratedComponents.
 [AttributeUsage(AttributeTargets.Assembly)]
 public sealed class ComponentModuleAttribute : Attribute
 {
@@ -84,5 +84,28 @@ public sealed class ComponentModuleAttribute : Attribute
     {
         ArgumentNullException.ThrowIfNull(moduleType);
         ModuleType = moduleType;
+    }
+}
+
+// 登録を伴わないファクトリ生成の指示。自分で制御できないライブラリの型 (登録はそのライブラリの拡張メソッドが行う)
+// に対して、リフレクションレスな生成ファクトリだけを用意させる。対象は public にアクセスできる具象クラスに限る
+// Requests factory generation without registration. For types of libraries you do not control (the library's own
+// extension method performs the registration), this prepares the reflection-free factory only.
+// Only publicly accessible concrete classes are eligible.
+[AttributeUsage(AttributeTargets.Assembly, AllowMultiple = true)]
+public sealed class GenerateComponentFactoryAttribute : Attribute
+{
+    public Type ImplementationType { get; }
+
+    // 生成後に呼び出すメソッド名。属性を付けられない型に初期化フックを与える。
+    // 生成経路・実行時経路のどちらで解決されても呼ばれる
+    // Name of a method invoked after construction, giving an initialization hook to types you cannot annotate.
+    // It runs whichever path resolves the type, generated or runtime.
+    public string? PostConstruct { get; set; }
+
+    public GenerateComponentFactoryAttribute(Type implementationType)
+    {
+        ArgumentNullException.ThrowIfNull(implementationType);
+        ImplementationType = implementationType;
     }
 }

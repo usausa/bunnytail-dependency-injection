@@ -202,7 +202,7 @@ public static class GeneratedComponents
             });
     }
 
-    public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddComponents(this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+    public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddGeneratedComponents(this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)
     {
         services.AddSingleton<global::BunnyTail.Resolver.Tests.Components.PropDependency>();
         services.AddSingleton<global::BunnyTail.Resolver.Tests.Components.SingletonComponent>();
@@ -230,9 +230,9 @@ public static class GeneratedComponents
         return services;
     }
 
-    public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddAllComponents(this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+    public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddAllGeneratedComponents(this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)
     {
-        AddComponents(services);
+        AddGeneratedComponents(services);
         return services;
     }
 }

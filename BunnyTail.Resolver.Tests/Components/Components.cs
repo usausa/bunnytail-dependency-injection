@@ -190,3 +190,9 @@ public sealed class KeyedWithDependency(KeyedProbeDependency probe, [ServiceKey]
 
     public string Key { get; } = key;
 }
+
+// 診断テスト用。属性も Add* 呼び出しも無いため生成ファクトリが作られない型
+// For the diagnostics test: a type with neither an attribute nor an Add* call, so no factory is generated.
+public interface IUntrackedProbe;
+
+public sealed class UntrackedProbe : IUntrackedProbe;

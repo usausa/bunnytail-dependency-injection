@@ -11,7 +11,7 @@ public sealed class KeyedDependencyInjectionComplianceTest : KeyedDependencyInje
 
     protected override IServiceProvider CreateServiceProvider(IServiceCollection collection)
     {
-        var factory = new ResolverServiceProviderFactory();
+        var factory = new GeneratedServiceProviderFactory();
         return factory.CreateServiceProvider(factory.CreateBuilder(collection));
     }
 }

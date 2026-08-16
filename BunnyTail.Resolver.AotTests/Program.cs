@@ -20,14 +20,14 @@ void Assert(bool condition, string name)
     }
 }
 
-// AddAllComponents = 属性コンポーネントの一括登録 (モジュール集約込み) / AddTransient = Add* 収集 → 生成ファクトリ
-// AddAllComponents = attribute components in one call (module aggregation included) / AddTransient = Add* collection -> generated factory.
+// AddAllGeneratedComponents = 属性コンポーネントの一括登録 (モジュール集約込み) / AddTransient = Add* 収集 → 生成ファクトリ
+// AddAllGeneratedComponents = attribute components in one call (module aggregation included) / AddTransient = Add* collection -> generated factory.
 var services = new ServiceCollection()
-    .AddAllComponents()
+    .AddAllGeneratedComponents()
     .AddTransient<RuntimeRegistered>()
     .AddTransient(typeof(IAotGeneric<>), typeof(AotGeneric<>));
 
-using (var provider = services.BuildResolverServiceProvider())
+using (var provider = services.BuildGeneratedServiceProvider())
 {
     // Singleton 同一性 / singleton identity
     var s1 = provider.GetRequiredService<AotSingleton>();
@@ -87,7 +87,7 @@ using (var provider = services.BuildResolverServiceProvider())
 
 // disposal
 DisposableAot disposable;
-using (var provider = services.BuildResolverServiceProvider())
+using (var provider = services.BuildGeneratedServiceProvider())
 {
     disposable = provider.GetRequiredService<DisposableAot>();
 }

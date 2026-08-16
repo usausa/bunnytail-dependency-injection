@@ -1,4 +1,4 @@
-namespace Develop;
+namespace Example;
 
 using BunnyTail.Resolver;
 
@@ -10,6 +10,6 @@ using Microsoft.Extensions.DependencyInjection;
 // that does not reference the generator are registered from the application side by regex.
 internal static partial class ExternalRegistrations
 {
-    [ComponentRegistration(Lifetime.Transient, "^ExternalWorker$", Assembly = "Develop.Library2")]
+    [ComponentRegistration(Lifetime.Transient, "^ExternalWorker$", Assembly = "Example.Library2")]
     public static partial IServiceCollection AddLibraryWorkers(this IServiceCollection services);
 }

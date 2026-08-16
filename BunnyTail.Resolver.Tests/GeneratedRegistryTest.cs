@@ -79,7 +79,7 @@ public sealed class GeneratedRegistryTest
     {
         using var provider = new ServiceCollection()
             .AddTransient<HookComponent>()
-            .BuildResolverServiceProvider();
+            .BuildGeneratedServiceProvider();
 
         var instance = provider.GetRequiredService<HookComponent>();
 
@@ -92,7 +92,7 @@ public sealed class GeneratedRegistryTest
         using var provider = new ServiceCollection()
             .AddTransient<HookComponent>()
             .AddTransient<MismatchComponent>()
-            .BuildResolverServiceProvider();
+            .BuildGeneratedServiceProvider();
 
         // 生成ファクトリ (throw する) ではなくリフレクション経路が使われること
         // The reflection path must be used instead of the generated factory (which throws).
@@ -107,7 +107,7 @@ public sealed class GeneratedRegistryTest
         using var provider = new ServiceCollection()
             .AddKeyedTransient<KeyedHookComponent>("first")
             .AddKeyedTransient<KeyedHookComponent>(KeyedService.AnyKey)
-            .BuildResolverServiceProvider();
+            .BuildGeneratedServiceProvider();
 
         var exact = provider.GetRequiredKeyedService<KeyedHookComponent>("first");
         Assert.Equal("first", exact.ReceivedKey);
@@ -124,7 +124,7 @@ public sealed class GeneratedRegistryTest
         using var provider = new ServiceCollection()
             .AddTransient<InlineDependencyComponent>()
             .AddTransient<InlineRootComponent>()
-            .BuildResolverServiceProvider();
+            .BuildGeneratedServiceProvider();
 
         var instance = provider.GetRequiredService<InlineRootComponent>();
 
@@ -139,7 +139,7 @@ public sealed class GeneratedRegistryTest
         using var provider = new ServiceCollection()
             .AddSingleton<InlineDependencyComponent>()
             .AddTransient<InlineRootComponent>()
-            .BuildResolverServiceProvider();
+            .BuildGeneratedServiceProvider();
 
         var instance = provider.GetRequiredService<InlineRootComponent>();
 
@@ -154,7 +154,7 @@ public sealed class GeneratedRegistryTest
         using var provider = new ServiceCollection()
             .AddTransient(static _ => new InlineDependencyComponent())
             .AddTransient<InlineRootComponent>()
-            .BuildResolverServiceProvider();
+            .BuildGeneratedServiceProvider();
 
         var instance = provider.GetRequiredService<InlineRootComponent>();
 
@@ -168,7 +168,7 @@ public sealed class GeneratedRegistryTest
         // ImplementationFactory registrations take precedence over generated factories (user intent wins).
         using var provider = new ServiceCollection()
             .AddTransient(static _ => new HookComponent { CreatedByGeneratedFactory = false })
-            .BuildResolverServiceProvider();
+            .BuildGeneratedServiceProvider();
 
         var instance = provider.GetRequiredService<HookComponent>();
 

@@ -1,18 +1,19 @@
 namespace BunnyTail.Resolver.Tests;
 
 using BunnyTail.Resolver;
+using BunnyTail.Resolver.Diagnostics;
 using BunnyTail.Resolver.Tests.Components;
 
 using Microsoft.Extensions.DependencyInjection;
 
 using Xunit;
 
-// 属性コンポーネント (生成された AddComponents + 生成ファクトリ) の機能検証
-// Functional verification of attribute components (generated AddComponents + generated factories).
+// 属性コンポーネント (生成された AddGeneratedComponents + 生成ファクトリ) の機能検証
+// Functional verification of attribute components (generated AddGeneratedComponents + generated factories).
 public sealed class ComponentResolutionTest
 {
     private static ResolverServiceProvider CreateProvider() =>
-        new ServiceCollection().AddComponents().BuildResolverServiceProvider();
+        new ServiceCollection().AddGeneratedComponents().BuildGeneratedServiceProvider();
 
     [Fact]
     public void TypedResolutionMatchesTypeBasedResolution()
@@ -44,6 +45,50 @@ public sealed class ComponentResolutionTest
         Assert.Equal("kd", first.Key);
         Assert.Same(provider.GetRequiredService<KeyedProbeDependency>(), first.Probe);
         Assert.Same(first.Probe, second.Probe);
+    }
+
+    [Fact]
+    public void FactoryReportClassifiesResolutionPaths()
+    {
+        // 開発時診断: 生成ファクトリ採用・実行時経路・生成対象外を分類する
+        // Development-time diagnostics classify generated adoption, the runtime path and non-applicable registrations.
+        var services = new ServiceCollection().AddGeneratedComponents();
+        services.Add(ServiceDescriptor.Describe(typeof(UntrackedProbe), typeof(UntrackedProbe), ServiceLifetime.Transient));
+        services.AddSingleton<IUntrackedProbe>(static _ => new UntrackedProbe());
+        using var provider = services.BuildGeneratedServiceProvider();
+
+        var report = provider.CreateFactoryReport();
+
+        // 属性コンポーネント = 生成経路 / attribute component resolves through the generated path
+        Assert.Equal(
+            ServiceFactoryStatus.Generated,
+            report.First(static x => x.ImplementationType == typeof(SingletonComponent)).Status);
+
+        // 生成器から見えない登録 = 実行時経路 ([GenerateComponentFactory] の候補)
+        // A registration invisible to the generator takes the runtime path (a [GenerateComponentFactory] candidate).
+        Assert.Equal(
+            ServiceFactoryStatus.RuntimeFallback,
+            report.First(static x => x.ServiceType == typeof(UntrackedProbe)).Status);
+
+        // ファクトリ登録は構築自体がユーザーのデリゲート = 生成対象外
+        // A factory registration constructs through the user's delegate, so nothing can be generated.
+        Assert.Equal(
+            ServiceFactoryStatus.NotApplicable,
+            report.First(static x => x.ServiceType == typeof(IUntrackedProbe)).Status);
+    }
+
+    [Fact]
+    public void FactoryReportDescribesRuntimeFallbacks()
+    {
+        var services = new ServiceCollection().AddGeneratedComponents();
+        services.Add(ServiceDescriptor.Describe(typeof(UntrackedProbe), typeof(UntrackedProbe), ServiceLifetime.Transient));
+        using var provider = services.BuildGeneratedServiceProvider();
+
+        var text = provider.DescribeRuntimeFallbacks();
+
+        // そのまま貼り付けられる属性行として出力される / emitted as ready-to-paste attribute lines
+        Assert.Contains("[assembly: global::BunnyTail.Resolver.GenerateComponentFactory(typeof(global::", text, StringComparison.Ordinal);
+        Assert.Contains(typeof(UntrackedProbe).FullName!.Replace('+', '.'), text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -165,9 +210,9 @@ public sealed class ComponentResolutionTest
         // 互換経路へフォールバックして transient セマンティクスが守られること
         // Replacing SingletonComponent as transient breaks the deps assumption (singleton resolution);
         // the factory must fall back to the runtime path and honor transient semantics.
-        var services = new ServiceCollection().AddComponents();
+        var services = new ServiceCollection().AddGeneratedComponents();
         services.Add(ServiceDescriptor.Describe(typeof(SingletonComponent), typeof(SingletonComponent), ServiceLifetime.Transient));
-        using var provider = services.BuildResolverServiceProvider();
+        using var provider = services.BuildGeneratedServiceProvider();
 
         var a = provider.GetRequiredService<TransientComponent>();
         var b = provider.GetRequiredService<TransientComponent>();
@@ -214,9 +259,9 @@ public sealed class ComponentResolutionTest
     {
         // 実行時に要素を追加すると数の前提が崩れ、accessor 経由の実体化へフォールバックする
         // Adding an element at runtime breaks the count assumption and falls back to accessor-based materialization.
-        var services = new ServiceCollection().AddComponents();
+        var services = new ServiceCollection().AddGeneratedComponents();
         services.Add(ServiceDescriptor.Describe(typeof(IMultiLeaf), typeof(RuntimeMultiLeaf), ServiceLifetime.Transient));
-        using var provider = services.BuildResolverServiceProvider();
+        using var provider = services.BuildGeneratedServiceProvider();
 
         var all = provider.GetServices<IMultiLeaf>().ToArray();
 
@@ -237,7 +282,7 @@ public sealed class ComponentResolutionTest
         // The typeof(IGenericContainer<string>) in this test doubles as the collected closed usage that produces a generated factory.
         IServiceCollection services = new ServiceCollection();
         services.AddTransient(typeof(IGenericContainer<>), typeof(GenericContainer<>));
-        using var provider = services.BuildResolverServiceProvider();
+        using var provider = services.BuildGeneratedServiceProvider();
 
         var closedType = typeof(IGenericContainer<string>);
         Assert.IsType<GenericContainer<string>>(provider.GetService(closedType));
@@ -256,7 +301,7 @@ public sealed class ComponentResolutionTest
         IServiceCollection services = new ServiceCollection();
         services.Add(ServiceDescriptor.Singleton(typeof(int), 1));
         services.Add(ServiceDescriptor.Singleton(typeof(int), 2));
-        using var provider = services.BuildResolverServiceProvider();
+        using var provider = services.BuildGeneratedServiceProvider();
 
         Assert.Equal([1, 2], provider.GetServices<int>());
     }
@@ -311,7 +356,7 @@ public sealed class ComponentResolutionTest
         // Direct ServiceDescriptor registration is invisible to the generator, exercising IInitializable on the runtime path.
         IServiceCollection services = new ServiceCollection();
         services.Add(ServiceDescriptor.Describe(typeof(RuntimeInitializable), typeof(RuntimeInitializable), ServiceLifetime.Transient));
-        using var provider = services.BuildResolverServiceProvider();
+        using var provider = services.BuildGeneratedServiceProvider();
 
         Assert.True(provider.GetRequiredService<RuntimeInitializable>().Initialized);
     }
@@ -323,7 +368,7 @@ public sealed class ComponentResolutionTest
         // Factory registrations are user-owned construction and are never initialized.
         using var provider = new ServiceCollection()
             .AddTransient(static _ => new RuntimeInitializable())
-            .BuildResolverServiceProvider();
+            .BuildGeneratedServiceProvider();
 
         Assert.False(provider.GetRequiredService<RuntimeInitializable>().Initialized);
     }
@@ -347,7 +392,7 @@ public sealed class ComponentResolutionTest
     {
         using var provider = new ServiceCollection()
             .AddSingleton<CountingSingleton>()
-            .BuildResolverServiceProvider();
+            .BuildGeneratedServiceProvider();
 
         var results = new CountingSingleton[16];
         Parallel.For(0, results.Length, i => results[i] = provider.GetRequiredService<CountingSingleton>());
@@ -363,9 +408,9 @@ public sealed class ComponentResolutionTest
         // 崩れるため、生成ファクトリは採用されず差し替え後の型が解決されること
         // Direct ServiceDescriptor registration is a runtime replacement invisible to the generator. It breaks
         // the inline assumptions, so the generated factory must be rejected and the replaced type resolved.
-        var services = new ServiceCollection().AddComponents();
+        var services = new ServiceCollection().AddGeneratedComponents();
         services.Add(ServiceDescriptor.Describe(typeof(LeafDependency), typeof(DerivedLeafDependency), ServiceLifetime.Transient));
-        using var provider = services.BuildResolverServiceProvider();
+        using var provider = services.BuildGeneratedServiceProvider();
 
         var root = provider.GetRequiredService<GraphRoot>();
 

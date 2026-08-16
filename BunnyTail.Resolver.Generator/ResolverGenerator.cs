@@ -25,6 +25,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
     private const string ServiceKeyAttributeName = "Microsoft.Extensions.DependencyInjection.ServiceKeyAttribute";
     private const string ServiceCollectionExtensionsName = "Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions";
     private const string ServiceCollectionDescriptorExtensionsName = "Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions";
+    private const string GenerateComponentFactoryAttributeName = "BunnyTail.Resolver.GenerateComponentFactoryAttribute";
     private const string ServiceCollectionName = "Microsoft.Extensions.DependencyInjection.IServiceCollection";
     private const string ServiceDescriptorName = "Microsoft.Extensions.DependencyInjection.ServiceDescriptor";
     private const string ServiceDescriptorCollectionName = "System.Collections.Generic.ICollection<Microsoft.Extensions.DependencyInjection.ServiceDescriptor>";
@@ -106,6 +107,14 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         DiagnosticSeverity.Warning,
         true);
 
+    private static readonly DiagnosticDescriptor InvalidGenerateComponentFactoryTarget = new(
+        "BTRS0011",
+        "Invalid GenerateComponentFactory target",
+        "The type '{0}' specified on [GenerateComponentFactory] must be a publicly accessible concrete class with a usable public constructor",
+        "BunnyTail.Resolver",
+        DiagnosticSeverity.Warning,
+        true);
+
     private static readonly DiagnosticDescriptor ValueTypeRuntimeGeneric = new(
         "BTRS0010",
         "Closed generic with value type arguments on the runtime path",
@@ -151,6 +160,15 @@ public sealed class ResolverGenerator : IIncrementalGenerator
                 static (ctx, _) => CreateOpenGenericModel(ctx))
             .Where(static x => x is not null)
             .Select(static (x, _) => x!);
+
+        // [assembly: GenerateComponentFactory(typeof(T))] — 登録は行わずファクトリだけを生成する
+        // [assembly: GenerateComponentFactory(typeof(T))] generates the factory only, without any registration.
+        var generateComponentFactoryProvider = context.SyntaxProvider
+            .ForAttributeWithMetadataName(
+                GenerateComponentFactoryAttributeName,
+                static (_, _) => true,
+                static (ctx, _) => CreateGenerateComponentFactoryModels(ctx))
+            .SelectMany(static (models, _) => models);
 
         var closedUsageProvider = context.SyntaxProvider
             .CreateSyntaxProvider(
@@ -204,6 +222,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             .Combine(collectedProvider.Collect())
             .Combine(methodProvider.Collect())
             .Combine(candidateProvider.Collect())
+            .Combine(generateComponentFactoryProvider.Collect())
             .Combine(externalCandidatesProvider)
             .Combine(closedFactoriesProvider)
             .Combine(assemblyNameProvider)
@@ -212,7 +231,8 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         context.RegisterSourceOutput(source, static (context, source) =>
             Execute(
                 context,
-                source.Left.Left.Left.Left.Left.Left.Left.Left.Left,
+                source.Left.Left.Left.Left.Left.Left.Left.Left.Left.Left,
+                source.Left.Left.Left.Left.Left.Left.Left.Left.Left.Right,
                 source.Left.Left.Left.Left.Left.Left.Left.Left.Right,
                 source.Left.Left.Left.Left.Left.Left.Left.Right,
                 source.Left.Left.Left.Left.Left.Left.Right,
@@ -921,6 +941,70 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             LocationInfo.CreateFrom(locationNode));
     }
 
+    // [GenerateComponentFactory] の対象型からファクトリモデルを作る。生成コードは対象型を直接 new するため、
+    // public にアクセスできる具象クラス (使用可能な public コンストラクタつき) だけを受け付ける
+    // Builds factory models from [GenerateComponentFactory] targets. The generated code news the type up directly, so only
+    // publicly accessible concrete classes with a usable public constructor are accepted.
+    private static ImmutableArray<Result<FactoryModel>> CreateGenerateComponentFactoryModels(GeneratorAttributeSyntaxContext context)
+    {
+        var compilation = context.SemanticModel.Compilation;
+        var models = ImmutableArray.CreateBuilder<Result<FactoryModel>>(context.Attributes.Length);
+        foreach (var attribute in context.Attributes)
+        {
+            var location = LocationInfo.CreateFrom(context.TargetNode);
+            if ((attribute.ConstructorArguments.Length != 1)
+                || (attribute.ConstructorArguments[0].Value is not INamedTypeSymbol type))
+            {
+                continue;
+            }
+
+            string? postConstruct = null;
+            foreach (var argument in attribute.NamedArguments)
+            {
+                if ((argument.Key == "PostConstruct") && (argument.Value.Value is string value))
+                {
+                    postConstruct = value;
+                }
+            }
+
+            var displayName = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            if (type.IsAbstract
+                || type.IsStatic
+                || (type.TypeKind != TypeKind.Class)
+                || type.IsUnboundGenericType
+                || ContainsTypeParameter(type)
+                || !compilation.IsSymbolAccessibleWithin(type, compilation.Assembly))
+            {
+                models.Add(Results.Error<FactoryModel>(new DiagnosticInfo(InvalidGenerateComponentFactoryTarget, location, displayName)));
+                continue;
+            }
+
+            var factory = CreateFactoryModel(type, compilation.Assembly);
+            if (!factory.EligibleUnkeyed)
+            {
+                models.Add(Results.Error<FactoryModel>(new DiagnosticInfo(InvalidGenerateComponentFactoryTarget, location, displayName)));
+                continue;
+            }
+
+            // PostConstruct 指定は属性由来の値より優先する。妥当でなければ BTRS0007
+            // The PostConstruct specification wins over the attribute derived value; an invalid one reports BTRS0007.
+            if (postConstruct is not null)
+            {
+                if (!HasValidPostConstructMethod(type, postConstruct))
+                {
+                    models.Add(Results.Error<FactoryModel>(new DiagnosticInfo(InvalidPostConstruct, location, postConstruct, displayName)));
+                    continue;
+                }
+
+                factory = factory with { PostConstruct = postConstruct, InvalidPostConstruct = false, ConflictingPostConstruct = false };
+            }
+
+            models.Add(Results.Success(factory));
+        }
+
+        return models.ToImmutable();
+    }
+
     // ------------------------------------------------------------
     // Parser : convention registration method (規約登録メソッド)
     // ------------------------------------------------------------
@@ -1049,6 +1133,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         ImmutableArray<CollectedModel> collected,
         ImmutableArray<Result<MethodModel>> methods,
         ImmutableArray<CandidateModel> candidates,
+        ImmutableArray<Result<FactoryModel>> generateComponentFactoryTargets,
         ExternalScanResult externalScan,
         ClosedGenericScanResult closedGenerics,
         string assemblyName,
@@ -1208,6 +1293,34 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             }
         }
 
+        // [GenerateComponentFactory] 指定分。登録は行わずファクトリのみ (実行時は実装型で採用される)
+        // Targets of [GenerateComponentFactory]: factories only, no registration (adopted at runtime by implementation type).
+        var generatedInitializers = new List<(string ImplementationType, string PostConstruct)>();
+        foreach (var target in generateComponentFactoryTargets)
+        {
+            foreach (var info in target.Diagnostics)
+            {
+                context.ReportDiagnostic(info.ToDiagnostic());
+            }
+
+            if (!target.HasValue)
+            {
+                continue;
+            }
+
+            if (emittedUnkeyed.Add(target.Value.ImplementationType))
+            {
+                unkeyedFactories.Add(target.Value);
+            }
+
+            // 実行時経路でも同じ初期化が行われるよう、メソッド名をレジストリへ登録する
+            // Registers the method name so the runtime path performs the same initialization.
+            if (target.Value.PostConstruct is not null)
+            {
+                generatedInitializers.Add((target.Value.ImplementationType, target.Value.PostConstruct));
+            }
+        }
+
         foreach (var warning in closedGenerics.Warnings)
         {
             context.ReportDiagnostic(new DiagnosticInfo(ValueTypeRuntimeGeneric, warning.Location, warning.DisplayName).ToDiagnostic());
@@ -1217,7 +1330,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         var enumerableModels = BuildEnumerableModels(components, sortedCollected, conventionMatches);
         if ((components.Length > 0) || (unkeyedFactories.Count > 0) || (keyedFactories.Count > 0) || (enumerableModels.Count > 0) || (referencedModules.Count > 0))
         {
-            EmitGeneratedComponents(context, assemblyName, components, unkeyedFactories, keyedFactories, enumerableModels, inlineTargetMap, referencedModules);
+            EmitGeneratedComponents(context, assemblyName, components, unkeyedFactories, keyedFactories, enumerableModels, inlineTargetMap, referencedModules, generatedInitializers);
         }
 
         // ---- 規約登録メソッドの本体 / convention registration method bodies ----
@@ -1229,11 +1342,11 @@ public sealed class ResolverGenerator : IIncrementalGenerator
     }
 
     // 生成 enumerable ファクトリの対象: 同一サービス型へ 2 件以上、全登録が direct (Add<S, I> 形式) かつ
-    // transient のインライン展開適格 (非 disposable・[Inject] なし・初期化なし)。順序は出力順 = AddComponents 相当。
+    // transient のインライン展開適格 (非 disposable・[Inject] なし・初期化なし)。順序は出力順 = AddGeneratedComponents 相当。
     // 実行時の構成差 (追加・差し替え・順序) は EnumerableElementsMatch が検出してフォールバックする
     // Targets for generated enumerable factories: two or more registrations for the same service type, all direct
     // (Add<S, I> style) transients eligible for inline expansion (no disposable/[Inject]/initializer). Order follows
-    // the emission order (equivalent to AddComponents); runtime composition differences fall back via EnumerableElementsMatch.
+    // the emission order (equivalent to AddGeneratedComponents); runtime composition differences fall back via EnumerableElementsMatch.
     private static List<(string ElementServiceType, List<FactoryModel> Elements)> BuildEnumerableModels(
         ComponentModel[] components,
         CollectedModel[] collected,
@@ -1752,8 +1865,8 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             }
         }
 
-        // 属性コンポーネント (AddComponents の登録形と一致させる)
-        // Attribute components (kept consistent with the registration shape of AddComponents).
+        // 属性コンポーネント (AddGeneratedComponents の登録形と一致させる)
+        // Attribute components (kept consistent with the registration shape of AddGeneratedComponents).
         foreach (var component in components)
         {
             if (component.KeyLiteral is not null)
@@ -2053,11 +2166,11 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             assemblyName));
     }
 
-    // 参照アセンブリの ComponentModule マーカーから生成モジュール型を収集する (AddAllComponents の集約対象)。
+    // 参照アセンブリの ComponentModule マーカーから生成モジュール型を収集する (AddAllGeneratedComponents の集約対象)。
     // アセンブリ属性の走査のみで参照内の型列挙は行わないため、増分ビルドへの影響は参照 1 件あたり属性リスト 1 回分。
     // SDK プロジェクトの参照は推移的に compilation へ渡るため、間接参照のモジュールもフラットに列挙される
     // Collects generated module types from the ComponentModule markers of referenced assemblies (aggregation targets
-    // for AddAllComponents). Only assembly attributes are inspected, never the types inside the references, so the
+    // for AddAllGeneratedComponents). Only assembly attributes are inspected, never the types inside the references, so the
     // incremental cost is one attribute list per reference. SDK projects flow references transitively into the
     // compilation, so indirectly referenced modules are enumerated flat as well.
     private static EquatableArray<string> CollectReferencedModules(Compilation compilation)
@@ -2092,7 +2205,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         return new EquatableArray<string>(modules.ToArray());
     }
 
-    private static void EmitGeneratedComponents(SourceProductionContext context, string assemblyName, ComponentModel[] components, List<FactoryModel> unkeyedFactories, List<FactoryModel> keyedFactories, List<(string ElementServiceType, List<FactoryModel> Elements)> enumerableModels, InlineTargetMap inlineMap, EquatableArray<string> referencedModules)
+    private static void EmitGeneratedComponents(SourceProductionContext context, string assemblyName, ComponentModel[] components, List<FactoryModel> unkeyedFactories, List<FactoryModel> keyedFactories, List<(string ElementServiceType, List<FactoryModel> Elements)> enumerableModels, InlineTargetMap inlineMap, EquatableArray<string> referencedModules, List<(string ImplementationType, string PostConstruct)> generatedInitializers)
     {
         var builder = new SourceBuilder();
         builder.AutoGenerated();
@@ -2158,12 +2271,24 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             EmitEnumerableRegistration(builder, elementServiceType, elements, inlineMap);
         }
 
+        // [GenerateComponentFactory(PostConstruct = ...)] の初期化メソッド登録 (実行時経路との一致のため)
+        // Initializer registrations of [GenerateComponentFactory(PostConstruct = ...)], keeping the runtime path consistent.
+        foreach (var (implementationType, postConstruct) in generatedInitializers)
+        {
+            builder.NewLine();
+            builder.Indent().Append("global::BunnyTail.Resolver.GeneratedComponentRegistry.RegisterInitializer(typeof(")
+                .Append(implementationType)
+                .Append("), \"")
+                .Append(postConstruct)
+                .Append("\");").NewLine();
+        }
+
         builder.EndScope();
 
         if (components.Length > 0)
         {
             builder.NewLine();
-            builder.AppendLine("public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddComponents(this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)");
+            builder.AppendLine("public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddGeneratedComponents(this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)");
             builder.BeginScope();
 
             foreach (var component in components)
@@ -2176,24 +2301,24 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         }
 
         // 参照モジュール + 自アセンブリの属性コンポーネントの一括登録。参照は推移的に見えるため
-        // フラットに列挙し、各モジュールの AddComponents は自分の分だけを登録する (連鎖させると二重登録になる)
+        // フラットに列挙し、各モジュールの AddGeneratedComponents は自分の分だけを登録する (連鎖させると二重登録になる)
         // One-call registration of referenced modules plus this assembly's attribute components. References are
-        // visible transitively, so the list is flat and each module's AddComponents registers only its own
+        // visible transitively, so the list is flat and each module's AddGeneratedComponents registers only its own
         // components (chaining would register duplicates).
         if ((components.Length > 0) || (referencedModules.Count > 0))
         {
             builder.NewLine();
-            builder.AppendLine("public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddAllComponents(this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)");
+            builder.AppendLine("public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddAllGeneratedComponents(this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)");
             builder.BeginScope();
 
             foreach (var module in referencedModules)
             {
-                builder.Indent().Append(module).Append(".AddComponents(services);").NewLine();
+                builder.Indent().Append(module).Append(".AddGeneratedComponents(services);").NewLine();
             }
 
             if (components.Length > 0)
             {
-                builder.AppendLine("AddComponents(services);");
+                builder.AppendLine("AddGeneratedComponents(services);");
             }
 
             builder.AppendLine("return services;");

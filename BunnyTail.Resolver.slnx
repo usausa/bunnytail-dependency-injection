@@ -30,7 +30,8 @@
     <Project Path="BunnyTail.Resolver.CompatibilityTest/BunnyTail.Resolver.CompatibilityTest.csproj" />
     <Project Path="BunnyTail.Resolver.AotTests/BunnyTail.Resolver.AotTests.csproj" />
   </Folder>
-  <Project Path="Develop.Library/Develop.Library.csproj" />
-  <Project Path="Develop.Library2/Develop.Library2.csproj" />
-  <Project Path="Develop/Develop.csproj" DefaultStartup="true" />
+  <Project Path="Example.Library1/Example.Library1.csproj" />
+  <Project Path="Example.Library2/Example.Library2.csproj" />
+  <Project Path="Example/Example.csproj" DefaultStartup="true" />
+  <Project Path="Example.WebApplication/Example.WebApplication.csproj" />
 </Solution>

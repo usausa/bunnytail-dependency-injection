@@ -18,7 +18,7 @@ Source generator based AOT-safe DI library compatible with Microsoft.Extensions.
 
 ### Attribute based registration
 
-Annotate components with `[Singleton]` / `[Scoped]` / `[Transient]`. The generated `AddComponents()` method registers the class itself and all implemented interfaces (interfaces are forwarded to the same instance).
+Annotate components with `[Singleton]` / `[Scoped]` / `[Transient]`. The generated `AddGeneratedComponents()` method registers the class itself and all implemented interfaces (interfaces are forwarded to the same instance).
 
 ```csharp
 using BunnyTail.Resolver;
@@ -39,8 +39,8 @@ public sealed class Component4 : IService;
 
 ```csharp
 using var provider = new ServiceCollection()
-    .AddComponents()          // generated
-    .BuildResolverServiceProvider();
+    .AddGeneratedComponents()          // generated
+    .BuildGeneratedServiceProvider();
 
 var component = provider.GetRequiredService<Component2>();
 var keyed = provider.GetRequiredKeyedService<IService>("primary");
@@ -109,9 +109,52 @@ Registration calls in user code are detected by the generator, and reflection-fr
 
 Factory, instance and `ServiceDescriptor.Describe` based registrations are not collected — they resolve through the runtime path with identical semantics.
 
+### Types you do not control
+
+The generator only sees the source it compiles. When a library registers its own types through its own extension method — `services.AddSomeLibrary()` — and that library does not reference the generator, those types resolve through the runtime path. `[GenerateComponentFactory]` prepares a factory for such a type **without registering it**, leaving the registration to the library:
+
+```csharp
+[assembly: GenerateComponentFactory(typeof(SomeLibrary.SomeService))]
+
+// registration still comes from the library
+services.AddSomeLibrary();
+```
+
+A `PostConstruct` method name can be specified for types you cannot annotate. It runs on both the generated and the runtime path, so the behavior never depends on which path resolved the type:
+
+```csharp
+[assembly: GenerateComponentFactory(typeof(SomeLibrary.SomeService), PostConstruct = nameof(SomeLibrary.SomeService.Initialize))]
+```
+
+Only publicly accessible concrete classes with a usable public constructor are eligible; anything else reports `BTRS0011`, and an invalid `PostConstruct` name reports `BTRS0007`.
+
+To find the types worth marking, ask the built provider which registrations fell back at runtime. This is a development-time diagnostic — it realizes every entry (without creating instances), so keep it out of release paths:
+
+```csharp
+using BunnyTail.Resolver.Diagnostics;
+
+// Ready-to-paste attribute lines, limited to types the generated code can actually construct
+Console.Write(provider.DescribeRuntimeFallbacks());
+
+// Or inspect the full classification
+foreach (var entry in provider.CreateFactoryReport())
+{
+    Console.WriteLine($"{entry.Status,-16} {entry.Lifetime,-9} {entry.ServiceType.Name}");
+}
+```
+
+| Status | Meaning |
+|---|---|
+| `Generated` | Resolved through a generated factory |
+| `RuntimeFallback` | No factory, or the assumptions were rejected — a `[GenerateComponentFactory]` candidate |
+| `NotApplicable` | Factory, instance or open generic definition registration: the container never constructs the type, so nothing can be generated |
+| `Unresolvable` | Could not be realized from the visible registrations |
+
+Not every fallback is worth marking. Factory and instance registrations cannot benefit at all, singletons pay the runtime cost once, and internal types cannot be constructed by generated code. The types that pay off are public transient or scoped services resolved on hot paths.
+
 ### Multi-project modules
 
-Components can live in other projects. When a class library references the generator, its components compile into that library's own `GeneratedComponents` module, marked with an assembly level `[ComponentModule]` attribute. The application's generated `AddAllComponents()` discovers every referenced module (transitively, each exactly once) and registers them together with the application's own components in a single call.
+Components can live in other projects. When a class library references the generator, its components compile into that library's own `GeneratedComponents` module, marked with an assembly level `[ComponentModule]` attribute. The application's generated `AddAllGeneratedComponents()` discovers every referenced module (transitively, each exactly once) and registers them together with the application's own components in a single call.
 
 ```csharp
 // Class library (references BunnyTail.Resolver and the generator)
@@ -122,13 +165,13 @@ public sealed class LibraryComponent;
 ```csharp
 // Application
 using var provider = new ServiceCollection()
-    .AddAllComponents()       // referenced modules + own components
-    .BuildResolverServiceProvider();
+    .AddAllGeneratedComponents()       // referenced modules + own components
+    .BuildGeneratedServiceProvider();
 ```
 
-Each module's `AddComponents()` registers only its own components, so modules can still be registered individually when finer control is needed.
+Each module's `AddGeneratedComponents()` registers only its own components, so modules can still be registered individually when finer control is needed.
 
-A library that does not reference the generator can also participate by declaring a module by hand: write a static class with an `AddComponents(IServiceCollection)` method and mark the assembly with `[assembly: ComponentModule(typeof(...))]`.
+A library that does not reference the generator can also participate by declaring a module by hand: write a static class with an `AddGeneratedComponents(IServiceCollection)` method and mark the assembly with `[assembly: ComponentModule(typeof(...))]`.
 
 ```csharp
 [assembly: BunnyTail.Resolver.ComponentModule(typeof(MyLibrary.LibraryModule))]
@@ -137,7 +180,7 @@ namespace MyLibrary;
 
 public static class LibraryModule
 {
-    public static IServiceCollection AddComponents(this IServiceCollection services)
+    public static IServiceCollection AddGeneratedComponents(this IServiceCollection services)
     {
         services.AddSingleton<IMessageSource, MessageSource>();
         return services;
@@ -145,27 +188,60 @@ public static class LibraryModule
 }
 ```
 
-The `Develop` / `Develop.Library` (generated marker) / `Develop.Library2` (hand-written marker) projects contain a working example of both patterns.
+The `Example` / `Example.Library1` (generated marker) / `Example.Library2` (hand-written marker) projects contain a working example of both patterns.
+
+## API reference
+
+Every entry point of this library carries `Generated` in its name: it is the source generated, reflection-free path. Nothing here replaces the MEDI API — registrations stay `IServiceCollection`, resolution stays `IServiceProvider`.
+
+### Extension methods
+
+| Method | Target | Description |
+|---|---|---|
+| `AddGeneratedComponents()` | `IServiceCollection` | Registers the attribute components (`[Singleton]` / `[Scoped]` / `[Transient]`) of **this assembly**. Emitted by the generator into `<AssemblyName>.GeneratedComponents` |
+| `AddAllGeneratedComponents()` | `IServiceCollection` | Registers the attribute components of this assembly **plus every referenced component module** (transitively, each exactly once). Emitted whenever components or referenced modules exist |
+| `BuildGeneratedServiceProvider()` | `IServiceCollection` | Builds the `ResolverServiceProvider`. The counterpart of MEDI's `BuildServiceProvider()` |
+| *(user defined)* | `IServiceCollection` | Partial methods annotated with `[ComponentRegistration]` get their body generated from class name patterns |
+
+### Types
+
+| Type | Description |
+|---|---|
+| `GeneratedServiceProviderFactory` | `IServiceProviderFactory<IServiceCollection>` for `UseServiceProviderFactory` (Generic Host / ASP.NET Core) |
+| `ResolverServiceProvider` | The provider itself. Implements `IServiceProvider`, `IKeyedServiceProvider`, `ISupportRequiredService`, `IServiceScopeFactory`, `IServiceProviderIsService`, `IServiceProviderIsKeyedService`, `IDisposable`, `IAsyncDisposable`. Also exposes typed `GetService<T>()` / `GetRequiredService<T>()` / `GetKeyedService<T>()` / `GetRequiredKeyedService<T>()` instance methods that skip the MEDI extension method dispatch |
+| `ServiceProviderScope` | A scope, also the injected `IServiceProvider` inside that scope. Same typed methods as above |
+| `ServiceFactoryReportExtensions` | Development-time diagnostics (`BunnyTail.Resolver.Diagnostics`) as provider extension methods: `CreateFactoryReport()` classifies every registration by resolution path, `DescribeRuntimeFallbacks()` emits ready-to-paste `[GenerateComponentFactory]` lines for the publicly constructible ones |
+
+### Attributes
+
+| Attribute | Target | Description |
+|---|---|---|
+| `[Singleton]` / `[Scoped]` / `[Transient]` | class | Registration with `As`, `Key` and `PostConstruct` parameters |
+| `[Inject]` | property | Property injection after construction |
+| `[ComponentRegistration]` | partial method | Convention based registration with `Lifetime`, `Pattern`, `Namespace` and `Assembly` parameters |
+| `[ComponentModule]` | assembly | Marks the module type aggregated by `AddAllGeneratedComponents()`. Emitted automatically; hand-write it for libraries without the generator |
+| `[GenerateComponentFactory]` | assembly | Generates a factory for a type without registering it, for libraries you do not control. Supports `PostConstruct` |
+| `IInitializable` | interface | Initialization callback invoked after construction |
 
 ## Microsoft.Extensions.DependencyInjection integration
 
-The `BunnyTail.Resolver.Extensions.DependencyInjection` package provides the MEDI bridge: `BuildResolverServiceProvider()` and `ResolverServiceProviderFactory`.
+The `BunnyTail.Resolver.Extensions.DependencyInjection` package provides the MEDI bridge: `BuildGeneratedServiceProvider()` and `GeneratedServiceProviderFactory`.
 
 ### ServiceCollection
 
 ```csharp
 using var provider = new ServiceCollection()
-    .AddComponents()
+    .AddGeneratedComponents()
     .AddSingleton<IFoo, Foo>()
-    .BuildResolverServiceProvider();
+    .BuildGeneratedServiceProvider();
 ```
 
 ### Generic Host
 
 ```csharp
 using var host = Host.CreateDefaultBuilder(args)
-    .UseServiceProviderFactory(new ResolverServiceProviderFactory())
-    .ConfigureServices(static services => services.AddComponents())
+    .UseServiceProviderFactory(new GeneratedServiceProviderFactory())
+    .ConfigureServices(static services => services.AddGeneratedComponents())
     .Build();
 ```
 
@@ -173,12 +249,63 @@ using var host = Host.CreateDefaultBuilder(args)
 
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
-builder.Host.UseServiceProviderFactory(new ResolverServiceProviderFactory());
+builder.Host.UseServiceProviderFactory(new GeneratedServiceProviderFactory());
+builder.Services.AddAllGeneratedComponents();
 ```
 
-Framework services registered by the host are resolved through the runtime path, application components through the generated path — both with identical semantics.
+Framework services registered by the host are resolved through the runtime path, application components through the generated path — both with identical semantics. The `Example.WebApplication` project is a runnable minimal API using this setup.
 
 ## How it works
+
+### What the generator collects
+
+At compile time the generator scans the compilation and builds a registration model from four sources. All of them are incremental: editing a method body regenerates nothing.
+
+| Source | Collected from | Result |
+|---|---|---|
+| Attributes | `[Singleton]` / `[Scoped]` / `[Transient]` classes | `AddGeneratedComponents()` body + a factory per implementation |
+| `Add*` calls | `AddSingleton<T>()`, `typeof` overloads, `AddKeyed*`, `ServiceDescriptor` based `Add` / `TryAdd` / `TryAddEnumerable` in user code | A factory per implementation (the registration itself stays in user code) |
+| Conventions | `[ComponentRegistration]` partial methods, optionally scanning a referenced assembly | The method body + a factory per matched implementation |
+| Referenced modules | Assemblies marked with `[ComponentModule]` | The `AddAllGeneratedComponents()` aggregation |
+
+### What the generator emits
+
+For every collected implementation type, a factory is registered from a `[ModuleInitializer]`, so no discovery cost is paid at startup:
+
+```csharp
+// Emitted for [Transient] Service(Repository repository, Logger logger) with a singleton Logger
+GeneratedComponentRegistry.Register(
+    typeof(Service),
+    [typeof(Repository), typeof(Logger)],
+    [new InlinedDependency(typeof(Repository), typeof(Repository))],
+    [new DependencyPlan(typeof(Logger), typeof(Logger))],
+    static (provider, deps) => new Service(
+        new Repository(),                                   // transient dependency inlined as a literal new
+        Unsafe.As<Logger>(deps[0])!));                      // singleton dependency read from a resolved slot
+```
+
+Three shapes come out of this, chosen per dependency lifetime:
+
+* **Inline expansion** — a transient dependency becomes a literal `new` inside the parent factory, so a whole transient graph collapses into one allocation site
+* **Instance slots** — an unambiguous singleton dependency is resolved once and read straight from the deps array afterwards
+* **Accessor slots** — scoped and non-inlinable dependencies get a validated accessor handle, skipping the service table lookup on every resolution
+
+`IEnumerable<T>` sets whose elements are all inlinable transients are materialized as an array literal, and closed forms of open generic registrations that appear in code (as `typeof(IRepository<Foo>)`, a constructor parameter, or a property type) get their own generated factories — which is what makes value type arguments AOT safe.
+
+### How generated code stays correct
+
+Generated factories are assumptions about registrations, and registrations are only final at runtime. Every assumption is therefore verified when the provider realizes an entry, and any mismatch silently falls back to the runtime path:
+
+| Assumption | Verified by |
+|---|---|
+| The constructor MEDI selects is the one the factory was generated for | Parameter type comparison |
+| Every inlined transient dependency still resolves to that implementation's generated factory as a transient | Delegate reference comparison per dependency |
+| Every deps slot still matches its planned lifetime and implementation | Same comparison, per slot |
+| An enumerable still has the same elements in the same order | Ordered per-element comparison |
+
+So `Replace`, a lifetime change, a factory registration or a decorator all keep working: they simply take the runtime path.
+
+### The two paths
 
 Two resolution paths share one runtime core, so lifetime, disposal and collection semantics are always identical:
 
@@ -203,6 +330,16 @@ When the provider is built, every `ServiceDescriptor` is verified against the ge
 | BTRS0008 | Error | Conflicting `PostConstruct` specifications across lifetime attributes |
 | BTRS0009 | Warning | Assembly named on `[ComponentRegistration]` is not referenced by the project |
 | BTRS0010 | Warning | Closed generic with value type arguments has no generated factory and resolves through the runtime path, which fails on NativeAOT |
+| BTRS0011 | Warning | `[GenerateComponentFactory]` target is not a publicly accessible concrete class with a usable public constructor |
+
+## Samples
+
+| Project | Contents |
+|---|---|
+| `Example` | Console sample asserting every feature: attribute components, module aggregation across two libraries, convention registration scanning a referenced assembly, and standard `Add*` registrations (generic, open generic, keyed, `TryAddEnumerable`, factory) |
+| `Example.Library1` | Class library referencing the generator: its components form a module marked automatically |
+| `Example.Library2` | Class library **without** the generator: a hand-written module marker plus plain types picked up by convention scanning |
+| `Example.WebApplication` | ASP.NET Core minimal API with the container replaced, showing singleton / scoped / transient behavior per request |
 
 ## Limitations
 

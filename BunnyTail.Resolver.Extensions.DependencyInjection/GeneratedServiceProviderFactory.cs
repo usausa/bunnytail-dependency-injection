@@ -4,7 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 // MEDI 差し替え用ファクトリ (UseServiceProviderFactory で使用)
 // Factory for replacing MEDI (used with UseServiceProviderFactory).
-public sealed class ResolverServiceProviderFactory : IServiceProviderFactory<IServiceCollection>
+public sealed class GeneratedServiceProviderFactory : IServiceProviderFactory<IServiceCollection>
 {
     public IServiceCollection CreateBuilder(IServiceCollection services) => services;
 
@@ -15,9 +15,9 @@ public sealed class ResolverServiceProviderFactory : IServiceProviderFactory<ISe
     }
 }
 
-public static class ResolverServiceCollectionExtensions
+public static class GeneratedServiceCollectionExtensions
 {
-    public static ResolverServiceProvider BuildResolverServiceProvider(this IServiceCollection services)
+    public static ResolverServiceProvider BuildGeneratedServiceProvider(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
         return new ResolverServiceProvider(services);

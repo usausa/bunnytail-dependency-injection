@@ -11,7 +11,7 @@ public sealed class DependencyInjectionComplianceTest : DependencyInjectionSpeci
 
     protected override IServiceProvider CreateServiceProvider(IServiceCollection serviceCollection)
     {
-        var factory = new ResolverServiceProviderFactory();
+        var factory = new GeneratedServiceProviderFactory();
         return factory.CreateServiceProvider(factory.CreateBuilder(serviceCollection));
     }
 }

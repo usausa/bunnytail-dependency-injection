@@ -81,9 +81,9 @@ public sealed class GeneratorOutputTest
         // Transient dependencies are inlined and the assumption (InlinedDependency) is registered.
         Assert.Contains("new global::Demo.CollectedComponent())", generated, StringComparison.Ordinal);
         Assert.Contains("new global::BunnyTail.Resolver.InlinedDependency(typeof(global::Demo.CollectedComponent), typeof(global::Demo.CollectedComponent))", generated, StringComparison.Ordinal);
-        // AddComponents は属性コンポーネントが無いので出力されない
-        // AddComponents is not emitted because there are no attribute components.
-        Assert.DoesNotContain("AddComponents", generated, StringComparison.Ordinal);
+        // AddGeneratedComponents は属性コンポーネントが無いので出力されない
+        // AddGeneratedComponents is not emitted because there are no attribute components.
+        Assert.DoesNotContain("AddGeneratedComponents", generated, StringComparison.Ordinal);
     }
 
     // ---- 命名規約ベース登録メソッド生成 / convention based registration method generation ----
@@ -411,6 +411,110 @@ public sealed class GeneratorOutputTest
         Assert.DoesNotContain("RegisterEnumerable(", generated, StringComparison.Ordinal);
     }
 
+    // ---- GenerateComponentFactory / factory generation without registration ----
+
+    [Fact]
+    public void GenerateComponentFactoryEmitsFactoryWithoutRegistration()
+    {
+        const string Source = """
+            using BunnyTail.Resolver;
+
+            [assembly: GenerateComponentFactory(typeof(Demo.Uncontrolled))]
+
+            namespace Demo;
+
+            public sealed class Dependency;
+
+            public sealed class Uncontrolled
+            {
+                public Uncontrolled(Dependency dependency)
+                {
+                    Dependency = dependency;
+                }
+
+                public Dependency Dependency { get; }
+            }
+            """;
+
+        var result = CreateRunner()
+            .VerifyCompiles()
+            .Run(Source);
+
+        var generated = result.GeneratedSource("GeneratedComponents.g.cs");
+
+        // ファクトリは出力されるが、登録メソッドには現れない (登録は利用側の責務)
+        // The factory is emitted but never appears in a registration method (registration stays the caller's responsibility).
+        Assert.Contains("typeof(global::Demo.Uncontrolled)", generated, StringComparison.Ordinal);
+        Assert.Contains("new global::Demo.Uncontrolled(", generated, StringComparison.Ordinal);
+        Assert.DoesNotContain("services.Add", generated, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GenerateComponentFactoryEmitsPostConstruct()
+    {
+        const string Source = """
+            using BunnyTail.Resolver;
+
+            [assembly: GenerateComponentFactory(typeof(Demo.Uncontrolled), PostConstruct = "Prepare")]
+
+            namespace Demo;
+
+            public sealed class Uncontrolled
+            {
+                public bool Prepared { get; private set; }
+
+                public void Prepare() => Prepared = true;
+            }
+            """;
+
+        var result = CreateRunner()
+            .VerifyCompiles()
+            .Run(Source);
+
+        var generated = result.GeneratedSource("GeneratedComponents.g.cs");
+
+        // 生成ファクトリが初期化を呼び、実行時経路のために登録も出力される
+        // The generated factory invokes the initializer, and the registration for the runtime path is emitted too.
+        Assert.Contains("instance.Prepare();", generated, StringComparison.Ordinal);
+        Assert.Contains("RegisterInitializer(typeof(global::Demo.Uncontrolled), \"Prepare\")", generated, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void InvalidGenerateComponentFactoryPostConstructIsReported()
+    {
+        const string Source = """
+            using BunnyTail.Resolver;
+
+            [assembly: GenerateComponentFactory(typeof(Demo.Uncontrolled), PostConstruct = "Missing")]
+
+            namespace Demo;
+
+            public sealed class Uncontrolled;
+            """;
+
+        var result = CreateRunner().Run(Source);
+
+        Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0007");
+    }
+
+    [Fact]
+    public void InvalidGenerateComponentFactoryTargetIsReported()
+    {
+        const string Source = """
+            using BunnyTail.Resolver;
+
+            [assembly: GenerateComponentFactory(typeof(Demo.NotConstructible))]
+
+            namespace Demo;
+
+            public abstract class NotConstructible;
+            """;
+
+        var result = CreateRunner().Run(Source);
+
+        Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0011");
+    }
+
     // ---- Assembly 指定の規約登録 / assembly scoped convention registration ----
 
     [Fact]
@@ -497,11 +601,11 @@ public sealed class GeneratorOutputTest
         // 属性コンポーネントを持つアセンブリはモジュールマーカーを埋め込む
         // Assemblies with attribute components embed the module marker.
         Assert.Contains("[assembly: global::BunnyTail.Resolver.ComponentModule(typeof(global::Demo.GeneratedComponents))]", generated, StringComparison.Ordinal);
-        Assert.Contains("public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddAllComponents(", generated, StringComparison.Ordinal);
+        Assert.Contains("public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddAllGeneratedComponents(", generated, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void ReferencedModulesAreAggregatedIntoAddAllComponents()
+    public void ReferencedModulesAreAggregatedIntoAddAllGeneratedComponents()
     {
         // このテストアセンブリ自身が属性コンポーネントを持つ生成モジュール (マーカー入り) なので、参照モジュールとして使う
         // This test assembly itself is a generated module with the marker, so it doubles as the referenced module.
@@ -526,9 +630,9 @@ public sealed class GeneratorOutputTest
 
         // 参照モジュール → 自アセンブリの順で集約される
         // Aggregation calls referenced modules first, then this assembly's components.
-        Assert.Contains("global::BunnyTail.Resolver.Tests.GeneratedComponents.AddComponents(services);", generated, StringComparison.Ordinal);
-        var moduleCall = generated.IndexOf("global::BunnyTail.Resolver.Tests.GeneratedComponents.AddComponents(services);", StringComparison.Ordinal);
-        var selfCall = generated.IndexOf("        AddComponents(services);", StringComparison.Ordinal);
+        Assert.Contains("global::BunnyTail.Resolver.Tests.GeneratedComponents.AddGeneratedComponents(services);", generated, StringComparison.Ordinal);
+        var moduleCall = generated.IndexOf("global::BunnyTail.Resolver.Tests.GeneratedComponents.AddGeneratedComponents(services);", StringComparison.Ordinal);
+        var selfCall = generated.IndexOf("        AddGeneratedComponents(services);", StringComparison.Ordinal);
         Assert.True((moduleCall >= 0) && (selfCall > moduleCall));
     }
 

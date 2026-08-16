@@ -58,7 +58,7 @@ public sealed class RuntimeBehaviorTest
         SlowSingleton.Reset();
         using var provider = new ServiceCollection()
             .AddSingleton<SlowSingleton>()
-            .BuildResolverServiceProvider();
+            .BuildGeneratedServiceProvider();
 
         var results = new SlowSingleton[32];
         Parallel.For(0, results.Length, i => results[i] = provider.GetRequiredService<SlowSingleton>());
@@ -73,7 +73,7 @@ public sealed class RuntimeBehaviorTest
         SlowScoped.Reset();
         using var provider = new ServiceCollection()
             .AddScoped<SlowScoped>()
-            .BuildResolverServiceProvider();
+            .BuildGeneratedServiceProvider();
 
         using var scope1 = provider.CreateScope();
         using var scope2 = provider.CreateScope();
@@ -106,7 +106,7 @@ public sealed class RuntimeBehaviorTest
         using var provider = new ServiceCollection()
             .AddSingleton<SlowSingleton>()
             .AddTransient<SlowDependency>()
-            .BuildResolverServiceProvider();
+            .BuildGeneratedServiceProvider();
 
         // 同じ singleton を直接解決する側と依存経由で受け取る側を同時に走らせる
         // Resolves the same singleton directly and through a dependency at the same time.
@@ -182,7 +182,7 @@ public sealed class RuntimeBehaviorTest
         var services = new ServiceCollection();
         services.AddScoped(_ => new TrackedDisposable(log, "first"));
         services.AddScoped<IDisposable>(_ => new TrackedDisposable(log, "second"));
-        using var provider = services.BuildResolverServiceProvider();
+        using var provider = services.BuildGeneratedServiceProvider();
 
         var scope = provider.CreateScope();
         _ = scope.ServiceProvider.GetRequiredService<TrackedDisposable>();
@@ -198,7 +198,7 @@ public sealed class RuntimeBehaviorTest
         var log = new List<string>();
         var services = new ServiceCollection();
         services.AddTransient(_ => new TrackedDisposable(log, "transient"));
-        using var provider = services.BuildResolverServiceProvider();
+        using var provider = services.BuildGeneratedServiceProvider();
 
         var scope = provider.CreateScope();
         _ = scope.ServiceProvider.GetRequiredService<TrackedDisposable>();
@@ -217,7 +217,7 @@ public sealed class RuntimeBehaviorTest
         var log = new List<string>();
         var services = new ServiceCollection();
         services.AddSingleton(_ => new TrackedDisposable(log, "singleton"));
-        var provider = services.BuildResolverServiceProvider();
+        var provider = services.BuildGeneratedServiceProvider();
 
         using (var scope = provider.CreateScope())
         {
@@ -238,7 +238,7 @@ public sealed class RuntimeBehaviorTest
         var services = new ServiceCollection();
         services.AddScoped(_ => new TrackedAsyncDisposable(log, "first"));
         services.AddScoped(_ => new TrackedDisposable(log, "second"));
-        await using var provider = services.BuildResolverServiceProvider();
+        await using var provider = services.BuildGeneratedServiceProvider();
 
         var scope = ((IServiceProvider)provider).CreateAsyncScope();
         _ = scope.ServiceProvider.GetRequiredService<TrackedAsyncDisposable>();
@@ -256,7 +256,7 @@ public sealed class RuntimeBehaviorTest
         var log = new List<string>();
         var services = new ServiceCollection();
         services.AddScoped(_ => new TrackedDisposable(log, "scoped"));
-        using var provider = services.BuildResolverServiceProvider();
+        using var provider = services.BuildGeneratedServiceProvider();
 
         var scope = provider.CreateScope();
         _ = scope.ServiceProvider.GetRequiredService<TrackedDisposable>();
@@ -272,7 +272,7 @@ public sealed class RuntimeBehaviorTest
         using var provider = new ServiceCollection()
             .AddTransient<SlowDependency>()
             .AddSingleton<SlowSingleton>()
-            .BuildResolverServiceProvider();
+            .BuildGeneratedServiceProvider();
 
         var scope = provider.CreateScope();
         scope.Dispose();
@@ -286,7 +286,7 @@ public sealed class RuntimeBehaviorTest
         var log = new List<string>();
         var services = new ServiceCollection();
         services.AddScoped(_ => new TrackedDisposable(log, "scoped"));
-        using var provider = services.BuildResolverServiceProvider();
+        using var provider = services.BuildGeneratedServiceProvider();
 
         // スコープの生成・解決・破棄を並行に回し、破棄漏れ・二重破棄が出ないこと
         // Creates, resolves and disposes scopes concurrently; nothing is missed or disposed twice.

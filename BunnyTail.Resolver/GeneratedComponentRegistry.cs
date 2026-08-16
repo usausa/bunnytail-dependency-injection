@@ -157,6 +157,12 @@ public static class GeneratedComponentRegistry
 
     private static readonly ConcurrentDictionary<Type, EnumerableEntry> EnumerableMap = new(IdentityTypeComparer.Instance);
 
+    // [GenerateComponentFactory] の PostConstruct 指定。生成ファクトリが採用されない場合でも
+    // 実行時経路が同じ初期化を行えるよう、ファクトリ本体とは独立に保持する
+    // PostConstruct specifications of [GenerateComponentFactory]. Held independently of the factory so the runtime
+    // path performs the same initialization even when the generated factory is not adopted.
+    private static readonly ConcurrentDictionary<Type, string> InitializerMap = new(IdentityTypeComparer.Instance);
+
     public static void Register(Type implementationType, Type[] constructorParameterTypes, Func<IServiceProvider, object> factory) =>
         Register(implementationType, constructorParameterTypes, [], factory);
 
@@ -215,7 +221,17 @@ public static class GeneratedComponentRegistry
         EnumerableMap[elementType] = new EnumerableEntry(elementImplementationTypes, factory);
     }
 
+    public static void RegisterInitializer(Type implementationType, string postConstructMethodName)
+    {
+        ArgumentNullException.ThrowIfNull(implementationType);
+        ArgumentNullException.ThrowIfNull(postConstructMethodName);
+        InitializerMap[implementationType] = postConstructMethodName;
+    }
+
     internal static bool TryGet(Type implementationType, out Entry entry) => Map.TryGetValue(implementationType, out entry!);
+
+    internal static bool TryGetInitializer(Type implementationType, out string postConstructMethodName) =>
+        InitializerMap.TryGetValue(implementationType, out postConstructMethodName!);
 
     internal static bool TryGetEnumerable(Type elementType, out EnumerableEntry entry) => EnumerableMap.TryGetValue(elementType, out entry!);
 

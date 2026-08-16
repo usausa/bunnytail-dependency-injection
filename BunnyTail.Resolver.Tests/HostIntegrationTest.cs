@@ -16,8 +16,8 @@ public sealed class HostIntegrationTest
     public void HostUsesResolverServiceProvider()
     {
         using var host = new HostBuilder()
-            .UseServiceProviderFactory(new ResolverServiceProviderFactory())
-            .ConfigureServices(static services => services.AddComponents())
+            .UseServiceProviderFactory(new GeneratedServiceProviderFactory())
+            .ConfigureServices(static services => services.AddGeneratedComponents())
             .Build();
 
         Assert.IsType<ResolverServiceProvider>(host.Services);
@@ -27,8 +27,8 @@ public sealed class HostIntegrationTest
     public void HostResolvesComponentsAndFrameworkServices()
     {
         using var host = new HostBuilder()
-            .UseServiceProviderFactory(new ResolverServiceProviderFactory())
-            .ConfigureServices(static services => services.AddComponents())
+            .UseServiceProviderFactory(new GeneratedServiceProviderFactory())
+            .ConfigureServices(static services => services.AddGeneratedComponents())
             .Build();
 
         // アプリコンポーネント / application components
@@ -51,8 +51,8 @@ public sealed class HostIntegrationTest
     public async Task HostStartsAndStops()
     {
         using var host = new HostBuilder()
-            .UseServiceProviderFactory(new ResolverServiceProviderFactory())
-            .ConfigureServices(static services => services.AddComponents())
+            .UseServiceProviderFactory(new GeneratedServiceProviderFactory())
+            .ConfigureServices(static services => services.AddGeneratedComponents())
             .Build();
 
         await host.StartAsync(TestContext.Current.CancellationToken);

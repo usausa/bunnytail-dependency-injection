@@ -12,7 +12,7 @@ using Xunit;
 public sealed class ConventionResolutionTest
 {
     private static ResolverServiceProvider CreateProvider() =>
-        new ServiceCollection().AddConventionServices().BuildResolverServiceProvider();
+        new ServiceCollection().AddConventionServices().BuildGeneratedServiceProvider();
 
     [Fact]
     public void SelfRegistrationWhenNoInterface()
