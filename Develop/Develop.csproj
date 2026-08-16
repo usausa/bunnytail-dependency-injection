@@ -17,6 +17,7 @@
     <ProjectReference Include="..\BunnyTail.Resolver.Extensions.DependencyInjection\BunnyTail.Resolver.Extensions.DependencyInjection.csproj" />
     <ProjectReference Include="..\BunnyTail.Resolver.Generator\BunnyTail.Resolver.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\Develop.Library\Develop.Library.csproj" />
+    <ProjectReference Include="..\Develop.Library2\Develop.Library2.csproj" />
   </ItemGroup>
 
 </Project>

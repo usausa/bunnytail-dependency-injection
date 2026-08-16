@@ -118,7 +118,26 @@ using var provider = new ServiceCollection()
     .BuildResolverServiceProvider();
 ```
 
-Each module's `AddComponents()` registers only its own components, so modules can still be registered individually when finer control is needed. The `Develop` / `Develop.Library` projects contain a working example.
+Each module's `AddComponents()` registers only its own components, so modules can still be registered individually when finer control is needed.
+
+A library that does not reference the generator can also participate by declaring a module by hand: write a static class with an `AddComponents(IServiceCollection)` method and mark the assembly with `[assembly: ComponentModule(typeof(...))]`.
+
+```csharp
+[assembly: BunnyTail.Resolver.ComponentModule(typeof(MyLibrary.LibraryModule))]
+
+namespace MyLibrary;
+
+public static class LibraryModule
+{
+    public static IServiceCollection AddComponents(this IServiceCollection services)
+    {
+        services.AddSingleton<IMessageSource, MessageSource>();
+        return services;
+    }
+}
+```
+
+The `Develop` / `Develop.Library` (generated marker) / `Develop.Library2` (hand-written marker) projects contain a working example of both patterns.
 
 ## Microsoft.Extensions.DependencyInjection integration
 

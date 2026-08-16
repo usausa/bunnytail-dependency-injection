@@ -30,10 +30,12 @@ internal sealed class AppService
     }
 }
 
-// モジュール集約 (案 1) の検証。AddAllComponents が参照モジュール (Develop.Library) と
+// モジュール集約 (案 1) の検証。AddAllComponents が参照モジュール 2 種
+// (Develop.Library = 生成コードによる自動マーカー / Develop.Library2 = 手書きマーカー + 自作モジュール) と
 // 自アセンブリ (Develop) の属性コンポーネントを 1 呼び出しで登録することを確認する
-// Verification of module aggregation. AddAllComponents registers the referenced module (Develop.Library)
-// and this assembly's attribute components in a single call.
+// Verification of module aggregation. AddAllComponents registers both kinds of referenced modules
+// (Develop.Library with the auto-embedded marker, Develop.Library2 with a hand-written marker and module)
+// plus this assembly's attribute components in a single call.
 internal static class Program
 {
     private static int failed;
@@ -61,6 +63,11 @@ internal static class Program
 
             // transient は毎回新規 / transients are fresh per resolution
             Assert(!ReferenceEquals(provider.GetRequiredService<LibraryWorker>(), provider.GetRequiredService<LibraryWorker>()), "library transient distinct");
+
+            // 手動宣言モジュール (Develop.Library2) も集約される / the manually declared module is aggregated as well
+            var messageSource = provider.GetRequiredService<Develop.Library2.IMessageSource>();
+            Assert(messageSource.GetMessage() == "manual module", "manual module registration");
+            Assert(ReferenceEquals(messageSource, provider.GetRequiredService<Develop.Library2.IMessageSource>()), "manual module singleton identity");
 
             // scoped はスコープ内共有・スコープ間分離 / scoped instances are shared inside a scope and distinct across scopes
             using var scope1 = provider.CreateScope();

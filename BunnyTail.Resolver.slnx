@@ -31,5 +31,6 @@
     <Project Path="BunnyTail.Resolver.AotTests/BunnyTail.Resolver.AotTests.csproj" />
   </Folder>
   <Project Path="Develop.Library/Develop.Library.csproj" />
+  <Project Path="Develop.Library2/Develop.Library2.csproj" />
   <Project Path="Develop/Develop.csproj" DefaultStartup="true" />
 </Solution>
