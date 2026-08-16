@@ -574,11 +574,11 @@ internal sealed class ServiceRegistry
                     return new FactoryAccessor(generated.Factory!, cache, slot, track);
                 }
 
-                // deps 形: singleton 依存の前提も成立する場合のみ採用し、検証済み accessor を保持する
-                // Deps shape: adopted only when the singleton assumptions also hold; keeps the validated accessors.
-                if (TryResolveSingletonDependencies(generated.SingletonDependencies, out var dependencyAccessors))
+                // deps 形: スロット前提も成立する場合のみ採用し、検証済み accessor を保持する
+                // Deps shape: adopted only when the slot assumptions also hold; keeps the validated accessors.
+                if (TryResolveDependencies(generated.Dependencies, out var dependencyAccessors, out var dependencyHandles))
                 {
-                    return new DepsFactoryAccessor(generated.DepsFactory, dependencyAccessors, cache, slot, track);
+                    return new DepsFactoryAccessor(generated.DepsFactory, dependencyAccessors, dependencyHandles, cache, slot, track);
                 }
             }
         }
@@ -650,17 +650,33 @@ internal sealed class ServiceRegistry
         return true;
     }
 
-    // singleton 依存の前提検証 (deps 形)。各依存が「前提どおりの実装型の生成ファクトリによる singleton 解決」に
-    // なる場合のみ成立し、検証済み accessor を deps 充填用に返す
-    // Singleton assumption validation for the deps shape. Holds only when each dependency resolves as a singleton
-    // through the assumed implementation's generated factory; returns the validated accessors for filling deps.
-    private bool TryResolveSingletonDependencies(InlinedDependency[] dependencies, out ServiceAccessor[] accessors)
+    // deps スロット前提の検証。インスタンススロットは「前提どおりの実装型の生成ファクトリによる singleton 解決」を
+    // 要求する。アクセサスロットは解決可能なことだけを要求する (accessor 呼び出しはレジストリ解決と意味論同一のため、
+    // lifetime や実装の前提は不要)。成立時は検証済み accessor と、アクセサスロット用の生成済みハンドルを deps 充填用に返す
+    // Validation of the deps slot assumptions. Instance slots require a singleton resolution through the assumed
+    // implementation's generated factory. Accessor slots only require resolvability (calling the accessor is
+    // semantically identical to a registry resolution, so no lifetime or implementation assumption is needed).
+    // On success the validated accessors and the pre-created handles for accessor slots are returned for filling deps.
+    private bool TryResolveDependencies(DependencyPlan[] dependencies, out ServiceAccessor[] accessors, out DependencyAccessor?[] handles)
     {
         accessors = dependencies.Length == 0 ? [] : new ServiceAccessor[dependencies.Length];
+        handles = dependencies.Length == 0 ? [] : new DependencyAccessor?[dependencies.Length];
         for (var i = 0; i < dependencies.Length; i++)
         {
             var accessor = GetEntry(new ServiceIdentifier(dependencies[i].ServiceType, null));
-            if (!GeneratedComponentRegistry.TryGet(dependencies[i].ImplementationType, out var entry)
+            if (dependencies[i].UseAccessor)
+            {
+                if (accessor is null)
+                {
+                    return false;
+                }
+
+                accessors[i] = accessor;
+                handles[i] = new DependencyAccessor(accessor, dependencies[i].ServiceType);
+                continue;
+            }
+
+            if (!GeneratedComponentRegistry.TryGet(dependencies[i].ImplementationType!, out var entry)
                 || !UsesGeneratedFactory(accessor, entry, ResultCache.Root))
             {
                 return false;

@@ -28,7 +28,7 @@ public static class GeneratedComponents
             typeof(global::BunnyTail.Resolver.Tests.Components.TransientComponent),
             [typeof(global::BunnyTail.Resolver.Tests.Components.SingletonComponent)],
             [],
-            [new global::BunnyTail.Resolver.InlinedDependency(typeof(global::BunnyTail.Resolver.Tests.Components.SingletonComponent), typeof(global::BunnyTail.Resolver.Tests.Components.SingletonComponent)), new global::BunnyTail.Resolver.InlinedDependency(typeof(global::BunnyTail.Resolver.Tests.Components.PropDependency), typeof(global::BunnyTail.Resolver.Tests.Components.PropDependency))],
+            [new global::BunnyTail.Resolver.DependencyPlan(typeof(global::BunnyTail.Resolver.Tests.Components.SingletonComponent), typeof(global::BunnyTail.Resolver.Tests.Components.SingletonComponent)), new global::BunnyTail.Resolver.DependencyPlan(typeof(global::BunnyTail.Resolver.Tests.Components.PropDependency), typeof(global::BunnyTail.Resolver.Tests.Components.PropDependency))],
             static (provider, deps) =>
             {
                 var instance = new global::BunnyTail.Resolver.Tests.Components.TransientComponent(
@@ -110,7 +110,7 @@ public static class GeneratedComponents
             typeof(global::BunnyTail.Resolver.Tests.Components.LazyProbeConsumer),
             [typeof(global::BunnyTail.Resolver.Tests.Components.LazyProbeSingleton)],
             [],
-            [new global::BunnyTail.Resolver.InlinedDependency(typeof(global::BunnyTail.Resolver.Tests.Components.LazyProbeSingleton), typeof(global::BunnyTail.Resolver.Tests.Components.LazyProbeSingleton))],
+            [new global::BunnyTail.Resolver.DependencyPlan(typeof(global::BunnyTail.Resolver.Tests.Components.LazyProbeSingleton), typeof(global::BunnyTail.Resolver.Tests.Components.LazyProbeSingleton))],
             static (provider, deps) =>
             {
                 var instance = new global::BunnyTail.Resolver.Tests.Components.LazyProbeConsumer(
@@ -142,7 +142,7 @@ public static class GeneratedComponents
             typeof(global::BunnyTail.Resolver.Tests.Components.OrderedInitComponent),
             global::System.Type.EmptyTypes,
             [],
-            [new global::BunnyTail.Resolver.InlinedDependency(typeof(global::BunnyTail.Resolver.Tests.Components.PropDependency), typeof(global::BunnyTail.Resolver.Tests.Components.PropDependency))],
+            [new global::BunnyTail.Resolver.DependencyPlan(typeof(global::BunnyTail.Resolver.Tests.Components.PropDependency), typeof(global::BunnyTail.Resolver.Tests.Components.PropDependency))],
             static (provider, deps) =>
             {
                 var instance = new global::BunnyTail.Resolver.Tests.Components.OrderedInitComponent();
@@ -154,11 +154,13 @@ public static class GeneratedComponents
         global::BunnyTail.Resolver.GeneratedComponentRegistry.Register(
             typeof(global::BunnyTail.Resolver.Tests.Components.NodeWithDisposable),
             [typeof(global::BunnyTail.Resolver.Tests.Components.DisposableLeaf)],
-            static provider =>
+            [],
+            [new global::BunnyTail.Resolver.DependencyPlan(typeof(global::BunnyTail.Resolver.Tests.Components.DisposableLeaf))],
+            static (provider, deps) =>
             {
                 var scope = (global::BunnyTail.Resolver.ServiceProviderScope)provider;
                 var instance = new global::BunnyTail.Resolver.Tests.Components.NodeWithDisposable(
-                    scope.GetRequiredService<global::BunnyTail.Resolver.Tests.Components.DisposableLeaf>());
+                    global::System.Runtime.CompilerServices.Unsafe.As<global::BunnyTail.Resolver.DependencyAccessor>(deps[0])!.GetValue<global::BunnyTail.Resolver.Tests.Components.DisposableLeaf>(scope));
                 return instance;
             });
 

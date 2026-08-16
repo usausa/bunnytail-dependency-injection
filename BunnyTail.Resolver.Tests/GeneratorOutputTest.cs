@@ -315,14 +315,14 @@ public sealed class GeneratorOutputTest
         // Assumptions cover top-level expansions only (Root records Branch only; Leaf is validated by Branch's own entry).
         Assert.Contains("[new global::BunnyTail.Resolver.InlinedDependency(typeof(global::Demo.Branch), typeof(global::Demo.Branch))],", generated, StringComparison.Ordinal);
 
-        // singleton 依存は deps スロット (Unsafe.As)、disposable transient は scope 経由のまま
+        // singleton 依存はインスタンススロット (Unsafe.As)、disposable transient はアクセサスロット
         // (DisposableLeaf 自身の Register ファクトリの new は正当な出力なので、使用箇所側の解決式で判定する)
-        // Singleton dependencies become deps slots (Unsafe.As); disposable transients stay on the scope path
+        // Singleton dependencies become instance slots (Unsafe.As); disposable transients become accessor slots
         // (the new inside DisposableLeaf's own Register factory is legitimate output, so the assertion checks the use site).
         Assert.Contains("global::System.Runtime.CompilerServices.Unsafe.As<global::Demo.Shared>(deps[0])!", generated, StringComparison.Ordinal);
-        Assert.Contains("[new global::BunnyTail.Resolver.InlinedDependency(typeof(global::Demo.Shared), typeof(global::Demo.Shared))],", generated, StringComparison.Ordinal);
+        Assert.Contains("[new global::BunnyTail.Resolver.DependencyPlan(typeof(global::Demo.Shared), typeof(global::Demo.Shared)), new global::BunnyTail.Resolver.DependencyPlan(typeof(global::Demo.DisposableLeaf))],", generated, StringComparison.Ordinal);
         Assert.Contains("static (provider, deps) =>", generated, StringComparison.Ordinal);
-        Assert.Contains("scope.GetRequiredService<global::Demo.DisposableLeaf>()", generated, StringComparison.Ordinal);
+        Assert.Contains("global::System.Runtime.CompilerServices.Unsafe.As<global::BunnyTail.Resolver.DependencyAccessor>(deps[1])!.GetValue<global::Demo.DisposableLeaf>(scope)", generated, StringComparison.Ordinal);
         Assert.Contains("new global::Demo.Mixed(", generated, StringComparison.Ordinal);
     }
 
@@ -347,10 +347,10 @@ public sealed class GeneratorOutputTest
 
         Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0003");
 
-        // 循環箇所は GetRequiredService へフォールバックして出力される
-        // The cyclic edge is emitted as a GetRequiredService fallback.
+        // 循環箇所はアクセサスロットへフォールバックして出力される (実行時は採用検証が循環を検出する)
+        // The cyclic edge falls back to an accessor slot (adoption validation detects the cycle at runtime).
         var generated = result.GeneratedSource("GeneratedComponents.g.cs");
-        Assert.Contains("scope.GetRequiredService<global::Demo.First>()", generated, StringComparison.Ordinal);
+        Assert.Contains(".GetValue<global::Demo.First>(scope)", generated, StringComparison.Ordinal);
     }
 
     // ---- 生成 enumerable ファクトリ / generated enumerable factories ----
@@ -486,9 +486,9 @@ public sealed class GeneratorOutputTest
         // IInitializable is never registered as a forwarded service.
         Assert.DoesNotContain("services.AddTransient<global::BunnyTail.Resolver.IInitializable>", generated, StringComparison.Ordinal);
 
-        // 初期化コールバックを持つ型はインライン展開されない (親は GetRequiredService 経由)
-        // Types with an initialization callback are not inlined; the parent resolves them through GetRequiredService.
-        Assert.Contains("scope.GetRequiredService<global::Demo.WithInterface>()", generated, StringComparison.Ordinal);
+        // 初期化コールバックを持つ型はインライン展開されない (親はアクセサスロット経由)
+        // Types with an initialization callback are not inlined; the parent resolves them through an accessor slot.
+        Assert.Contains(".GetValue<global::Demo.WithInterface>(scope)", generated, StringComparison.Ordinal);
     }
 
     [Fact]

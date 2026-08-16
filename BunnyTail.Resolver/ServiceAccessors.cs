@@ -167,12 +167,15 @@ internal sealed class FactoryAccessor : ServiceAccessor
     protected override object? Create(ServiceProviderScope scope) => Factory(scope);
 }
 
-// singleton 依存を解決済み配列で受け取る生成ファクトリ (deps 形)。
+// 依存を解決済み配列で受け取る生成ファクトリ (deps 形)。インスタンススロットは root 解決済みインスタンス、
+// アクセサスロットは採用時に生成された DependencyAccessor (公開ハンドル) を保持する。
 // deps は初回生成時に一度だけ充填する (lazy セマンティクス維持: singleton は初回解決まで生成されない)。
-// 充填が競合しても各依存 accessor がキャッシュ済みインスタンスを返すため、内容は同一で後勝ちで問題ない
-// Generated factory receiving resolved singleton dependencies as an array (deps shape). The array is filled once on
-// first creation, preserving lazy semantics (singletons are not created until first resolution). Concurrent fills are
-// benign: each dependency accessor returns its cached instance, so the contents are identical and last-write wins.
+// 充填が競合しても、インスタンススロットはキャッシュ済みインスタンス、アクセサスロットは等価なハンドルに
+// なるため、内容は同一で後勝ちで問題ない
+// Generated factory receiving resolved dependencies as an array (deps shape). Instance slots hold root-resolved
+// instances and accessor slots hold DependencyAccessor handles. The array is filled once on first creation,
+// preserving lazy semantics (singletons are not created until first resolution). Concurrent fills are benign:
+// instance slots yield the cached instance and accessor slots yield equivalent handles, so last-write wins.
 internal sealed class DepsFactoryAccessor : ServiceAccessor
 {
     // インライン展開前提の検証用に公開 (ServiceRegistry が生成ファクトリと参照比較する)
@@ -181,13 +184,16 @@ internal sealed class DepsFactoryAccessor : ServiceAccessor
 
     private readonly ServiceAccessor[] dependencyAccessors;
 
+    private readonly DependencyAccessor?[] dependencyHandles;
+
     private object?[]? resolved;
 
-    public DepsFactoryAccessor(Func<IServiceProvider, object?[], object> factory, ServiceAccessor[] dependencyAccessors, ResultCache cache, int slot, bool trackDisposable)
+    public DepsFactoryAccessor(Func<IServiceProvider, object?[], object> factory, ServiceAccessor[] dependencyAccessors, DependencyAccessor?[] dependencyHandles, ResultCache cache, int slot, bool trackDisposable)
         : base(cache, slot, trackDisposable)
     {
         Factory = factory;
         this.dependencyAccessors = dependencyAccessors;
+        this.dependencyHandles = dependencyHandles;
     }
 
     protected override object? Create(ServiceProviderScope scope)
@@ -202,7 +208,7 @@ internal sealed class DepsFactoryAccessor : ServiceAccessor
         var array = new object?[dependencyAccessors.Length];
         for (var i = 0; i < dependencyAccessors.Length; i++)
         {
-            array[i] = dependencyAccessors[i].GetValue(scope.RootScope);
+            array[i] = dependencyHandles[i] ?? dependencyAccessors[i].GetValue(scope.RootScope);
         }
 
         Volatile.Write(ref resolved, array);
