@@ -353,6 +353,67 @@ public sealed class GeneratorOutputTest
         Assert.Contains(".GetValue<global::Demo.First>(scope)", generated, StringComparison.Ordinal);
     }
 
+    // ---- モジュール集約 / module aggregation ----
+
+    [Fact]
+    public void ModuleMarkerIsEmittedForAttributeComponents()
+    {
+        const string Source = """
+            using BunnyTail.Resolver;
+
+            namespace Demo;
+
+            [Singleton]
+            public sealed class AppComponent;
+            """;
+
+        var result = GeneratorTestRunner.For<ResolverGenerator>()
+            .WithAssemblyName("Demo")
+            .WithReference(typeof(SingletonAttribute).Assembly)
+            .WithReference(typeof(IServiceCollection).Assembly)
+            .VerifyCompiles()
+            .Run(Source);
+
+        var generated = result.GeneratedSource("GeneratedComponents.g.cs");
+
+        // 属性コンポーネントを持つアセンブリはモジュールマーカーを埋め込む
+        // Assemblies with attribute components embed the module marker.
+        Assert.Contains("[assembly: global::BunnyTail.Resolver.ComponentModule(typeof(global::Demo.GeneratedComponents))]", generated, StringComparison.Ordinal);
+        Assert.Contains("public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddAllComponents(", generated, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ReferencedModulesAreAggregatedIntoAddAllComponents()
+    {
+        // このテストアセンブリ自身が属性コンポーネントを持つ生成モジュール (マーカー入り) なので、参照モジュールとして使う
+        // This test assembly itself is a generated module with the marker, so it doubles as the referenced module.
+        const string Source = """
+            using BunnyTail.Resolver;
+
+            namespace Demo;
+
+            [Singleton]
+            public sealed class AppComponent;
+            """;
+
+        var result = GeneratorTestRunner.For<ResolverGenerator>()
+            .WithAssemblyName("Demo")
+            .WithReference(typeof(SingletonAttribute).Assembly)
+            .WithReference(typeof(IServiceCollection).Assembly)
+            .WithReference(typeof(GeneratorOutputTest).Assembly)
+            .VerifyCompiles()
+            .Run(Source);
+
+        var generated = result.GeneratedSource("GeneratedComponents.g.cs");
+
+        // 参照モジュール → 自アセンブリの順で集約される
+        // Aggregation calls referenced modules first, then this assembly's components.
+        Assert.Contains("global::BunnyTail.Resolver.Tests.GeneratedComponents.AddComponents(services);", generated, StringComparison.Ordinal);
+        var moduleCall = generated.IndexOf("global::BunnyTail.Resolver.Tests.GeneratedComponents.AddComponents(services);", StringComparison.Ordinal);
+        var selfCall = generated.IndexOf("        AddComponents(services);", StringComparison.Ordinal);
+        Assert.True((moduleCall >= 0) && (selfCall > moduleCall));
+    }
+
     // ---- 生成 enumerable ファクトリ / generated enumerable factories ----
 
     [Fact]

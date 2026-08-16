@@ -101,6 +101,25 @@ public static partial class ServiceCollectionExtensions
 
 `AddSingleton<TService, TImplementation>()` style calls in user code are detected by the generator, and reflection-free factories are generated for the implementation types automatically. Existing MEDI registration code benefits from the generated path without any changes.
 
+### Multi-project modules
+
+Components can live in other projects. When a class library references the generator, its components compile into that library's own `GeneratedComponents` module, marked with an assembly level `[ComponentModule]` attribute. The application's generated `AddAllComponents()` discovers every referenced module (transitively, each exactly once) and registers them together with the application's own components in a single call.
+
+```csharp
+// Class library (references BunnyTail.Resolver and the generator)
+[Singleton]
+public sealed class LibraryComponent;
+```
+
+```csharp
+// Application
+using var provider = new ServiceCollection()
+    .AddAllComponents()       // referenced modules + own components
+    .BuildResolverServiceProvider();
+```
+
+Each module's `AddComponents()` registers only its own components, so modules can still be registered individually when finer control is needed. The `Develop` / `Develop.Library` projects contain a working example.
+
 ## Microsoft.Extensions.DependencyInjection integration
 
 The `BunnyTail.Resolver.Extensions.DependencyInjection` package provides the MEDI bridge: `BuildResolverServiceProvider()` and `ResolverServiceProviderFactory`.

@@ -20,10 +20,10 @@ void Assert(bool condition, string name)
     }
 }
 
-// AddComponents = 属性コンポーネント (生成登録メソッド) / AddTransient = Add* 収集 → 生成ファクトリ
-// AddComponents = attribute components (generated registration method) / AddTransient = Add* collection -> generated factory.
+// AddAllComponents = 属性コンポーネントの一括登録 (モジュール集約込み) / AddTransient = Add* 収集 → 生成ファクトリ
+// AddAllComponents = attribute components in one call (module aggregation included) / AddTransient = Add* collection -> generated factory.
 var services = new ServiceCollection()
-    .AddComponents()
+    .AddAllComponents()
     .AddTransient<RuntimeRegistered>()
     .AddTransient(typeof(IAotGeneric<>), typeof(AotGeneric<>));
 

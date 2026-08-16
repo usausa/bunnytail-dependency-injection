@@ -66,3 +66,19 @@ public sealed class ComponentRegistrationAttribute : Attribute
         Pattern = pattern;
     }
 }
+
+// 生成コードが埋め込むアセンブリレベルのマーカー。属性コンポーネントを持つアセンブリの生成モジュール型
+// (GeneratedComponents) を示し、参照側のジェネレータが AddAllComponents の集約に使う
+// Assembly level marker embedded by generated code. Points to the generated module type (GeneratedComponents)
+// of an assembly containing attribute components; referencing projects' generators use it to build AddAllComponents.
+[AttributeUsage(AttributeTargets.Assembly)]
+public sealed class ComponentModuleAttribute : Attribute
+{
+    public Type ModuleType { get; }
+
+    public ComponentModuleAttribute(Type moduleType)
+    {
+        ArgumentNullException.ThrowIfNull(moduleType);
+        ModuleType = moduleType;
+    }
+}
