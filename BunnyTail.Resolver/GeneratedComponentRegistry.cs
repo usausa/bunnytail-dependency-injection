@@ -87,9 +87,28 @@ public static class GeneratedComponentRegistry
         }
     }
 
+    // 生成 enumerable ファクトリ (要素型 → 全要素 transient の配列リテラル実体化)
+    // Generated enumerable factories (element type -> array literal materialization of all-transient elements).
+    internal sealed class EnumerableEntry
+    {
+#pragma warning disable SA1401
+        public readonly Type[] ElementImplementationTypes;
+
+        public readonly Func<IServiceProvider, object> Factory;
+#pragma warning restore SA1401
+
+        public EnumerableEntry(Type[] elementImplementationTypes, Func<IServiceProvider, object> factory)
+        {
+            ElementImplementationTypes = elementImplementationTypes;
+            Factory = factory;
+        }
+    }
+
     private static readonly ConcurrentDictionary<Type, Entry> Map = new(IdentityTypeComparer.Instance);
 
     private static readonly ConcurrentDictionary<Type, KeyedEntry> KeyedMap = new(IdentityTypeComparer.Instance);
+
+    private static readonly ConcurrentDictionary<Type, EnumerableEntry> EnumerableMap = new(IdentityTypeComparer.Instance);
 
     public static void Register(Type implementationType, Type[] constructorParameterTypes, Func<IServiceProvider, object> factory) =>
         Register(implementationType, constructorParameterTypes, [], factory);
@@ -127,7 +146,19 @@ public static class GeneratedComponentRegistry
         KeyedMap[implementationType] = new KeyedEntry(constructorParameterTypes, inlinedDependencies, factory);
     }
 
+    // 全要素 transient の IEnumerable<T> 実体化を配列リテラルへ畳む形。elementImplementationTypes が登録順の前提になる
+    // Materializes an all-transient IEnumerable<T> as an array literal; elementImplementationTypes define the ordered assumptions.
+    public static void RegisterEnumerable(Type elementType, Type[] elementImplementationTypes, Func<IServiceProvider, object> factory)
+    {
+        ArgumentNullException.ThrowIfNull(elementType);
+        ArgumentNullException.ThrowIfNull(elementImplementationTypes);
+        ArgumentNullException.ThrowIfNull(factory);
+        EnumerableMap[elementType] = new EnumerableEntry(elementImplementationTypes, factory);
+    }
+
     internal static bool TryGet(Type implementationType, out Entry entry) => Map.TryGetValue(implementationType, out entry!);
+
+    internal static bool TryGetEnumerable(Type elementType, out EnumerableEntry entry) => EnumerableMap.TryGetValue(elementType, out entry!);
 
     internal static bool TryGetKeyed(Type implementationType, out KeyedEntry entry) => KeyedMap.TryGetValue(implementationType, out entry!);
 

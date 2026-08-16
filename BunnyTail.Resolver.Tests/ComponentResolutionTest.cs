@@ -157,6 +157,41 @@ public sealed class ComponentResolutionTest
         Assert.Same(consumer.Dependency, provider.GetRequiredService<LazyProbeSingleton>());
     }
 
+    // ---- 生成 enumerable ファクトリ / generated enumerable factories ----
+
+    public sealed class RuntimeMultiLeaf : IMultiLeaf;
+
+    [Fact]
+    public void TransientEnumerableMaterializesInRegistrationOrder()
+    {
+        using var provider = CreateProvider();
+
+        var first = provider.GetServices<IMultiLeaf>().ToArray();
+        var second = provider.GetServices<IMultiLeaf>().ToArray();
+
+        Assert.Collection(
+            first,
+            static x => Assert.IsType<MultiLeafA>(x),
+            static x => Assert.IsType<MultiLeafB>(x));
+        Assert.NotSame(first[0], second[0]);
+        Assert.NotSame(first[1], second[1]);
+    }
+
+    [Fact]
+    public void GeneratedEnumerableFallsBackWhenElementIsAdded()
+    {
+        // 実行時に要素を追加すると数の前提が崩れ、accessor 経由の実体化へフォールバックする
+        // Adding an element at runtime breaks the count assumption and falls back to accessor-based materialization.
+        var services = new ServiceCollection().AddComponents();
+        services.Add(ServiceDescriptor.Describe(typeof(IMultiLeaf), typeof(RuntimeMultiLeaf), ServiceLifetime.Transient));
+        using var provider = services.BuildResolverServiceProvider();
+
+        var all = provider.GetServices<IMultiLeaf>().ToArray();
+
+        Assert.Equal(3, all.Length);
+        Assert.IsType<RuntimeMultiLeaf>(all[2]);
+    }
+
     // ---- open generic の閉型生成 / closed factories from open generic registrations ----
 
     public interface IGenericContainer<T>;

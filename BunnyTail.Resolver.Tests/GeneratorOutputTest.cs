@@ -353,6 +353,46 @@ public sealed class GeneratorOutputTest
         Assert.Contains("scope.GetRequiredService<global::Demo.First>()", generated, StringComparison.Ordinal);
     }
 
+    // ---- 生成 enumerable ファクトリ / generated enumerable factories ----
+
+    [Fact]
+    public void EnumerableFactoryIsGeneratedForAllTransientElements()
+    {
+        const string Source = """
+            using Microsoft.Extensions.DependencyInjection;
+
+            namespace Demo;
+
+            public interface IMulti;
+
+            public sealed class Multi1 : IMulti;
+
+            public sealed class Multi2 : IMulti;
+
+            public static class Setup
+            {
+                public static void Configure(IServiceCollection services)
+                {
+                    services.AddTransient<IMulti, Multi1>();
+                    services.AddTransient<IMulti, Multi2>();
+                }
+            }
+            """;
+
+        var result = CreateRunner()
+            .VerifyCompiles()
+            .Run(Source);
+
+        var generated = result.GeneratedSource("GeneratedComponents.g.cs");
+
+        // 全要素 transient の enumerable は配列リテラルへ畳まれる
+        // All-transient enumerables are folded into an array literal.
+        Assert.Contains("RegisterEnumerable(", generated, StringComparison.Ordinal);
+        Assert.Contains("typeof(global::Demo.IMulti),", generated, StringComparison.Ordinal);
+        Assert.Contains("new global::Demo.IMulti[]", generated, StringComparison.Ordinal);
+        Assert.Contains("new global::Demo.Multi1(),", generated, StringComparison.Ordinal);
+    }
+
     // ---- open generic の閉型生成 / closed factories from open generic registrations ----
 
     [Fact]

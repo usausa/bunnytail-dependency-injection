@@ -92,6 +92,16 @@ public static class GeneratedComponents
             static provider => new global::BunnyTail.Resolver.Tests.Components.DisposableLeaf());
 
         global::BunnyTail.Resolver.GeneratedComponentRegistry.Register(
+            typeof(global::BunnyTail.Resolver.Tests.Components.MultiLeafA),
+            global::System.Type.EmptyTypes,
+            static provider => new global::BunnyTail.Resolver.Tests.Components.MultiLeafA());
+
+        global::BunnyTail.Resolver.GeneratedComponentRegistry.Register(
+            typeof(global::BunnyTail.Resolver.Tests.Components.MultiLeafB),
+            global::System.Type.EmptyTypes,
+            static provider => new global::BunnyTail.Resolver.Tests.Components.MultiLeafB());
+
+        global::BunnyTail.Resolver.GeneratedComponentRegistry.Register(
             typeof(global::BunnyTail.Resolver.Tests.Components.LazyProbeSingleton),
             global::System.Type.EmptyTypes,
             static provider => new global::BunnyTail.Resolver.Tests.Components.LazyProbeSingleton());
@@ -156,6 +166,18 @@ public static class GeneratedComponents
             typeof(global::BunnyTail.Resolver.Tests.Components.PrimaryKeyedComponent),
             global::System.Type.EmptyTypes,
             static (provider, key) => new global::BunnyTail.Resolver.Tests.Components.PrimaryKeyedComponent());
+
+        global::BunnyTail.Resolver.GeneratedComponentRegistry.RegisterEnumerable(
+            typeof(global::BunnyTail.Resolver.Tests.Components.IMultiLeaf),
+            [typeof(global::BunnyTail.Resolver.Tests.Components.MultiLeafA), typeof(global::BunnyTail.Resolver.Tests.Components.MultiLeafB)],
+            static provider =>
+            {
+                return new global::BunnyTail.Resolver.Tests.Components.IMultiLeaf[]
+                {
+                    new global::BunnyTail.Resolver.Tests.Components.MultiLeafA(),
+                    new global::BunnyTail.Resolver.Tests.Components.MultiLeafB(),
+                };
+            });
     }
 
     public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddComponents(this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)
@@ -172,6 +194,8 @@ public static class GeneratedComponents
         services.AddTransient<global::BunnyTail.Resolver.Tests.Components.BranchB>();
         services.AddTransient<global::BunnyTail.Resolver.Tests.Components.GraphRoot>();
         services.AddTransient<global::BunnyTail.Resolver.Tests.Components.DisposableLeaf>();
+        services.AddTransient<global::BunnyTail.Resolver.Tests.Components.IMultiLeaf, global::BunnyTail.Resolver.Tests.Components.MultiLeafA>();
+        services.AddTransient<global::BunnyTail.Resolver.Tests.Components.IMultiLeaf, global::BunnyTail.Resolver.Tests.Components.MultiLeafB>();
         services.AddSingleton<global::BunnyTail.Resolver.Tests.Components.LazyProbeSingleton>();
         services.AddTransient<global::BunnyTail.Resolver.Tests.Components.LazyProbeConsumer>();
         services.AddSingleton<global::BunnyTail.Resolver.Tests.Components.PostConstructComponent>();

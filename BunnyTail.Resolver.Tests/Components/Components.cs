@@ -86,6 +86,16 @@ public sealed class DisposableLeaf : IDisposable
     public void Dispose() => Disposed = true;
 }
 
+// 生成 enumerable ファクトリ (全要素 transient) の検証用
+// For verifying the generated enumerable factory (all-transient elements).
+public interface IMultiLeaf;
+
+[Transient(As = typeof(IMultiLeaf))]
+public sealed class MultiLeafA : IMultiLeaf;
+
+[Transient(As = typeof(IMultiLeaf))]
+public sealed class MultiLeafB : IMultiLeaf;
+
 // deps 充填の遅延性検証用 (singleton は消費側の初回解決まで生成されない)
 // For verifying lazy deps filling: the singleton is not created until the consumer's first resolution.
 [Singleton]

@@ -979,10 +979,11 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             }
         }
 
-        if ((components.Length > 0) || (unkeyedFactories.Count > 0) || (keyedFactories.Count > 0))
+        var inlineTargetMap = BuildInlineTargetMap(components, sortedCollected, conventionMatches);
+        var enumerableModels = BuildEnumerableModels(components, sortedCollected, conventionMatches);
+        if ((components.Length > 0) || (unkeyedFactories.Count > 0) || (keyedFactories.Count > 0) || (enumerableModels.Count > 0))
         {
-            var inlineMap = BuildInlineTargetMap(components, sortedCollected, conventionMatches);
-            EmitGeneratedComponents(context, assemblyName, components, unkeyedFactories, keyedFactories, inlineMap);
+            EmitGeneratedComponents(context, assemblyName, components, unkeyedFactories, keyedFactories, enumerableModels, inlineTargetMap);
         }
 
         // ---- 規約登録メソッドの本体 / convention registration method bodies ----
@@ -991,6 +992,113 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         {
             EmitConventionMethod(context, method, matches);
         }
+    }
+
+    // 生成 enumerable ファクトリの対象: 同一サービス型へ 2 件以上、全登録が direct (Add<S, I> 形式) かつ
+    // transient のインライン展開適格 (非 disposable・[Inject] なし・初期化なし)。順序は出力順 = AddComponents 相当。
+    // 実行時の構成差 (追加・差し替え・順序) は EnumerableElementsMatch が検出してフォールバックする
+    // Targets for generated enumerable factories: two or more registrations for the same service type, all direct
+    // (Add<S, I> style) transients eligible for inline expansion (no disposable/[Inject]/initializer). Order follows
+    // the emission order (equivalent to AddComponents); runtime composition differences fall back via EnumerableElementsMatch.
+    private static List<(string ElementServiceType, List<FactoryModel> Elements)> BuildEnumerableModels(
+        ComponentModel[] components,
+        CollectedModel[] collected,
+        List<(MethodModel Method, List<(CandidateModel Candidate, string Lifetime)> Matches)> conventionMatches)
+    {
+        var lists = new Dictionary<string, List<(FactoryModel? Factory, string Lifetime)>>(StringComparer.Ordinal);
+        var order = new List<string>();
+
+        void Append(string service, FactoryModel? factory, string lifetime)
+        {
+            if (!lists.TryGetValue(service, out var list))
+            {
+                list = [];
+                lists[service] = list;
+                order.Add(service);
+            }
+
+            list.Add((factory, lifetime));
+        }
+
+        foreach (var component in components)
+        {
+            if (component.KeyLiteral is not null)
+            {
+                continue;
+            }
+
+            if (component.AsType is not null)
+            {
+                Append(component.AsType, component.Factory, component.Lifetime);
+            }
+            else
+            {
+                Append(component.Factory.ImplementationType, component.Factory, component.Lifetime);
+                foreach (var interfaceType in component.Interfaces)
+                {
+                    Append(interfaceType, null, component.Lifetime);   // フォワーディングは検証不能 / forwarding cannot be identity-validated
+                }
+            }
+        }
+
+        foreach (var model in collected)
+        {
+            Append(model.ServiceType, model.Factory, model.Lifetime);
+        }
+
+        foreach (var (_, matches) in conventionMatches)
+        {
+            foreach (var (candidate, lifetime) in matches)
+            {
+                if (candidate.Interfaces.Count == 1)
+                {
+                    Append(candidate.Interfaces[0], candidate.Factory, lifetime);
+                }
+                else
+                {
+                    Append(candidate.Factory.ImplementationType, candidate.Factory, lifetime);
+                    foreach (var interfaceType in candidate.Interfaces)
+                    {
+                        Append(interfaceType, null, lifetime);
+                    }
+                }
+            }
+        }
+
+        var models = new List<(string, List<FactoryModel>)>();
+        foreach (var service in order)
+        {
+            var list = lists[service];
+            if (list.Count < 2)
+            {
+                continue;
+            }
+
+            var eligible = true;
+            var elements = new List<FactoryModel>(list.Count);
+            foreach (var (factory, lifetime) in list)
+            {
+                if ((factory is null)
+                    || (lifetime != "Transient")
+                    || !factory.EligibleUnkeyed
+                    || (factory.InjectProperties.Count > 0)
+                    || factory.Disposable
+                    || factory.HasInitializer)
+                {
+                    eligible = false;
+                    break;
+                }
+
+                elements.Add(factory);
+            }
+
+            if (eligible)
+            {
+                models.Add((service, elements));
+            }
+        }
+
+        return models;
     }
 
     private static List<FactoryModel> DiscoverClosedGenericFactories(
@@ -1434,7 +1542,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
     // Emit
     // ------------------------------------------------------------
 
-    private static void EmitGeneratedComponents(SourceProductionContext context, string assemblyName, ComponentModel[] components, List<FactoryModel> unkeyedFactories, List<FactoryModel> keyedFactories, InlineTargetMap inlineMap)
+    private static void EmitGeneratedComponents(SourceProductionContext context, string assemblyName, ComponentModel[] components, List<FactoryModel> unkeyedFactories, List<FactoryModel> keyedFactories, List<(string ElementServiceType, List<FactoryModel> Elements)> enumerableModels, InlineTargetMap inlineMap)
     {
         var builder = new SourceBuilder();
         builder.AutoGenerated();
@@ -1479,6 +1587,17 @@ public sealed class ResolverGenerator : IIncrementalGenerator
 
             first = false;
             EmitFactoryRegistration(builder, factory, keyed: true, inlineMap);
+        }
+
+        foreach (var (elementServiceType, elements) in enumerableModels)
+        {
+            if (!first)
+            {
+                builder.NewLine();
+            }
+
+            first = false;
+            EmitEnumerableRegistration(builder, elementServiceType, elements, inlineMap);
         }
 
         builder.EndScope();
@@ -1785,6 +1904,72 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             builder.Indent().Append("});").NewLine();
         }
 
+        builder.IndentLevel--;
+    }
+
+    // 生成 enumerable ファクトリ: 全要素 transient の実体化を配列リテラルへ畳む
+    // Generated enumerable factory folding the all-transient materialization into an array literal.
+    private static void EmitEnumerableRegistration(SourceBuilder builder, string elementServiceType, List<FactoryModel> elements, InlineTargetMap inlineMap)
+    {
+        var stack = new List<string>();
+        var nodes = new InlineNode?[elements.Count];
+        var needsScope = false;
+        for (var i = 0; i < elements.Count; i++)
+        {
+            var element = elements[i];
+            var children = new InlineNode?[element.Parameters.Count];
+            for (var j = 0; j < element.Parameters.Count; j++)
+            {
+                if (element.Parameters[j].Kind == DependencyKinds.Service)
+                {
+                    children[j] = TryCreateInlineNode(element.Parameters[j].TypeName, inlineMap, stack);
+                }
+
+                needsScope = needsScope || NeedsScope(element.Parameters[j].Kind, element.Parameters[j].TypeName, children[j], null);
+            }
+
+            nodes[i] = new InlineNode(element.ImplementationType, element, children);
+        }
+
+        builder.AppendLine("global::BunnyTail.Resolver.GeneratedComponentRegistry.RegisterEnumerable(");
+        builder.IndentLevel++;
+        builder.Indent().Append("typeof(").Append(elementServiceType).Append("),").NewLine();
+
+        builder.Indent().Append('[');
+        for (var i = 0; i < elements.Count; i++)
+        {
+            if (i > 0)
+            {
+                builder.Append(", ");
+            }
+
+            builder.Append("typeof(").Append(elements[i].ImplementationType).Append(')');
+        }
+
+        builder.Append("],").NewLine();
+
+        builder.AppendLine("static provider =>");
+        builder.BeginScope();
+        if (needsScope)
+        {
+            builder.AppendLine("var scope = (global::BunnyTail.Resolver.ServiceProviderScope)provider;");
+        }
+
+        builder.Indent().Append("return new ").Append(elementServiceType).Append("[]").NewLine();
+        builder.AppendLine("{");
+        builder.IndentLevel++;
+        for (var i = 0; i < elements.Count; i++)
+        {
+            builder.Indent();
+            EmitInlineNew(builder, nodes[i]!, null);
+            builder.Append(',').NewLine();
+        }
+
+        builder.IndentLevel--;
+        builder.AppendLine("};");
+
+        builder.IndentLevel--;
+        builder.Indent().Append("});").NewLine();
         builder.IndentLevel--;
     }
 

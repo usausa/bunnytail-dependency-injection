@@ -783,7 +783,7 @@ internal sealed class ServiceRegistry
     // IEnumerable<T>
     //--------------------------------------------------------------------------------
 
-    private EnumerableAccessor CreateEnumerableAccessor(Type elementType, object? key)
+    private ServiceAccessor CreateEnumerableAccessor(Type elementType, object? key)
     {
         var items = new List<ServiceAccessor>();
 
@@ -843,7 +843,40 @@ internal sealed class ServiceRegistry
             cache = ResultCache.None;
         }
 
+        // 生成 enumerable ファクトリ: 要素構成 (数・順序・実装・lifetime) が生成時の前提と一致する場合のみ
+        // 配列リテラル実体化を採用する。不一致 (実行時追加・差し替え等) は従来の accessor 経由で実体化する
+        // Generated enumerable factory: adopted only when the element composition (count, order, implementations and
+        // lifetimes) matches the generation-time assumptions; mismatches keep the accessor-based materialization.
+        if (key is null
+            && cache == ResultCache.None
+            && GeneratedComponentRegistry.TryGetEnumerable(elementType, out var generatedEnumerable)
+            && EnumerableElementsMatch(items, generatedEnumerable.ElementImplementationTypes))
+        {
+            return new FactoryAccessor(generatedEnumerable.Factory, ResultCache.None, -1, trackDisposable: false);
+        }
+
         return new EnumerableAccessor(elementType, items.ToArray(), cache, cache == ResultCache.Scoped ? NextSlot() : -1);
+    }
+
+    // 各要素が「前提どおりの実装型の生成ファクトリによる transient 解決」であることを登録順に検証する
+    // Validates in registration order that every element resolves as a transient through the assumed implementation's generated factory.
+    private static bool EnumerableElementsMatch(List<ServiceAccessor> items, Type[] expected)
+    {
+        if (items.Count != expected.Length)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < expected.Length; i++)
+        {
+            if (!GeneratedComponentRegistry.TryGet(expected[i], out var entry)
+                || !UsesGeneratedFactory(items[i], entry, ResultCache.None))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private void AddEnumerableItem(List<ServiceAccessor> items, ServiceDescriptor descriptor, Type elementType, object? requestedKey)
