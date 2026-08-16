@@ -2361,21 +2361,18 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             }
         }
 
-        // deps スロット割り当て (unkeyed のみ。keyed は従来経路)
-        // Deps slot assignment (unkeyed only; keyed factories keep the scope path).
+        // deps スロット割り当て (unkeyed / keyed 共通。keyed 種別の依存はスロット対象外のまま key / scope 経由)
+        // Deps slot assignment (shared by unkeyed and keyed factories; keyed-kind dependencies stay on the key / scope path).
         var depsIndex = new Dictionary<string, (int Slot, bool Accessor)>(StringComparer.Ordinal);
         var depsList = new List<(string Service, string? Implementation)>();
-        if (!keyed)
+        for (var i = 0; i < factory.Parameters.Count; i++)
         {
-            for (var i = 0; i < factory.Parameters.Count; i++)
-            {
-                CollectDependencySlots(factory.Parameters[i].Kind, factory.Parameters[i].TypeName, parameterNodes[i], inlineMap, depsIndex, depsList);
-            }
+            CollectDependencySlots(factory.Parameters[i].Kind, factory.Parameters[i].TypeName, parameterNodes[i], inlineMap, depsIndex, depsList);
+        }
 
-            for (var i = 0; i < factory.InjectProperties.Count; i++)
-            {
-                CollectDependencySlots(factory.InjectProperties[i].Kind, factory.InjectProperties[i].TypeName, propertyNodes[i], inlineMap, depsIndex, depsList);
-            }
+        for (var i = 0; i < factory.InjectProperties.Count; i++)
+        {
+            CollectDependencySlots(factory.InjectProperties[i].Kind, factory.InjectProperties[i].TypeName, propertyNodes[i], inlineMap, depsIndex, depsList);
         }
 
         var emitDepsIndex = depsList.Count > 0 ? depsIndex : null;
@@ -2447,7 +2444,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         }
 
         var lambdaHeader = keyed
-            ? "static (provider, key) => "
+            ? (depsList.Count > 0 ? "static (provider, key, deps) => " : "static (provider, key) => ")
             : (depsList.Count > 0 ? "static (provider, deps) => " : "static provider => ");
 
         if ((factory.Parameters.Count == 0) && (factory.InjectProperties.Count == 0) && !factory.HasInitializer)

@@ -166,10 +166,28 @@ public static class GeneratedComponents
                 return instance;
             });
 
+        global::BunnyTail.Resolver.GeneratedComponentRegistry.Register(
+            typeof(global::BunnyTail.Resolver.Tests.Components.KeyedProbeDependency),
+            global::System.Type.EmptyTypes,
+            static provider => new global::BunnyTail.Resolver.Tests.Components.KeyedProbeDependency());
+
         global::BunnyTail.Resolver.GeneratedComponentRegistry.RegisterKeyed(
             typeof(global::BunnyTail.Resolver.Tests.Components.PrimaryKeyedComponent),
             global::System.Type.EmptyTypes,
             static (provider, key) => new global::BunnyTail.Resolver.Tests.Components.PrimaryKeyedComponent());
+
+        global::BunnyTail.Resolver.GeneratedComponentRegistry.RegisterKeyed(
+            typeof(global::BunnyTail.Resolver.Tests.Components.KeyedWithDependency),
+            [typeof(global::BunnyTail.Resolver.Tests.Components.KeyedProbeDependency), typeof(string)],
+            [],
+            [new global::BunnyTail.Resolver.DependencyPlan(typeof(global::BunnyTail.Resolver.Tests.Components.KeyedProbeDependency), typeof(global::BunnyTail.Resolver.Tests.Components.KeyedProbeDependency))],
+            static (provider, key, deps) =>
+            {
+                var instance = new global::BunnyTail.Resolver.Tests.Components.KeyedWithDependency(
+                    global::System.Runtime.CompilerServices.Unsafe.As<global::BunnyTail.Resolver.Tests.Components.KeyedProbeDependency>(deps[0])!,
+                    (string)key!);
+                return instance;
+            });
 
         global::BunnyTail.Resolver.GeneratedComponentRegistry.RegisterEnumerable(
             typeof(global::BunnyTail.Resolver.Tests.Components.IMultiLeaf),
@@ -207,6 +225,8 @@ public static class GeneratedComponents
         services.AddTransient<global::BunnyTail.Resolver.Tests.Components.OrderedInitComponent>();
         services.AddTransient<global::BunnyTail.Resolver.Tests.Components.ReflectionInitComponent>();
         services.AddTransient<global::BunnyTail.Resolver.Tests.Components.NodeWithDisposable>();
+        services.AddSingleton<global::BunnyTail.Resolver.Tests.Components.KeyedProbeDependency>();
+        services.AddKeyedTransient<global::BunnyTail.Resolver.Tests.Components.IKeyedWithDependency, global::BunnyTail.Resolver.Tests.Components.KeyedWithDependency>("kd");
         return services;
     }
 

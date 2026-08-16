@@ -591,7 +591,17 @@ internal sealed class ServiceRegistry
                 && AllPlansAreServicesOrServiceKey(plans)
                 && InlinedDependenciesMatch(generatedKeyed.InlinedDependencies))
             {
-                return new KeyedFactoryAccessor(generatedKeyed.Factory, serviceKey, cache, slot, track);
+                if (generatedKeyed.KeyedDepsFactory is null)
+                {
+                    return new KeyedFactoryAccessor(generatedKeyed.Factory!, serviceKey, cache, slot, track);
+                }
+
+                // keyed deps 形: スロット前提も成立する場合のみ採用 (非 keyed と同じ検証)
+                // Keyed deps shape: adopted only when the slot assumptions also hold (same validation as non-keyed).
+                if (TryResolveDependencies(generatedKeyed.Dependencies, out var keyedDependencyAccessors, out var keyedDependencyHandles))
+                {
+                    return new KeyedDepsFactoryAccessor(generatedKeyed.KeyedDepsFactory, serviceKey, keyedDependencyAccessors, keyedDependencyHandles, cache, slot, track);
+                }
             }
         }
 

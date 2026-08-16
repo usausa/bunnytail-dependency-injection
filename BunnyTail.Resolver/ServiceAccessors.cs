@@ -216,6 +216,49 @@ internal sealed class DepsFactoryAccessor : ServiceAccessor
     }
 }
 
+// 依存を解決済み配列で受け取る keyed 生成ファクトリ (deps 形)。非 keyed の DepsFactoryAccessor と同じ充填規則
+// Keyed generated factory receiving resolved dependencies as an array (deps shape), with the same fill rules as the non-keyed DepsFactoryAccessor.
+internal sealed class KeyedDepsFactoryAccessor : ServiceAccessor
+{
+    private readonly Func<IServiceProvider, object?, object?[], object> factory;
+
+    private readonly object? key;
+
+    private readonly ServiceAccessor[] dependencyAccessors;
+
+    private readonly DependencyAccessor?[] dependencyHandles;
+
+    private object?[]? resolved;
+
+    public KeyedDepsFactoryAccessor(Func<IServiceProvider, object?, object?[], object> factory, object? key, ServiceAccessor[] dependencyAccessors, DependencyAccessor?[] dependencyHandles, ResultCache cache, int slot, bool trackDisposable)
+        : base(cache, slot, trackDisposable)
+    {
+        this.factory = factory;
+        this.key = key;
+        this.dependencyAccessors = dependencyAccessors;
+        this.dependencyHandles = dependencyHandles;
+    }
+
+    protected override object? Create(ServiceProviderScope scope)
+    {
+        var deps = resolved ?? FillDependencies(scope);
+        return factory(scope, key, deps);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private object?[] FillDependencies(ServiceProviderScope scope)
+    {
+        var array = new object?[dependencyAccessors.Length];
+        for (var i = 0; i < dependencyAccessors.Length; i++)
+        {
+            array[i] = dependencyHandles[i] ?? dependencyAccessors[i].GetValue(scope.RootScope);
+        }
+
+        Volatile.Write(ref resolved, array);
+        return array;
+    }
+}
+
 // keyed ファクトリ (Func<IServiceProvider, object?, object>)
 // Keyed factory (Func<IServiceProvider, object?, object>).
 internal sealed class KeyedFactoryAccessor : ServiceAccessor

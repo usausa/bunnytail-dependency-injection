@@ -2,6 +2,8 @@ namespace BunnyTail.Resolver.Tests.Components;
 
 using BunnyTail.Resolver;
 
+using Microsoft.Extensions.DependencyInjection;
+
 // ユーザーコード想定のサンプルコンポーネント群 (属性ベース登録)
 // Sample components representing user code (attribute based registration).
 
@@ -167,4 +169,24 @@ public sealed class ReflectionInitComponent
 public sealed class NodeWithDisposable(DisposableLeaf leaf)
 {
     public DisposableLeaf Leaf { get; } = leaf;
+}
+
+// keyed deps 形ファクトリの検証用 (singleton 依存 + [ServiceKey] 注入)
+// For verifying the keyed deps-shaped factory (a singleton dependency plus [ServiceKey] injection).
+[Singleton]
+public sealed class KeyedProbeDependency;
+
+public interface IKeyedWithDependency
+{
+    KeyedProbeDependency Probe { get; }
+
+    string Key { get; }
+}
+
+[Transient(As = typeof(IKeyedWithDependency), Key = "kd")]
+public sealed class KeyedWithDependency(KeyedProbeDependency probe, [ServiceKey] string key) : IKeyedWithDependency
+{
+    public KeyedProbeDependency Probe { get; } = probe;
+
+    public string Key { get; } = key;
 }

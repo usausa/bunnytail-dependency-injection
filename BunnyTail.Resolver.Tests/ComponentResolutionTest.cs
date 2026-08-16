@@ -31,6 +31,22 @@ public sealed class ComponentResolutionTest
     }
 
     [Fact]
+    public void KeyedFactoryReceivesResolvedDependencies()
+    {
+        // keyed deps 形: singleton 依存は deps スロット経由、[ServiceKey] は key 引数経由で注入される
+        // Keyed deps shape: the singleton dependency arrives through a deps slot and [ServiceKey] through the key argument.
+        using var provider = CreateProvider();
+
+        var first = provider.GetRequiredKeyedService<IKeyedWithDependency>("kd");
+        var second = provider.GetRequiredKeyedService<IKeyedWithDependency>("kd");
+
+        Assert.NotSame(first, second);
+        Assert.Equal("kd", first.Key);
+        Assert.Same(provider.GetRequiredService<KeyedProbeDependency>(), first.Probe);
+        Assert.Same(first.Probe, second.Probe);
+    }
+
+    [Fact]
     public void SingletonIsSameAcrossScopes()
     {
         using var provider = CreateProvider();

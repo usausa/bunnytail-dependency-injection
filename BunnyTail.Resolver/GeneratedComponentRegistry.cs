@@ -106,14 +106,31 @@ public static class GeneratedComponentRegistry
 
         public readonly InlinedDependency[] InlinedDependencies;
 
-        public readonly Func<IServiceProvider, object?, object> Factory;
+        // deps 配列の前提。スロット順に対応する (KeyedDepsFactory 形のみ)
+        // Deps array assumptions, in slot order (keyed deps-shaped factories only).
+        public readonly DependencyPlan[] Dependencies;
+
+        public readonly Func<IServiceProvider, object?, object>? Factory;
+
+        // 依存を解決済み配列で受け取る形 (Factory と排他)
+        // Shape receiving resolved dependencies as an array (mutually exclusive with Factory).
+        public readonly Func<IServiceProvider, object?, object?[], object>? KeyedDepsFactory;
 #pragma warning restore SA1401
 
         public KeyedEntry(Type[] constructorParameterTypes, InlinedDependency[] inlinedDependencies, Func<IServiceProvider, object?, object> factory)
         {
             ConstructorParameterTypes = constructorParameterTypes;
             InlinedDependencies = inlinedDependencies;
+            Dependencies = [];
             Factory = factory;
+        }
+
+        public KeyedEntry(Type[] constructorParameterTypes, InlinedDependency[] inlinedDependencies, DependencyPlan[] dependencies, Func<IServiceProvider, object?, object?[], object> keyedDepsFactory)
+        {
+            ConstructorParameterTypes = constructorParameterTypes;
+            InlinedDependencies = inlinedDependencies;
+            Dependencies = dependencies;
+            KeyedDepsFactory = keyedDepsFactory;
         }
     }
 
@@ -174,6 +191,18 @@ public static class GeneratedComponentRegistry
         ArgumentNullException.ThrowIfNull(inlinedDependencies);
         ArgumentNullException.ThrowIfNull(factory);
         KeyedMap[implementationType] = new KeyedEntry(constructorParameterTypes, inlinedDependencies, factory);
+    }
+
+    // 依存を deps 配列で受け取る keyed 形。dependencies がスロット順の前提になる
+    // Keyed deps-shaped registration receiving resolved dependencies; dependencies define the slot order assumptions.
+    public static void RegisterKeyed(Type implementationType, Type[] constructorParameterTypes, InlinedDependency[] inlinedDependencies, DependencyPlan[] dependencies, Func<IServiceProvider, object?, object?[], object> factory)
+    {
+        ArgumentNullException.ThrowIfNull(implementationType);
+        ArgumentNullException.ThrowIfNull(constructorParameterTypes);
+        ArgumentNullException.ThrowIfNull(inlinedDependencies);
+        ArgumentNullException.ThrowIfNull(dependencies);
+        ArgumentNullException.ThrowIfNull(factory);
+        KeyedMap[implementationType] = new KeyedEntry(constructorParameterTypes, inlinedDependencies, dependencies, factory);
     }
 
     // 全要素 transient の IEnumerable<T> 実体化を配列リテラルへ畳む形。elementImplementationTypes が登録順の前提になる
