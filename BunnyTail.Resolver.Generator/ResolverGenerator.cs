@@ -1855,6 +1855,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
     // Expansion plan for a service dependency. Null elements in Parameters resolve through GetRequiredService.
     private sealed record InlineNode(string ServiceType, FactoryModel Factory, InlineNode?[] Parameters);
 
+    // ReSharper disable ParameterTypeCanBeEnumerable.Local
     private static InlineTargetMap BuildInlineTargetMap(
         ComponentModel[] components,
         CollectedModel[] collected,
@@ -1984,6 +1985,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
 
         return new InlineTargetMap(targets, singletonTargets);
     }
+    // ReSharper restore ParameterTypeCanBeEnumerable.Local
 
     private static InlineNode? TryCreateInlineNode(string serviceTypeName, InlineTargetMap map, List<string> stack)
     {

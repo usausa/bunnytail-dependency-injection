@@ -195,7 +195,7 @@ public class ResolutionEntryBenchmark
         {
             public readonly Type Key;
             public readonly Accessor Accessor;
-            public object? Constant;
+            public readonly object? Constant;
             public Node? Next;
 
             public Node(Type key, Accessor accessor, object? constant)

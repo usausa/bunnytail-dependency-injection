@@ -27,7 +27,7 @@ public class DisposalTrackingBenchmark
     // 追跡リストは disposal 追跡のコストを再現するためのもので、内容の参照はしない
     // The tracking list reproduces the cost of disposal tracking; its contents are never read.
     // ReSharper disable once CollectionNeverQueried.Local
-    private readonly List<IDisposable> tracked = new(CreateCount * 2);
+    private readonly List<IDisposable> tracked = [with(CreateCount * 2)];
 
     private Func<object> plainFactory = default!;
     private Func<object> disposableFactory = default!;

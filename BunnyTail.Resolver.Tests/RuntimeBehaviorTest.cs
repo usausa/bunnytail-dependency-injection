@@ -85,7 +85,7 @@ public sealed class RuntimeBehaviorTest
         var second = new SlowScoped[16];
         // Parallel.For は using スコープを抜ける前に完走するため、捕捉した provider は破棄されていない
         // Parallel.For completes before the using scope ends, so the captured provider is not disposed yet.
-        // ReSharper disable once AccessToDisposedClosure
+        // ReSharper disable AccessToDisposedClosure
         Parallel.For(0, 32, i =>
         {
             if (i < 16)
@@ -97,6 +97,7 @@ public sealed class RuntimeBehaviorTest
                 second[i - 16] = scope2.ServiceProvider.GetRequiredService<SlowScoped>();
             }
         });
+        // ReSharper restore AccessToDisposedClosure
 
         // スコープごとに 1 つ = 合計 2 つ / one per scope, two in total
         Assert.Equal(2, SlowScoped.Created);
@@ -120,7 +121,7 @@ public sealed class RuntimeBehaviorTest
         var indirect = new SlowDependency[16];
         // Parallel.For は using スコープを抜ける前に完走するため、捕捉した provider は破棄されていない
         // Parallel.For completes before the using scope ends, so the captured provider is not disposed yet.
-        // ReSharper disable once AccessToDisposedClosure
+        // ReSharper disable AccessToDisposedClosure
         Parallel.For(0, 32, i =>
         {
             if (i < 16)
@@ -132,6 +133,7 @@ public sealed class RuntimeBehaviorTest
                 indirect[i - 16] = provider.GetRequiredService<SlowDependency>();
             }
         });
+        // ReSharper restore AccessToDisposedClosure
 
         Assert.Equal(1, SlowSingleton.Created);
         Assert.All(direct, x => Assert.Same(direct[0], x));

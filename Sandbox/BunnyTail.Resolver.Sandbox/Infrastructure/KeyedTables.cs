@@ -186,6 +186,7 @@ public sealed class TwoStageKeyedTable<TValue>
 {
     private readonly Dictionary<Type, Dictionary<object, TValue>> table;
 
+    // ReSharper disable once ParameterTypeCanBeEnumerable.Local
     public TwoStageKeyedTable(IReadOnlyList<KeyValuePair<CompositeKey, TValue>> source)
     {
         table = [];

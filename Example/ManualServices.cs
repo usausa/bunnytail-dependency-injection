@@ -26,9 +26,11 @@ internal sealed class ManualScopedService
 // 値型引数でも NativeAOT で解決できる
 // Open generic registration. Closed forms appearing in code (here int, through the ManualConsumer dependency)
 // get closed factories generated, so even value type arguments resolve on NativeAOT.
-internal interface IManualBox<T>
+internal interface IManualBox<out T>
 {
+#pragma warning disable IDE0051
     T? Value { get; }
+#pragma warning restore IDE0051
 }
 
 internal sealed class ManualBox<T> : IManualBox<T>

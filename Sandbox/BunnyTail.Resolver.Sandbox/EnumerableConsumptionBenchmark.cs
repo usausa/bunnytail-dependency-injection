@@ -35,6 +35,7 @@ public class EnumerableConsumptionBenchmark
     public int EnumerateInterface()
     {
         var count = 0;
+        // ReSharper disable once LoopCanBeConvertedToQuery
         foreach (var element in (IEnumerable<IElement>)resolved)
         {
             count += element.Value;
@@ -51,6 +52,7 @@ public class EnumerableConsumptionBenchmark
         var count = 0;
         if (resolved is IElement[] array)
         {
+            // ReSharper disable once LoopCanBeConvertedToQuery
             foreach (var element in array)
             {
                 count += element.Value;

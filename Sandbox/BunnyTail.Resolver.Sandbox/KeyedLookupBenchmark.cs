@@ -186,6 +186,7 @@ public static class KeyedFixture
         var index = 0;
         for (var i = 0; i < n; i++)
         {
+            // ReSharper disable once LoopCanBeConvertedToQuery
             foreach (var key in keys)
             {
                 pairs.Add(new KeyValuePair<CompositeKey, ServiceEntry>(
@@ -194,7 +195,7 @@ public static class KeyedFixture
             }
         }
 
-        return pairs.ToArray();
+        return [.. pairs];
     }
 
     public static (Type Type, object Key)[] CreateHitSequence(int n, string[] keys, int count)
