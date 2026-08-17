@@ -344,6 +344,47 @@ When the provider is built, every `ServiceDescriptor` is verified against the ge
 | `Example.Library2` | Class library **without** the generator: a hand-written module marker plus plain types picked up by convention scanning |
 | `Example.WebApplication` | ASP.NET Core minimal API with the container replaced, showing singleton / scoped / transient behavior per request |
 
+## Benchmark
+
+Resolution cost on the generated path, measured with the `BunnyTail.Resolver.Benchmark` project. Every benchmark method repeats the listed operation five times and `OperationsPerInvoke = 5` divides the result, so **Mean is the cost of one operation**. For reference purpose only.
+
+| Scenario | Measured operation |
+|---|---|
+| `Singleton` | Resolve a singleton |
+| `Transient` | Resolve a transient |
+| `Combined` | Resolve a transient holding one singleton dependency |
+| `Complex` | Resolve a transient with six dependencies (three singletons, three transients inlined) |
+| `Generics` | Resolve a closed form of an open generic registration |
+| `Scoped` | Resolve a scoped service from an already-populated scope |
+| `Keyed` | Resolve a keyed singleton |
+| `MultipleSingleton` | Enumerate an `IEnumerable<T>` of five singletons |
+| `MultipleTransient` | Enumerate an `IEnumerable<T>` of five transients |
+| `AspNet` | Create a scope, resolve a controller graph (three transients sharing one scoped service), dispose the scope |
+
+```
+
+BenchmarkDotNet v0.15.8, Windows 11 (10.0.26200.9168/25H2/2025Update/HudsonValley2)
+AMD Ryzen AI 9 HX 370 w/ Radeon 890M 2.00GHz, 1 CPU, 24 logical and 12 physical cores
+.NET SDK 10.0.302
+  [Host]    : .NET 10.0.10 (10.0.10, 10.0.1026.32716), X64 RyuJIT x86-64-v4
+  MediumRun : .NET 10.0.10 (10.0.10, 10.0.1026.32716), X64 RyuJIT x86-64-v4
+
+Job=MediumRun  Jit=RyuJit  Platform=X64  
+IterationCount=15  LaunchCount=2  WarmupCount=10  
+
+```
+| Method            | Mean      | Error     | StdDev    | Median    | Min       | Max       | P90       | Gen0   | Allocated |
+|------------------ |----------:|----------:|----------:|----------:|----------:|----------:|----------:|-------:|----------:|
+| Singleton         |  1.070 ns | 0.0308 ns | 0.0442 ns |  1.070 ns |  1.021 ns |  1.121 ns |  1.119 ns |      - |         - |
+| Transient         |  4.874 ns | 0.0715 ns | 0.1047 ns |  4.847 ns |  4.757 ns |  5.160 ns |  5.019 ns | 0.0029 |      24 B |
+| Combined          |  5.802 ns | 0.0656 ns | 0.0941 ns |  5.797 ns |  5.661 ns |  6.034 ns |  5.897 ns | 0.0029 |      24 B |
+| Complex           | 15.140 ns | 0.1435 ns | 0.2012 ns | 15.121 ns | 14.604 ns | 15.586 ns | 15.352 ns | 0.0162 |     136 B |
+| Generics          |  4.201 ns | 0.0836 ns | 0.1171 ns |  4.179 ns |  4.071 ns |  4.512 ns |  4.387 ns | 0.0029 |      24 B |
+| Scoped            |  2.655 ns | 0.0575 ns | 0.0825 ns |  2.660 ns |  2.559 ns |  2.838 ns |  2.777 ns |      - |         - |
+| Keyed             |  4.197 ns | 0.0391 ns | 0.0548 ns |  4.202 ns |  4.106 ns |  4.288 ns |  4.268 ns |      - |         - |
+| MultipleSingleton |  2.931 ns | 0.0257 ns | 0.0385 ns |  2.924 ns |  2.865 ns |  3.001 ns |  2.987 ns |      - |         - |
+| MultipleTransient | 21.751 ns | 1.1971 ns | 1.7547 ns | 20.836 ns | 19.605 ns | 24.043 ns | 23.897 ns | 0.0227 |     190 B |
+| AspNet            | 45.652 ns | 0.8295 ns | 1.1628 ns | 45.150 ns | 44.121 ns | 47.478 ns | 47.110 ns | 0.0373 |     312 B |
 ## Limitations
 
 * Runtime targets .NET 10 or later (the generator itself is netstandard2.0)
