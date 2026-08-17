@@ -1572,7 +1572,10 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             }
         }
 
-        return new ClosedGenericScanResult(new EquatableArray<FactoryModel>([.. factories]), new EquatableArray<ClosedGenericWarningModel>([.. warnings]), definitionKeys);
+        return new ClosedGenericScanResult(
+            new EquatableArray<FactoryModel>([.. factories]),
+            new EquatableArray<ClosedGenericWarningModel>([.. warnings]),
+            definitionKeys);
     }
 
     // ------------------------------------------------------------

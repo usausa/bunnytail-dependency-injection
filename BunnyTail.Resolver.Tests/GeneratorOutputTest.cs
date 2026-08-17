@@ -23,14 +23,28 @@ public sealed class GeneratorOutputTest
 
     private static string Normalize(string text) => text.Replace("\r\n", "\n", StringComparison.Ordinal).TrimEnd('\n');
 
+    // harness のコンパイルはプロジェクト設定を持たないため、SDK の ImplicitUsings と同じ暗黙 using を前置する。
+    // これを揃えておかないと、通常ビルドでは通るコンポーネント定義が harness でだけ解決できなくなる
+    // The harness compilation has no project settings, so the same implicit usings the SDK adds are prepended.
+    // Without matching them, component definitions that build normally would fail to resolve only in the harness.
+    private const string ImplicitUsings =
+        """
+        global using System;
+        global using System.Collections.Generic;
+        global using System.IO;
+        global using System.Linq;
+        global using System.Net.Http;
+        global using System.Threading;
+        global using System.Threading.Tasks;
+
+        """;
+
     // ---- 属性コンポーネントの出力一致 / attribute component output match ----
 
     [Fact]
     public void GeneratedSourceMatchesHandWrittenPrototype()
     {
-        // ImplicitUsings 相当 (harness コンパイルはプロジェクト設定を持たないため)
-        // Equivalent of ImplicitUsings (the harness compilation has no project settings).
-        var source = "global using System;" + Environment.NewLine + File.ReadAllText(Path.Combine("Components", "Components.cs"));
+        var source = ImplicitUsings + File.ReadAllText(Path.Combine("Components", "Components.cs"));
         var expected = File.ReadAllText(Path.Combine("Expected", "ComponentRegistration.expected.txt"));
 
         var result = CreateRunner()
