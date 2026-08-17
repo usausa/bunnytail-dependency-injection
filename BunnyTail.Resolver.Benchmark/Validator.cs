@@ -8,6 +8,9 @@ using Microsoft.Extensions.DependencyInjection;
 // Equivalence verification before measurement. Confirms every provider resolves with identical semantics.
 public static class Validator
 {
+    // 同一式どうしの比較は「2 回解決して同一/別インスタンスか」を見る検証そのもの
+    // Comparing identical expressions is the verification itself: resolve twice and check identity or distinctness.
+    // ReSharper disable EqualExpressionComparison
     public static void Validate(IServiceProvider provider)
     {
         ArgumentNullException.ThrowIfNull(provider);

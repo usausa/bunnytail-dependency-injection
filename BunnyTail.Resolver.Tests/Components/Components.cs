@@ -1,3 +1,4 @@
+#pragma warning disable IDE0051
 namespace BunnyTail.Resolver.Tests.Components;
 
 using BunnyTail.Resolver;
@@ -109,7 +110,7 @@ public sealed class LazyProbeSingleton
 
     public LazyProbeSingleton()
     {
-        System.Threading.Interlocked.Increment(ref created);
+        Interlocked.Increment(ref created);
     }
 }
 
@@ -147,6 +148,9 @@ public sealed class OrderedInitComponent : IInitializable
 
     public bool PropWasSetOnInitialize { get; private set; }
 
+    // 注釈上は非 null だが、注入順序 (初期化が注入後か) を確認するための判定
+    // The annotation says non-null; the check verifies the ordering, that initialization runs after injection.
+    // ReSharper disable once ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
     public void Initialize() => PropWasSetOnInitialize = Prop is not null;
 }
 
