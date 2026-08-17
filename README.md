@@ -1,24 +1,28 @@
-# BunnyTail.Resolver
+# 🐰 BunnyTail.Resolver
 
 | Package | Info |
 |:-|:-|
 | BunnyTail.Resolver | [![NuGet](https://img.shields.io/nuget/v/BunnyTail.Resolver.svg)](https://www.nuget.org/packages/BunnyTail.Resolver) |
 | BunnyTail.Resolver.Extensions.DependencyInjection | [![NuGet](https://img.shields.io/nuget/v/BunnyTail.Resolver.Extensions.DependencyInjection.svg)](https://www.nuget.org/packages/BunnyTail.Resolver.Extensions.DependencyInjection) |
 
-## What is this?
+## ❓ What is this?
 
-Source generator based AOT-safe DI library compatible with Microsoft.Extensions.DependencyInjection.
+Source generator based AOT-safe DI library, compatible with Microsoft.Extensions.DependencyInjection.
 
-* **100% MEDI compatible** — passes the complete official `Microsoft.Extensions.DependencyInjection.Specification.Tests` suite (base + keyed, 143/143), including keyed services (`KeyedService.AnyKey`, `[ServiceKey]`, `[FromKeyedServices]`), scope-aware injected `IServiceProvider`, enumerable semantics, constrained open generics and container-tracked reverse-order disposal. Drop-in replacement via `IServiceProviderFactory`
-* **AOT safe** — no `Reflection.Emit` / `Expression.Compile` on the resolution path. Verified on NativeAOT with zero trim/AOT warnings
-* **Source generator powered** — dependency graphs are resolved at compile time: constructor selection, lifetime shapes, disposal tracking and transient graph inlining are settled before the app starts
-* **Automatic registration** — components are collected from attributes, existing `Add*` calls and naming conventions
+* 🤝 **100% MEDI compatible** — passes the official `Microsoft.Extensions.DependencyInjection.Specification.Tests` suite in full (base + keyed, **143/143**), and drops in via `IServiceProviderFactory`
+  * Keyed services: `KeyedService.AnyKey`, `[ServiceKey]`, `[FromKeyedServices]`
+  * Scope-aware injected `IServiceProvider`
+  * Enumerable semantics and constrained open generics
+  * Container-tracked reverse-order disposal
+* 🛡️ **AOT safe** — no `Reflection.Emit` / `Expression.Compile` on the resolution path. Verified on NativeAOT with zero trim/AOT warnings
+* ⚡ **Source generator powered** — constructor selection, lifetime shapes, disposal tracking and transient graph inlining are all settled at compile time
+* 🔎 **Automatic registration** — components are collected from attributes, existing `Add*` calls and naming conventions
 
-## Usage
+## 🚀 Usage
 
 ### Attribute based registration
 
-Annotate components with `[Singleton]` / `[Scoped]` / `[Transient]`. The generated `AddGeneratedComponents()` method registers the class itself and all implemented interfaces (interfaces are forwarded to the same instance).
+Annotate components with `[Singleton]` / `[Scoped]` / `[Transient]`:
 
 ```csharp
 using BunnyTail.Resolver;
@@ -46,17 +50,20 @@ var component = provider.GetRequiredService<Component2>();
 var keyed = provider.GetRequiredKeyedService<IService>("primary");
 ```
 
+The generated `AddGeneratedComponents()` registers the class itself and every implemented interface, forwarding the interfaces to the same instance.
+
 | Parameter | Description |
 |---|---|
 | `As` | Explicit service type. When omitted, the class itself and all implemented interfaces are registered (`IDisposable` / `IAsyncDisposable` / `IInitializable` excluded) |
 | `Key` | Keyed service registration |
 | `PostConstruct` | Name of a method invoked after construction and property injection |
 
-`[Inject]` marks a public settable property for property injection after construction. `[FromKeyedServices]` and `[ServiceKey]` on constructor parameters and `[Inject]` properties follow MEDI rules.
+* `[Inject]` marks a public settable property for injection after construction
+* `[FromKeyedServices]` and `[ServiceKey]` follow MEDI rules, on constructor parameters and `[Inject]` properties alike
 
 ### Initialization callback
 
-A component can run initialization after the container constructs it — either name a method on the lifetime attribute, or implement `IInitializable`.
+A component can run initialization after the container constructs it — name a method on the lifetime attribute, or implement `IInitializable`:
 
 ```csharp
 [Singleton(PostConstruct = nameof(Setup))]
@@ -76,7 +83,12 @@ public sealed class Component6 : IInitializable
 }
 ```
 
-The callback runs after constructor and `[Inject]` property injection, with identical timing on both the generated and the runtime path. The method must be a public parameterless instance method returning void; `PostConstruct` takes precedence when both are present. Only container-constructed instances are initialized — factory and instance registrations are user-owned and never touched. Types without a callback pay no resolution cost.
+* Runs after the constructor and after `[Inject]` property injection
+* Identical timing on the generated and the runtime path
+* Must be a public parameterless instance method returning void
+* `PostConstruct` wins when both are present
+* Only container-constructed instances are initialized — factory and instance registrations are user-owned and never touched
+* Types without a callback pay no resolution cost
 
 ### Convention based registration
 
@@ -96,22 +108,24 @@ public static partial class ServiceCollectionExtensions
 | `Lifetime` | Service lifetime: `Transient`, `Singleton`, or `Scoped` |
 | `Pattern` | Regex pattern to match class names to register |
 | `Namespace` | Namespace prefix to filter classes |
-| `Assembly` | Name of a referenced assembly to scan instead of the current project. Types are taken from metadata (publicly accessible classes only), so libraries without the generator can be registered by convention. An unreferenced assembly name is reported as `BTRS0003` |
+| `Assembly` | Name of a referenced assembly to scan instead of the current project. Types come from metadata (publicly accessible classes only), so libraries without the generator can be registered by convention. An unreferenced name reports `BTRS0003` |
 
 ### Existing Add* registrations
 
-Registration calls in user code are detected by the generator, and reflection-free factories are generated for the implementation types automatically. Existing MEDI registration code benefits from the generated path without any changes. Collected shapes:
+Registration calls in user code are detected by the generator, which emits reflection-free factories for the implementation types. Existing MEDI registration code gets the generated path with no changes. Collected shapes:
 
 * `Add{Lifetime}` / `TryAdd{Lifetime}` — generic overloads and non-generic `typeof` overloads (including single-argument self registration)
 * `AddKeyed{Lifetime}` / `TryAddKeyed{Lifetime}` — generic and `typeof` overloads
 * `Add` / `TryAdd` / `TryAddEnumerable` taking `ServiceDescriptor.{Lifetime}<TService, TImplementation>()`
 * Open generic definition pairs such as `AddTransient(typeof(IRepository<>), typeof(Repository<>))`
 
-Factory, instance and `ServiceDescriptor.Describe` based registrations are not collected — they resolve through the runtime path with identical semantics.
+Factory, instance and `ServiceDescriptor.Describe` based registrations are not collected — they take the runtime path, with identical semantics.
 
 ### Types you do not control
 
-The generator only sees the source it compiles. When a library registers its own types through its own extension method — `services.AddSomeLibrary()` — and that library does not reference the generator, those types resolve through the runtime path. `[GenerateComponentFactory]` prepares a factory for such a type **without registering it**, leaving the registration to the library:
+The generator only sees the source it compiles. A library that registers its own types through its own extension method — `services.AddSomeLibrary()` — without referencing the generator resolves through the runtime path.
+
+`[GenerateComponentFactory]` prepares a factory for such a type **without registering it**, leaving the registration to the library:
 
 ```csharp
 [assembly: GenerateComponentFactory(typeof(SomeLibrary.SomeService))]
@@ -120,15 +134,16 @@ The generator only sees the source it compiles. When a library registers its own
 services.AddSomeLibrary();
 ```
 
-A `PostConstruct` method name can be specified for types you cannot annotate. It runs on both the generated and the runtime path, so the behavior never depends on which path resolved the type:
+A `PostConstruct` name can be given for types you cannot annotate. It runs on both paths, so behavior never depends on which one resolved the type:
 
 ```csharp
 [assembly: GenerateComponentFactory(typeof(SomeLibrary.SomeService), PostConstruct = nameof(SomeLibrary.SomeService.Initialize))]
 ```
 
-Only publicly accessible concrete classes with a usable public constructor are eligible; anything else reports `BTRS0004`, and an invalid `PostConstruct` name reports `BTRS0006`.
+* Eligible targets: publicly accessible concrete classes with a usable public constructor
+* Anything else reports `BTRS0004`; an invalid `PostConstruct` name reports `BTRS0006`
 
-To find the types worth marking, ask the built provider which registrations fell back at runtime. This is a development-time diagnostic — it realizes every entry (without creating instances), so keep it out of release paths:
+To find the types worth marking, ask the built provider which registrations fell back at runtime. ⚠️ This is a development-time diagnostic — it realizes every entry (without creating instances), so keep it out of release paths:
 
 ```csharp
 using BunnyTail.Resolver.Diagnostics;
@@ -153,11 +168,19 @@ foreach (var entry in provider.CreateFactoryReport())
 | `NotApplicable` | Factory, instance or open generic definition registration: the container never constructs the type, so nothing can be generated |
 | `Unresolvable` | Could not be realized from the visible registrations |
 
-Not every fallback is worth marking. Factory and instance registrations cannot benefit at all, singletons pay the runtime cost once, and internal types cannot be constructed by generated code. The types that pay off are public transient or scoped services resolved on hot paths.
+Not every fallback is worth marking:
+
+* Factory and instance registrations cannot benefit at all
+* Singletons pay the runtime cost once
+* Internal types cannot be constructed by generated code
+* ✅ The ones that pay off are public transient or scoped services on hot paths
 
 ### Multi-project modules
 
-Components can live in other projects. When a class library references the generator, its components compile into that library's own `GeneratedComponents` module, marked with an assembly level `[ComponentModule]` attribute. The application's generated `AddAllGeneratedComponents()` discovers every referenced module (transitively, each exactly once) and registers them together with the application's own components in a single call.
+Components can live in other projects:
+
+* A class library referencing the generator compiles its components into that library's own `GeneratedComponents` module, marked with an assembly level `[ComponentModule]`
+* The application's generated `AddAllGeneratedComponents()` discovers every referenced module — transitively, each exactly once — and registers them with the application's own components in a single call
 
 ```csharp
 // Class library (references BunnyTail.Resolver and the generator)
@@ -174,7 +197,7 @@ using var provider = new ServiceCollection()
 
 Each module's `AddGeneratedComponents()` registers only its own components, so modules can still be registered individually when finer control is needed.
 
-A library that does not reference the generator can also participate by declaring a module by hand: write a static class with an `AddGeneratedComponents(IServiceCollection)` method and mark the assembly with `[assembly: ComponentModule(typeof(...))]`.
+A library without the generator can participate by declaring a module by hand — a static class with an `AddGeneratedComponents(IServiceCollection)` method, plus `[assembly: ComponentModule(typeof(...))]`:
 
 ```csharp
 [assembly: BunnyTail.Resolver.ComponentModule(typeof(MyLibrary.LibraryModule))]
@@ -191,11 +214,11 @@ public static class LibraryModule
 }
 ```
 
-The `Example` / `Example.Library1` (generated marker) / `Example.Library2` (hand-written marker) projects contain a working example of both patterns.
+Both patterns are shown working in `Example` / `Example.Library1` (generated marker) / `Example.Library2` (hand-written marker).
 
-## API reference
+## 📖 API reference
 
-Every entry point of this library carries `Generated` in its name: it is the source generated, reflection-free path. Nothing here replaces the MEDI API — registrations stay `IServiceCollection`, resolution stays `IServiceProvider`.
+Every entry point carries `Generated` in its name: that is the source generated, reflection-free path. Nothing here replaces the MEDI API — registrations stay `IServiceCollection`, resolution stays `IServiceProvider`.
 
 ### Extension methods
 
@@ -226,7 +249,7 @@ Every entry point of this library carries `Generated` in its name: it is the sou
 | `[GenerateComponentFactory]` | assembly | Generates a factory for a type without registering it, for libraries you do not control. Supports `PostConstruct` |
 | `IInitializable` | interface | Initialization callback invoked after construction |
 
-## Microsoft.Extensions.DependencyInjection integration
+## 🔌 Microsoft.Extensions.DependencyInjection integration
 
 The `BunnyTail.Resolver.Extensions.DependencyInjection` package provides the MEDI bridge: `BuildGeneratedServiceProvider()` and `GeneratedServiceProviderFactory`.
 
@@ -256,13 +279,16 @@ builder.Host.UseServiceProviderFactory(new GeneratedServiceProviderFactory());
 builder.Services.AddAllGeneratedComponents();
 ```
 
-Framework services registered by the host are resolved through the runtime path, application components through the generated path — both with identical semantics. The `Example.WebApplication` project is a runnable minimal API using this setup.
+* Framework services registered by the host take the runtime path
+* Application components take the generated path
+* Both with identical semantics
+* `Example.WebApplication` is a runnable minimal API using this setup
 
-## How it works
+## ⚙️ How it works
 
 ### What the generator collects
 
-At compile time the generator scans the compilation and builds a registration model from four sources. All of them are incremental: editing a method body regenerates nothing.
+At compile time the generator builds a registration model from four sources. All of them are incremental — editing a method body regenerates nothing.
 
 | Source | Collected from | Result |
 |---|---|---|
@@ -273,7 +299,7 @@ At compile time the generator scans the compilation and builds a registration mo
 
 ### What the generator emits
 
-For every collected implementation type, a factory is registered from a `[ModuleInitializer]`, so no discovery cost is paid at startup:
+Every collected implementation type gets a factory registered from a `[ModuleInitializer]`, so startup pays no discovery cost:
 
 ```csharp
 // Emitted for [Transient] Service(Repository repository, Logger logger) with a singleton Logger
@@ -289,15 +315,18 @@ GeneratedComponentRegistry.Register(
 
 Three shapes come out of this, chosen per dependency lifetime:
 
-* **Inline expansion** — a transient dependency becomes a literal `new` inside the parent factory, so a whole transient graph collapses into one allocation site
-* **Instance slots** — an unambiguous singleton dependency is resolved once and read straight from the deps array afterwards
-* **Accessor slots** — scoped and non-inlinable dependencies get a validated accessor handle, skipping the service table lookup on every resolution
+* 🧩 **Inline expansion** — a transient dependency becomes a literal `new` inside the parent factory, collapsing a whole transient graph into one allocation site
+* 📌 **Instance slots** — an unambiguous singleton dependency is resolved once, then read straight from the deps array
+* 🎯 **Accessor slots** — scoped and non-inlinable dependencies get a validated accessor handle, skipping the service table lookup on every resolution
 
-`IEnumerable<T>` sets whose elements are all inlinable transients are materialized as an array literal, and closed forms of open generic registrations that appear in code (as `typeof(IRepository<Foo>)`, a constructor parameter, or a property type) get their own generated factories — which is what makes value type arguments AOT safe.
+Two more cases are handled at compile time:
+
+* `IEnumerable<T>` sets whose elements are all inlinable transients become an array literal
+* Closed forms of open generic registrations appearing in code — as `typeof(IRepository<Foo>)`, a constructor parameter, or a property type — get their own factories, which is what makes value type arguments AOT safe
 
 ### How generated code stays correct
 
-Generated factories are assumptions about registrations, and registrations are only final at runtime. Every assumption is therefore verified when the provider realizes an entry, and any mismatch silently falls back to the runtime path:
+Generated factories are assumptions about registrations, and registrations are only final at runtime. Each assumption is verified when the provider realizes an entry, and any mismatch silently falls back to the runtime path:
 
 | Assumption | Verified by |
 |---|---|
@@ -306,36 +335,36 @@ Generated factories are assumptions about registrations, and registrations are o
 | Every deps slot still matches its planned lifetime and implementation | Same comparison, per slot |
 | An enumerable still has the same elements in the same order | Ordered per-element comparison |
 
-So `Replace`, a lifetime change, a factory registration or a decorator all keep working: they simply take the runtime path.
+So `Replace`, a lifetime change, a factory registration and a decorator all keep working — they simply take the runtime path.
 
 ### The two paths
 
-Two resolution paths share one runtime core, so lifetime, disposal and collection semantics are always identical:
+Both paths share one runtime core, so lifetime, disposal and collection semantics are always identical:
 
 | Path | Registrations | Implementation |
 |---|---|---|
-| Generated | Visible at compile time (attributes, `Add*` calls, conventions) | Generated factories with literal `new`. Transient dependency graphs are inlined into a single factory. Reflection-free |
-| Runtime | Known only at runtime (framework assemblies, factories, instances, replacements) | `ConstructorInfo.Invoke` based. No Emit, so it also works on NativeAOT |
+| Generated | Visible at compile time (attributes, `Add*` calls, conventions) | Generated factories with literal `new`. Transient dependency graphs inlined into a single factory. Reflection-free |
+| Runtime | Known only at runtime (framework assemblies, factories, instances, replacements) | `ConstructorInfo.Invoke` based. No Emit, so it works on NativeAOT too |
 
-When the provider is built, every `ServiceDescriptor` is verified against the generated assumptions (selected constructor, inlined dependency lifetimes and implementation types). A registration that no longer matches — replaced via `Replace`, re-registered with a different lifetime, or overridden by a factory — automatically falls back to the runtime path, so behavior always follows the actual registrations.
+Behavior always follows the actual registrations: a descriptor that no longer matches the generated assumptions falls back automatically.
 
-## Diagnostics
+## 🩺 Diagnostics
 
 | ID | Severity | Description |
 |---|---|---|
-| BTRS0001 | Error | `[ComponentRegistration]` method is not a static partial extension method with the required signature |
-| BTRS0002 | Warning | Registration pattern is not a valid regular expression |
-| BTRS0003 | Warning | Assembly named on `[ComponentRegistration]` is not referenced by the project |
-| BTRS0004 | Warning | `[GenerateComponentFactory]` target is not a publicly accessible concrete class with a usable public constructor |
-| BTRS0005 | Error | Multiple public constructors share the same maximum parameter count |
-| BTRS0006 | Error | `PostConstruct` method is not a public parameterless instance method returning void |
-| BTRS0007 | Error | Conflicting `PostConstruct` specifications across lifetime attributes |
-| BTRS0008 | Error | Circular dependency between components |
-| BTRS0009 | Warning | Dependency cannot be resolved from the registrations visible at compile time |
-| BTRS0010 | Warning | Captive dependency: a singleton depends on a scoped service |
-| BTRS0011 | Warning | Closed generic with value type arguments has no generated factory and resolves through the runtime path, which fails on NativeAOT |
+| BTRS0001 | ❌ Error | `[ComponentRegistration]` method is not a static partial extension method with the required signature |
+| BTRS0002 | ⚠️ Warning | Registration pattern is not a valid regular expression |
+| BTRS0003 | ⚠️ Warning | Assembly named on `[ComponentRegistration]` is not referenced by the project |
+| BTRS0004 | ⚠️ Warning | `[GenerateComponentFactory]` target is not a publicly accessible concrete class with a usable public constructor |
+| BTRS0005 | ❌ Error | Multiple public constructors share the same maximum parameter count |
+| BTRS0006 | ❌ Error | `PostConstruct` method is not a public parameterless instance method returning void |
+| BTRS0007 | ❌ Error | Conflicting `PostConstruct` specifications across lifetime attributes |
+| BTRS0008 | ❌ Error | Circular dependency between components |
+| BTRS0009 | ⚠️ Warning | Dependency cannot be resolved from the registrations visible at compile time |
+| BTRS0010 | ⚠️ Warning | Captive dependency: a singleton depends on a scoped service |
+| BTRS0011 | ⚠️ Warning | Closed generic with value type arguments has no generated factory and resolves through the runtime path, which fails on NativeAOT |
 
-## Samples
+## 📂 Samples
 
 | Project | Contents |
 |---|---|
@@ -344,9 +373,14 @@ When the provider is built, every `ServiceDescriptor` is verified against the ge
 | `Example.Library2` | Class library **without** the generator: a hand-written module marker plus plain types picked up by convention scanning |
 | `Example.WebApplication` | ASP.NET Core minimal API with the container replaced, showing singleton / scoped / transient behavior per request |
 
-## Benchmark
+## ⚡ Benchmark
 
-Resolution cost on the generated path, measured with the `BunnyTail.Resolver.Benchmark` project. Every benchmark method repeats the listed operation five times and `OperationsPerInvoke = 5` divides the result, so **Mean is the cost of one operation**. For reference purpose only.
+Resolution cost of the generated path against Microsoft.Extensions.DependencyInjection and Smart.Resolver. For reference purpose only.
+
+* All three providers receive the identical `IServiceCollection`
+* The same validator checks every provider before measurement, so the scenarios resolve equivalent object graphs
+* Each method repeats its operation five times and `OperationsPerInvoke = 5` divides the result — **Mean is the cost of one operation**
+* Measured with the `BunnyTail.Resolver.Benchmark` project
 
 | Scenario | Measured operation |
 |---|---|
@@ -373,23 +407,112 @@ Job=MediumRun  Jit=RyuJit  Platform=X64
 IterationCount=15  LaunchCount=2  WarmupCount=10  
 
 ```
+
+### Comparison
+
+Ratio is BunnyTail divided by the other provider, so **lower is better** — `0.21` means BunnyTail takes 21% of that provider's time.
+
+* ✅ BunnyTail is faster
+* ➖ tie — the 99.9% confidence intervals overlap
+* 🔻 BunnyTail is slower
+
+| Method | BunnyTail | MEDI | Smart | vs MEDI | vs Smart |
+|---|---:|---:|---:|:---|:---|
+| Singleton | 1.045 ns | 5.005 ns | 1.244 ns | ✅ 0.21 | ✅ 0.84 |
+| Transient | 4.542 ns | 7.203 ns | 3.381 ns | ✅ 0.63 | 🔻 1.34 |
+| Combined | 5.330 ns | 8.043 ns | 5.239 ns | ✅ 0.66 | ➖ 1.02 |
+| Complex | 14.685 ns | 17.710 ns | 21.214 ns | ✅ 0.83 | ✅ 0.69 |
+| Generics | 4.025 ns | 4.774 ns | 2.532 ns | ✅ 0.84 | 🔻 1.59 |
+| Scoped | 2.628 ns | 19.615 ns | 11.493 ns | ✅ 0.13 | ✅ 0.23 |
+| Keyed | 4.146 ns | 7.515 ns | 3.661 ns | ✅ 0.55 | 🔻 1.13 |
+| MultipleSingleton | 2.892 ns | 7.429 ns | 2.903 ns | ✅ 0.39 | ➖ 1.00 |
+| MultipleTransient | 20.179 ns | 21.545 ns | 16.568 ns | ✅ 0.94 | 🔻 1.22 |
+| AspNet | 43.945 ns | 91.604 ns | 66.968 ns | ✅ 0.48 | ✅ 0.66 |
+
+Allocation per operation:
+
+| Method | BunnyTail | MEDI | Smart |
+|---|---:|---:|---:|
+| Singleton | 0 B | 0 B | 0 B |
+| Transient | 24 B | 24 B | 24 B |
+| Combined | 24 B | 24 B | 24 B |
+| Complex | 136 B | 136 B | 136 B |
+| Generics | 24 B | 24 B | 10 B |
+| Scoped | 0 B | 0 B | 32 B |
+| Keyed | 0 B | 0 B | 0 B |
+| MultipleSingleton | 0 B | 6 B | 0 B |
+| MultipleTransient | 190 B | 190 B | 184 B |
+| AspNet | 312 B | 448 B | 232 B |
+
+Against MEDI:
+
+* ✅ Faster in all 10 scenarios
+* ✅ Widest margins on `Scoped` (0.13), `Singleton` (0.21), `MultipleSingleton` (0.39) and `AspNet` (0.48)
+* ✅ Allocates less on `AspNet` (312 B vs 448 B) and `MultipleSingleton` (0 B vs 6 B)
+
+Against Smart.Resolver — mixed:
+
+* ✅ Ahead on `Scoped` (0.23), `AspNet` (0.66), `Complex` (0.69) and `Singleton` (0.84)
+* ✅ Allocates nothing on `Scoped`, where Smart takes 32 B per call
+* 🔻 Behind on `Keyed` (1.13), `MultipleTransient` (1.22), `Transient` (1.34) and `Generics` (1.59)
+* ➖ `MultipleSingleton` (1.00) and `Combined` (1.02) are ties
+
+<details>
+<summary>Full BenchmarkDotNet output</summary>
+
+#### BunnyTail.Resolver
+
+| Method            | Mean      | Error     | StdDev    | Min       | Max       | P90       | Gen0   | Allocated |
+|------------------ |----------:|----------:|----------:|----------:|----------:|----------:|-------:|----------:|
+| Singleton         |  1.045 ns | 0.0221 ns | 0.0324 ns |  1.016 ns |  1.116 ns |  1.089 ns |      - |         - |
+| Transient         |  4.542 ns | 0.0283 ns | 0.0406 ns |  4.481 ns |  4.613 ns |  4.591 ns | 0.0029 |      24 B |
+| Combined          |  5.330 ns | 0.0475 ns | 0.0712 ns |  5.199 ns |  5.511 ns |  5.429 ns | 0.0029 |      24 B |
+| Complex           | 14.685 ns | 0.3224 ns | 0.4624 ns | 14.128 ns | 15.813 ns | 15.314 ns | 0.0162 |     136 B |
+| Generics          |  4.025 ns | 0.0383 ns | 0.0549 ns |  3.948 ns |  4.168 ns |  4.086 ns | 0.0029 |      24 B |
+| Scoped            |  2.628 ns | 0.0098 ns | 0.0141 ns |  2.610 ns |  2.672 ns |  2.645 ns |      - |         - |
+| Keyed             |  4.146 ns | 0.0220 ns | 0.0315 ns |  4.095 ns |  4.228 ns |  4.178 ns |      - |         - |
+| MultipleSingleton |  2.892 ns | 0.0137 ns | 0.0201 ns |  2.859 ns |  2.940 ns |  2.924 ns |      - |         - |
+| MultipleTransient | 20.179 ns | 0.4369 ns | 0.6266 ns | 18.858 ns | 21.600 ns | 21.065 ns | 0.0227 |     190 B |
+| AspNet            | 43.945 ns | 0.6157 ns | 0.9216 ns | 42.534 ns | 46.041 ns | 45.272 ns | 0.0373 |     312 B |
+
+#### Microsoft.Extensions.DependencyInjection
+
 | Method            | Mean      | Error     | StdDev    | Median    | Min       | Max       | P90       | Gen0   | Allocated |
 |------------------ |----------:|----------:|----------:|----------:|----------:|----------:|----------:|-------:|----------:|
-| Singleton         |  1.070 ns | 0.0308 ns | 0.0442 ns |  1.070 ns |  1.021 ns |  1.121 ns |  1.119 ns |      - |         - |
-| Transient         |  4.874 ns | 0.0715 ns | 0.1047 ns |  4.847 ns |  4.757 ns |  5.160 ns |  5.019 ns | 0.0029 |      24 B |
-| Combined          |  5.802 ns | 0.0656 ns | 0.0941 ns |  5.797 ns |  5.661 ns |  6.034 ns |  5.897 ns | 0.0029 |      24 B |
-| Complex           | 15.140 ns | 0.1435 ns | 0.2012 ns | 15.121 ns | 14.604 ns | 15.586 ns | 15.352 ns | 0.0162 |     136 B |
-| Generics          |  4.201 ns | 0.0836 ns | 0.1171 ns |  4.179 ns |  4.071 ns |  4.512 ns |  4.387 ns | 0.0029 |      24 B |
-| Scoped            |  2.655 ns | 0.0575 ns | 0.0825 ns |  2.660 ns |  2.559 ns |  2.838 ns |  2.777 ns |      - |         - |
-| Keyed             |  4.197 ns | 0.0391 ns | 0.0548 ns |  4.202 ns |  4.106 ns |  4.288 ns |  4.268 ns |      - |         - |
-| MultipleSingleton |  2.931 ns | 0.0257 ns | 0.0385 ns |  2.924 ns |  2.865 ns |  3.001 ns |  2.987 ns |      - |         - |
-| MultipleTransient | 21.751 ns | 1.1971 ns | 1.7547 ns | 20.836 ns | 19.605 ns | 24.043 ns | 23.897 ns | 0.0227 |     190 B |
-| AspNet            | 45.652 ns | 0.8295 ns | 1.1628 ns | 45.150 ns | 44.121 ns | 47.478 ns | 47.110 ns | 0.0373 |     312 B |
-## Limitations
+| Singleton         |  5.005 ns | 0.0722 ns | 0.1036 ns |  4.967 ns |  4.883 ns |  5.227 ns |  5.153 ns |      - |         - |
+| Transient         |  7.203 ns | 0.0976 ns | 0.1461 ns |  7.174 ns |  6.877 ns |  7.493 ns |  7.403 ns | 0.0029 |      24 B |
+| Combined          |  8.043 ns | 0.2178 ns | 0.3124 ns |  7.991 ns |  7.472 ns |  8.502 ns |  8.393 ns | 0.0029 |      24 B |
+| Complex           | 17.710 ns | 0.1649 ns | 0.2417 ns | 17.715 ns | 17.214 ns | 18.328 ns | 17.983 ns | 0.0162 |     136 B |
+| Generics          |  4.774 ns | 0.0880 ns | 0.1290 ns |  4.827 ns |  4.558 ns |  4.971 ns |  4.931 ns | 0.0029 |      24 B |
+| Scoped            | 19.615 ns | 0.0498 ns | 0.0715 ns | 19.610 ns | 19.513 ns | 19.774 ns | 19.714 ns |      - |         - |
+| Keyed             |  7.515 ns | 0.0443 ns | 0.0650 ns |  7.510 ns |  7.427 ns |  7.631 ns |  7.623 ns |      - |         - |
+| MultipleSingleton |  7.429 ns | 0.0748 ns | 0.1073 ns |  7.423 ns |  7.287 ns |  7.771 ns |  7.558 ns | 0.0008 |       6 B |
+| MultipleTransient | 21.545 ns | 0.4177 ns | 0.6252 ns | 21.935 ns | 20.670 ns | 22.500 ns | 22.135 ns | 0.0227 |     190 B |
+| AspNet            | 91.604 ns | 1.6439 ns | 2.4605 ns | 91.178 ns | 87.828 ns | 96.323 ns | 95.159 ns | 0.0535 |     448 B |
+
+#### Smart.Resolver
+
+| Method            | Mean      | Error     | StdDev    | Min       | Max       | P90       | Gen0   | Allocated |
+|------------------ |----------:|----------:|----------:|----------:|----------:|----------:|-------:|----------:|
+| Singleton         |  1.244 ns | 0.0137 ns | 0.0201 ns |  1.222 ns |  1.300 ns |  1.263 ns |      - |         - |
+| Transient         |  3.381 ns | 0.1346 ns | 0.1974 ns |  3.096 ns |  3.700 ns |  3.570 ns | 0.0029 |      24 B |
+| Combined          |  5.239 ns | 0.1267 ns | 0.1896 ns |  4.988 ns |  5.628 ns |  5.546 ns | 0.0029 |      24 B |
+| Complex           | 21.214 ns | 0.2167 ns | 0.3177 ns | 20.578 ns | 21.871 ns | 21.751 ns | 0.0162 |     136 B |
+| Generics          |  2.532 ns | 0.0249 ns | 0.0357 ns |  2.468 ns |  2.588 ns |  2.575 ns | 0.0011 |      10 B |
+| Scoped            | 11.493 ns | 0.0684 ns | 0.1003 ns | 11.299 ns | 11.746 ns | 11.610 ns | 0.0038 |      32 B |
+| Keyed             |  3.661 ns | 0.0560 ns | 0.0785 ns |  3.569 ns |  3.837 ns |  3.763 ns |      - |         - |
+| MultipleSingleton |  2.903 ns | 0.0142 ns | 0.0208 ns |  2.867 ns |  2.949 ns |  2.934 ns |      - |         - |
+| MultipleTransient | 16.568 ns | 0.3496 ns | 0.4901 ns | 15.933 ns | 18.419 ns | 16.925 ns | 0.0220 |     184 B |
+| AspNet            | 66.968 ns | 0.6331 ns | 0.9476 ns | 64.941 ns | 69.515 ns | 68.138 ns | 0.0277 |     232 B |
+
+</details>
+
+## 🚧 Limitations
 
 * Runtime targets .NET 10 or later (the generator itself is netstandard2.0)
-* Open generic definition registrations (`typeof(IRepository<>)`): closed forms appearing in code — as `typeof(IRepository<Foo>)`, constructor parameters or property types — get generated factories and are fully AOT safe, including value type arguments. Closed forms known only at runtime are served by the runtime path, where value type arguments are not supported on NativeAOT (`BTRS0011` warns about compile-time visible cases)
+* Open generic definition registrations (`typeof(IRepository<>)`):
+  * ✅ Closed forms appearing in code — as `typeof(IRepository<Foo>)`, constructor parameters or property types — get generated factories and are fully AOT safe, including value type arguments
+  * ⚠️ Closed forms known only at runtime take the runtime path, where value type arguments are not supported on NativeAOT (`BTRS0011` warns about compile-time visible cases)
 * Method injection is not supported
 * On trimmed applications, `[Inject]` properties are only guaranteed for types with compile-time visible registrations
 * Resolved `IEnumerable<T>` services are materialized `T[]` arrays (MEDI compatible). On NativeAOT, enumerating through the interface allocates the enumerator (32 B) and dispatches per element; casting the result to `T[]` enumerates allocation-free and roughly 3x faster on hot paths
-
