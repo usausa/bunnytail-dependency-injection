@@ -392,7 +392,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         return new FactoryModel(
             implementationType,
             new EquatableArray<ParameterModel>(parameters),
-            new EquatableArray<PropertyModel>(injectProperties.ToArray()),
+            new EquatableArray<PropertyModel>([.. injectProperties]),
             eligibleUnkeyed,
             eligibleKeyed,
             ambiguous,
@@ -469,7 +469,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             .Select(static x => x.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))
             .Where(static x => x is not ("global::System.IAsyncDisposable" or InitializableInterfaceName))
             .ToArray();
-        return new EquatableArray<string>(interfaces);
+        return [with(interfaces)];
     }
 
     private static bool HasAttribute(ImmutableArray<AttributeData> attributes, string attributeName)
@@ -1069,7 +1069,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             symbol.ContainingType.Name,
             symbol.Name,
             symbol.DeclaredAccessibility == Accessibility.Public ? "public" : "internal",
-            new EquatableArray<PatternModel>(patterns.ToArray()),
+            new EquatableArray<PatternModel>([.. patterns]),
             LocationInfo.CreateFrom(syntax)));
     }
 
@@ -1197,6 +1197,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
                     continue;
                 }
 
+                // ReSharper disable once LoopCanBeConvertedToQuery
                 foreach (var candidate in allCandidates)
                 {
                     // パターンの走査対象 (自コンパイル or 指定アセンブリ) と候補の出自を一致させる
@@ -1351,6 +1352,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
     // Targets for generated enumerable factories: two or more registrations for the same service type, all direct
     // (Add<S, I> style) transients eligible for inline expansion (no disposable/[Inject]/initializer). Order follows
     // the emission order (equivalent to AddGeneratedComponents); runtime composition differences fall back via EnumerableElementsMatch.
+    // ReSharper disable ParameterTypeCanBeEnumerable.Local
     private static List<(string ElementServiceType, List<FactoryModel> Elements)> BuildEnumerableModels(
         ComponentModel[] components,
         CollectedModel[] collected,
@@ -1466,6 +1468,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
 
         return models;
     }
+    // ReSharper restore ParameterTypeCanBeEnumerable.Local
 
     private static ClosedGenericScanResult DiscoverClosedGenericFactories(
         ImmutableArray<OpenGenericModel> openGenerics,
@@ -1486,7 +1489,9 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             registrations[model.ServiceDefinitionKey] = model;
         }
 
-        var definitionKeys = new EquatableArray<string>(registrations.Keys.OrderBy(static x => x, StringComparer.Ordinal).ToArray());
+        var definitionKeys = new EquatableArray<string>([
+            .. registrations.Keys.OrderBy(static x => x, StringComparer.Ordinal)
+        ]);
         if (openGenerics.IsEmpty || (closedUsages.IsEmpty && dependencyUsages.IsEmpty))
         {
             return new ClosedGenericScanResult(new EquatableArray<FactoryModel>([]), new EquatableArray<ClosedGenericWarningModel>([]), definitionKeys);
@@ -1567,7 +1572,8 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             }
         }
 
-        return new ClosedGenericScanResult(new EquatableArray<FactoryModel>(factories.ToArray()), new EquatableArray<ClosedGenericWarningModel>(warnings.ToArray()), definitionKeys);
+        return new ClosedGenericScanResult(new EquatableArray<FactoryModel>([.. factories]), new EquatableArray<ClosedGenericWarningModel>(
+            [.. warnings]), definitionKeys);
     }
 
     // ------------------------------------------------------------
@@ -1611,6 +1617,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         return openGenericKeys.Contains(typeName.Substring(0, start) + "`" + arity.ToString(System.Globalization.CultureInfo.InvariantCulture));
     }
 
+    // ReSharper disable ParameterTypeCanBeEnumerable.Local
     private static void ReportAnalysisDiagnostics(
         SourceProductionContext context,
         ComponentModel[] components,
@@ -1803,6 +1810,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             state[impl] = 2;
         }
     }
+    // ReSharper restore ParameterTypeCanBeEnumerable.Local
 
     // ------------------------------------------------------------
     // Inline expansion (transient 依存のリテラル new 展開 / literal new expansion of transient dependencies)
@@ -2040,7 +2048,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             result = string.CompareOrdinal(x.Pattern, y.Pattern);
             return result != 0 ? result : string.CompareOrdinal(x.Namespace, y.Namespace);
         });
-        return new EquatableArray<ExternalRequest>([.. requests]);
+        return [with([.. requests])];
     }
 
     // 外部アセンブリの候補走査。要求されたアセンブリだけを歩き、名前と名前空間で絞ってから
@@ -2104,7 +2112,9 @@ public sealed class ResolverGenerator : IIncrementalGenerator
 
         candidates.Sort(static (x, y) => string.CompareOrdinal(x.Factory.ImplementationType, y.Factory.ImplementationType));
         missing.Sort(StringComparer.Ordinal);
-        return new ExternalScanResult(new EquatableArray<CandidateModel>(candidates.ToArray()), new EquatableArray<string>(missing.ToArray()));
+        return new ExternalScanResult(new EquatableArray<CandidateModel>([.. candidates]), new EquatableArray<string>([
+            .. missing
+        ]));
     }
 
     private static void CollectNamespaceCandidates(INamespaceSymbol ns, string assemblyName, List<(Regex Regex, string? Namespace)> filters, Compilation compilation, List<CandidateModel> candidates)
@@ -2206,7 +2216,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         }
 
         modules.Sort(StringComparer.Ordinal);
-        return new EquatableArray<string>([.. modules]);
+        return [with([.. modules])];
     }
 
     private static void EmitGeneratedComponents(SourceProductionContext context, string assemblyName, ComponentModel[] components, List<FactoryModel> unkeyedFactories, List<FactoryModel> keyedFactories, List<(string ElementServiceType, List<FactoryModel> Elements)> enumerableModels, InlineTargetMap inlineMap, EquatableArray<string> referencedModules, List<(string ImplementationType, string PostConstruct)> generatedInitializers)
@@ -2416,6 +2426,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             return depSlot.Accessor;
         }
 
+        // ReSharper disable once LoopCanBeConvertedToQuery
         for (var i = 0; i < node.Factory.Parameters.Count; i++)
         {
             if (NeedsScope(node.Factory.Parameters[i].Kind, node.Factory.Parameters[i].TypeName, node.Parameters[i], depsIndex))
@@ -2482,6 +2493,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
 
         var assumptions = new List<InlineNode>();
         var assumed = new HashSet<string>(StringComparer.Ordinal);
+        // ReSharper disable once LoopCanBeConvertedToQuery
         foreach (var node in parameterNodes.Concat(propertyNodes))
         {
             if ((node is not null) && assumed.Add(node.ServiceType))
