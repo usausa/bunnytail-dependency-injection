@@ -10,7 +10,7 @@ internal enum ResultCache
 {
     None,      // Transient: 毎回生成 / created every time
     Root,      // Singleton: ルートスコープに保持 / held by the root scope
-    Scoped,    // Scoped: 解決スコープに保持 / held by the resolving scope
+    Scoped // Scoped: 解決スコープに保持 / held by the resolving scope
 }
 
 // サービステーブルのエントリ。lifetime 管理と disposal 追跡は基底に集約し、派生は「インスタンス生成」だけを担う
@@ -488,7 +488,7 @@ internal sealed class EnumerableAccessor : ServiceAccessor
             // 参照型要素: 型付き配列 + 共変ビューへの直接格納 (Array.SetValue のリフレクション経路を回避)
             // Reference elements: typed array with direct stores through the covariant view (no Array.SetValue reflection).
             var typed = arrayFactory(items.Length);
-            var view = (object?[])(object)typed;
+            var view = (object?[])typed;
             for (var i = 0; i < items.Length; i++)
             {
                 view[i] = items[i].GetValue(scope);

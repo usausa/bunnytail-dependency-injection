@@ -2,8 +2,6 @@ namespace BunnyTail.Resolver.Sandbox;
 
 using BenchmarkDotNet.Attributes;
 
-using BunnyTail.Resolver.Sandbox.Infrastructure;
-
 // 解決した IEnumerable<T> を「どう消費するか」のコスト差。DI 固有の論点は、コンテナが T[] を実体化して返す
 // (MEDI 互換) のに、利用側がインタフェース越しに列挙すると enumerator 確保とディスパッチが乗る点にある。
 // JIT では escape analysis がこれを消すことがあるが、NativeAOT では消えないため差が表面化する

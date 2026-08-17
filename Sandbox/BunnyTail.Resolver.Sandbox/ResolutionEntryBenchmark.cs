@@ -45,7 +45,7 @@ public class ResolutionEntryBenchmark
     {
         None,
         Root,
-        Scoped,
+        Scoped
     }
 
     // 現状のランタイムを模した accessor

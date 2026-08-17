@@ -70,7 +70,7 @@ public static class Verify
             foreach (var sequence in (IReadOnlyList<(Type Type, object Key)>[])
                      [
                          KeyedFixture.CreateHitSequence(n, Keys, 256),
-                         KeyedFixture.CreateMissSequence(n, Keys, 256),
+                         KeyedFixture.CreateMissSequence(n, Keys, 256)
                      ])
             {
                 foreach (var (type, key) in sequence)

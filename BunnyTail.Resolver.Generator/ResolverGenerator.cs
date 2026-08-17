@@ -416,7 +416,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
                         ReturnsVoid: true,
                         IsGenericMethod: false,
                         DeclaredAccessibility: Accessibility.Public,
-                        MethodKind: MethodKind.Ordinary,
+                        MethodKind: MethodKind.Ordinary
                     })
                 {
                     return true;
@@ -611,7 +611,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
                 "Singleton" => "Singleton",
                 "Scoped" => "Scoped",
                 "Transient" => "Transient",
-                _ => null,
+                _ => null
             };
             if ((descriptorLifetime is null) || (descriptorMethod.TypeArguments.Length == 0))
             {
@@ -645,7 +645,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             "AddKeyedSingleton" or "TryAddKeyedSingleton" => ("Singleton", true),
             "AddKeyedScoped" or "TryAddKeyedScoped" => ("Scoped", true),
             "AddKeyedTransient" or "TryAddKeyedTransient" => ("Transient", true),
-            _ => (null, false),
+            _ => (null, false)
         };
         if (lifetime is null)
         {
@@ -795,7 +795,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             "AddSingleton" or "TryAddSingleton" => "Singleton",
             "AddScoped" or "TryAddScoped" => "Scoped",
             "AddTransient" or "TryAddTransient" => "Transient",
-            _ => null,
+            _ => null
         };
         if (lifetime is null || (method.TypeArguments.Length != 0))
         {
@@ -881,7 +881,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         {
             ParameterSyntax parameter => parameter.Type,
             PropertyDeclarationSyntax property => property.Type,
-            _ => null,
+            _ => null
         };
         return ContainsGenericName(type);
     }
@@ -892,7 +892,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         QualifiedNameSyntax qualified => ContainsGenericName(qualified.Right) || ContainsGenericName(qualified.Left),
         NullableTypeSyntax nullable => ContainsGenericName(nullable.ElementType),
         AliasQualifiedNameSyntax alias => ContainsGenericName(alias.Name),
-        _ => false,
+        _ => false
     };
 
     private static ClosedGenericUsageModel? CreateDependencyUsageModel(GeneratorSyntaxContext context)
@@ -901,7 +901,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         {
             ParameterSyntax parameter => parameter.Type,
             PropertyDeclarationSyntax property => property.Type,
-            _ => null,
+            _ => null
         };
         if (type is null)
         {

@@ -46,7 +46,7 @@ public enum Lifetime
 {
     Transient = 0,
     Singleton = 1,
-    Scoped = 2,
+    Scoped = 2
 }
 
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = true)]

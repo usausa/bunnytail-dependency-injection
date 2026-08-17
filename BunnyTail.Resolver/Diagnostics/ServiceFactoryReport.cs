@@ -24,7 +24,7 @@ public enum ServiceFactoryStatus
 
     // コンパイル時に見える登録では解決できなかった (依存不足・循環など)
     // Could not be realized from the visible registrations (missing dependency, cycle, ...).
-    Unresolvable,
+    Unresolvable
 }
 
 public sealed class ServiceFactoryReportEntry

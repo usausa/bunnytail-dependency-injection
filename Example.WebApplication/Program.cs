@@ -7,8 +7,6 @@ using BunnyTail.Resolver.Diagnostics;
 
 using Example.WebApplication;
 
-using Microsoft.Extensions.DependencyInjection;
-
 var builder = WebApplication.CreateBuilder(args);
 
 // コンテナの差し替え / replace the container
@@ -65,7 +63,7 @@ app.MapGet("/scope-check", static (GreetingService first, GreetingService second
     {
         SameScoped = first.Greet("a").RequestId == second.Greet("b").RequestId,
         DistinctTransient = !ReferenceEquals(first, second),
-        RequestId = context.Id,
+        RequestId = context.Id
     });
 
 // 標準登録のサービスとコンテナ実装の確認 / the standard registration and the actual container implementation
@@ -74,7 +72,7 @@ app.MapGet("/info", static (ClockService clock, IServiceProvider provider) =>
     {
         Clock = clock.Now(),
         Provider = provider.GetType().FullName,
-        Counter = provider.GetRequiredService<CounterService>().Current,
+        Counter = provider.GetRequiredService<CounterService>().Current
     });
 
 app.Run();

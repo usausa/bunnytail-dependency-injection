@@ -101,7 +101,7 @@ internal sealed class ServiceRegistry
             new(typeof(IServiceProvider), entries[new ServiceIdentifier(typeof(IServiceProvider), null)]!),
             new(typeof(IServiceScopeFactory), entries[new ServiceIdentifier(typeof(IServiceScopeFactory), null)]!),
             new(typeof(IServiceProviderIsService), entries[new ServiceIdentifier(typeof(IServiceProviderIsService), null)]!),
-            new(typeof(IServiceProviderIsKeyedService), entries[new ServiceIdentifier(typeof(IServiceProviderIsKeyedService), null)]!),
+            new(typeof(IServiceProviderIsKeyedService), entries[new ServiceIdentifier(typeof(IServiceProviderIsKeyedService), null)]!)
         };
         var keyedEntries = new List<(Type, object, ServiceAccessor)>();
         foreach (var id in exactMap.Keys)
@@ -187,7 +187,7 @@ internal sealed class ServiceRegistry
                 FactoryAccessor or DepsFactoryAccessor or KeyedFactoryAccessor or KeyedDepsFactoryAccessor => Diagnostics.ServiceFactoryStatus.Generated,
                 ConstructorAccessor => Diagnostics.ServiceFactoryStatus.RuntimeFallback,
                 null => Diagnostics.ServiceFactoryStatus.Unresolvable,
-                _ => Diagnostics.ServiceFactoryStatus.NotApplicable,
+                _ => Diagnostics.ServiceFactoryStatus.NotApplicable
             };
             entries.Add(new Diagnostics.ServiceFactoryReportEntry(descriptor.ServiceType, implementationType, key, descriptor.Lifetime, status));
         }
@@ -426,7 +426,7 @@ internal sealed class ServiceRegistry
         {
             ServiceLifetime.Singleton => ResultCache.Root,
             ServiceLifetime.Scoped => ResultCache.Scoped,
-            _ => ResultCache.None,
+            _ => ResultCache.None
         };
 
         if (!descriptor.IsKeyedService)
@@ -577,7 +577,7 @@ internal sealed class ServiceRegistry
                 SingletonAttribute singleton => singleton.PostConstruct,
                 ScopedAttribute scoped => scoped.PostConstruct,
                 TransientAttribute transient => transient.PostConstruct,
-                _ => null,
+                _ => null
             };
 
             if (candidate is not null)
@@ -762,7 +762,7 @@ internal sealed class ServiceRegistry
         {
             FactoryAccessor factory when factory.Cache == requiredCache => ReferenceEquals(factory.Factory, entry.Factory),
             DepsFactoryAccessor deps when deps.Cache == requiredCache => ReferenceEquals(deps.Factory, entry.DepsFactory),
-            _ => false,
+            _ => false
         };
     }
 

@@ -79,7 +79,7 @@ public class EnumerableResolutionBenchmark
         protected override object? Create(object scope)
         {
             var typed = arrayFactory(items.Length);
-            var view = (object?[])(object)typed;
+            var view = (object?[])typed;
             for (var i = 0; i < items.Length; i++)
             {
                 view[i] = items[i].GetValue(scope);
@@ -104,7 +104,7 @@ public class EnumerableResolutionBenchmark
                 new FactoryAccessorModel(static _ => new Element2()),
                 new FactoryAccessorModel(static _ => new Element3()),
                 new FactoryAccessorModel(static _ => new Element4()),
-                new FactoryAccessorModel(static _ => new Element5()),
+                new FactoryAccessorModel(static _ => new Element5())
             ],
             static length => new IElement[length]);
 
@@ -142,7 +142,7 @@ public class EnumerableResolutionBenchmark
     {
         IElement[] array = [new Element1(), new Element2(), new Element3(), new Element4(), new Element5()];
         var count = 0;
-        foreach (var element in (IEnumerable<IElement>)array)
+        foreach (var element in array)
         {
             count += element is null ? 0 : 1;
         }
@@ -167,7 +167,7 @@ public class EnumerableResolutionBenchmark
     public int ForeachOnCachedArray()
     {
         var count = 0;
-        foreach (var element in (IEnumerable<IElement>)cachedArray)
+        foreach (var element in cachedArray)
         {
             count += element is null ? 0 : 1;
         }
