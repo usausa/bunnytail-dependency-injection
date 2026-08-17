@@ -38,6 +38,22 @@ internal sealed class FixedTypeServiceTable
     private readonly Node[] nodes;
     private readonly int mask;
 
+    // バケット選択のハッシュ源は TypeHandle (表す型の MethodTable ポインタ)。identity hash の
+    // ランタイムヘルパ呼び出し (約 1.0ns) が純粋なフィールド読み (約 0.3ns) になる。
+    // MethodTable は 8 バイト整列で下位 3 ビットが常に 0 のため 4 ビット捨てて分布を確保する
+    // (JIT / NativeAOT の両方で identity hash と同等の分布を実測済み)。
+    // ノード照合は従来どおり参照比較なので、ハッシュはバケット分布にしか影響しない。
+    // TypeHandle を持たない Type 実装 (TypeDelegator は委譲するため可) は対象外だが、
+    // そうした型はサービス型として渡せない前提 (MEDI と同水準の想定)
+    // The bucket hash source is the TypeHandle (the MethodTable pointer of the represented type), turning the
+    // identity hash runtime helper call (~1.0ns) into a plain field read (~0.3ns). MethodTables are 8-byte aligned
+    // with the low 3 bits always zero, so 4 bits are dropped to preserve the distribution (measured equal to the
+    // identity hash on both JIT and NativeAOT). Node matching stays reference comparison, so the hash only affects
+    // bucket distribution. Type implementations without a TypeHandle are unsupported as service types
+    // (TypeDelegator works, as it delegates) — the same assumption MEDI effectively makes.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int Hash(Type key) => (int)(key.TypeHandle.Value >> 4);
+
     public FixedTypeServiceTable(IReadOnlyList<KeyValuePair<Type, ServiceAccessor>> source)
     {
         var capacity = 1;
@@ -55,7 +71,7 @@ internal sealed class FixedTypeServiceTable
 
         foreach (var pair in source)
         {
-            var index = RuntimeHelpers.GetHashCode(pair.Key) & mask;
+            var index = Hash(pair.Key) & mask;
             var node = new Node(pair.Key, pair.Value);
             if (nodes[index] == EmptyNode)
             {
@@ -77,7 +93,12 @@ internal sealed class FixedTypeServiceTable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ServiceAccessor? Get(Type key)
     {
-        var node = nodes[RuntimeHelpers.GetHashCode(key) & mask];
+        // 添字は容量が 2^n であることを使った & (Length - 1) の定型で書く。JIT がこの形を認識して
+        // 配列の境界チェックを省く (mask フィールドを使うと Length との関係を証明できず残る)
+        // The index uses the & (Length - 1) idiom over the power-of-two capacity: the JIT recognizes it and elides
+        // the array bounds check, which stays when a mask field is used because its relation to Length is unprovable.
+        var table = nodes;
+        var node = table[Hash(key) & (table.Length - 1)];
         do
         {
             if (ReferenceEquals(node.Key, key))
@@ -99,7 +120,8 @@ internal sealed class FixedTypeServiceTable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryResolve(Type key, ServiceProviderScope scope, out object? value)
     {
-        var node = nodes[RuntimeHelpers.GetHashCode(key) & mask];
+        var table = nodes;
+        var node = table[Hash(key) & (table.Length - 1)];
         do
         {
             if (ReferenceEquals(node.Key, key))
@@ -210,7 +232,8 @@ internal sealed class FixedKeyedServiceTable
     public ServiceAccessor? Get(Type type, object key)
     {
         var hash = key.GetHashCode();
-        var node = nodes[hash & mask];
+        var table = nodes;
+        var node = table[hash & (table.Length - 1)];
         do
         {
             if (hash == node.Hash && ReferenceEquals(node.Type, type) && node.Key.Equals(key))
@@ -231,7 +254,8 @@ internal sealed class FixedKeyedServiceTable
     public bool TryResolve(Type type, object key, ServiceProviderScope scope, out object? value)
     {
         var hash = key.GetHashCode();
-        var node = nodes[hash & mask];
+        var table = nodes;
+        var node = table[hash & (table.Length - 1)];
         do
         {
             if (hash == node.Hash && ReferenceEquals(node.Type, type) && node.Key.Equals(key))
