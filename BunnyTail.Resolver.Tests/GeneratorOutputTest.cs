@@ -11,6 +11,8 @@ using Xunit;
 
 // ジェネレータ出力の検証 (期待値一致 / Add* 収集 / 規約登録 / インライン展開 / 診断)
 // Verification of generator output (expected text match / Add* collection / convention registration / inline expansion / diagnostics).
+// テスト内の const は他のソースと同じく PascalCase で統一する (ReSharper 既定の camelCase 規約とは異なる)
+// Constants in tests use PascalCase like the rest of the sources, unlike the ReSharper default of camelCase.
 public sealed class GeneratorOutputTest
 {
     private static GeneratorTestRunner CreateRunner() =>
@@ -49,7 +51,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void FactoryIsCollectedFromAddInvocation()
     {
-        const string Source = """
+        const string source = """
             using Microsoft.Extensions.DependencyInjection;
 
             namespace Demo;
@@ -71,7 +73,7 @@ public sealed class GeneratorOutputTest
 
         var result = CreateRunner()
             .VerifyCompiles()
-            .Run(Source);
+            .Run(source);
 
         var generated = result.GeneratedSource("GeneratedComponents.g.cs");
 
@@ -91,7 +93,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void ConventionMethodBodyIsGenerated()
     {
-        const string Source = """
+        const string source = """
             using BunnyTail.Resolver;
             using Microsoft.Extensions.DependencyInjection;
 
@@ -114,7 +116,7 @@ public sealed class GeneratorOutputTest
 
         var result = CreateRunner()
             .VerifyCompiles()
-            .Run(Source);
+            .Run(source);
 
         var generated = result.GeneratedSource("Demo_Registrations.g.cs");
 
@@ -133,7 +135,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void InvalidMethodDefinitionIsReported()
     {
-        const string Source = """
+        const string source = """
             using BunnyTail.Resolver;
             using Microsoft.Extensions.DependencyInjection;
 
@@ -146,7 +148,7 @@ public sealed class GeneratorOutputTest
             }
             """;
 
-        var result = CreateRunner().Run(Source);
+        var result = CreateRunner().Run(source);
 
         Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0001");
     }
@@ -154,7 +156,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void CircularDependencyIsReported()
     {
-        const string Source = """
+        const string source = """
             using BunnyTail.Resolver;
 
             namespace Demo;
@@ -166,7 +168,7 @@ public sealed class GeneratorOutputTest
             public sealed class Second(First first);
             """;
 
-        var result = CreateRunner().Run(Source);
+        var result = CreateRunner().Run(source);
 
         Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0008");
     }
@@ -174,7 +176,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void UnresolvedDependencyIsReported()
     {
-        const string Source = """
+        const string source = """
             using BunnyTail.Resolver;
 
             namespace Demo;
@@ -185,7 +187,7 @@ public sealed class GeneratorOutputTest
             public sealed class Component(NotRegistered dependency);
             """;
 
-        var result = CreateRunner().Run(Source);
+        var result = CreateRunner().Run(source);
 
         Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0009");
     }
@@ -193,7 +195,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void CaptiveDependencyIsReported()
     {
-        const string Source = """
+        const string source = """
             using BunnyTail.Resolver;
 
             namespace Demo;
@@ -205,7 +207,7 @@ public sealed class GeneratorOutputTest
             public sealed class SingletonComponent(ScopedDependency dependency);
             """;
 
-        var result = CreateRunner().Run(Source);
+        var result = CreateRunner().Run(source);
 
         Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0010");
     }
@@ -213,7 +215,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void AmbiguousConstructorIsReported()
     {
-        const string Source = """
+        const string source = """
             using BunnyTail.Resolver;
 
             namespace Demo;
@@ -233,7 +235,7 @@ public sealed class GeneratorOutputTest
             }
             """;
 
-        var result = CreateRunner().Run(Source);
+        var result = CreateRunner().Run(source);
 
         Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0005");
     }
@@ -241,7 +243,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void KeyedFactoryIsGeneratedWithServiceKeyInjection()
     {
-        const string Source = """
+        const string source = """
             using BunnyTail.Resolver;
             using Microsoft.Extensions.DependencyInjection;
 
@@ -255,7 +257,7 @@ public sealed class GeneratorOutputTest
 
         var result = CreateRunner()
             .VerifyCompiles()
-            .Run(Source);
+            .Run(source);
 
         var generated = result.GeneratedSource("GeneratedComponents.g.cs");
 
@@ -269,7 +271,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void TransientDependenciesAreInlined()
     {
-        const string Source = """
+        const string source = """
             using System;
 
             using BunnyTail.Resolver;
@@ -302,7 +304,7 @@ public sealed class GeneratorOutputTest
 
         var result = CreateRunner()
             .VerifyCompiles()
-            .Run(Source);
+            .Run(source);
 
         var generated = result.GeneratedSource("GeneratedComponents.g.cs");
 
@@ -331,7 +333,7 @@ public sealed class GeneratorOutputTest
     {
         // 循環は BTRS0008 (Error) だが、インライン展開自体は無限再帰せず生成が完了すること
         // Cycles are BTRS0008 (Error), but inline expansion itself must finish generation without infinite recursion.
-        const string Source = """
+        const string source = """
             using BunnyTail.Resolver;
 
             namespace Demo;
@@ -343,7 +345,7 @@ public sealed class GeneratorOutputTest
             public sealed class Second(First first);
             """;
 
-        var result = CreateRunner().Run(Source);
+        var result = CreateRunner().Run(source);
 
         Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0008");
 
@@ -360,7 +362,7 @@ public sealed class GeneratorOutputTest
     {
         // typeof オーバーロード / TryAddEnumerable + descriptor / keyed / Add(descriptor) の 4 形式
         // Four shapes: typeof overloads, TryAddEnumerable with a descriptor, keyed and Add(descriptor).
-        const string Source = """
+        const string source = """
             using Microsoft.Extensions.DependencyInjection;
             using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -393,7 +395,7 @@ public sealed class GeneratorOutputTest
 
         var result = CreateRunner()
             .VerifyCompiles()
-            .Run(Source);
+            .Run(source);
 
         var generated = result.GeneratedSource("GeneratedComponents.g.cs");
 
@@ -416,7 +418,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void GenerateComponentFactoryEmitsFactoryWithoutRegistration()
     {
-        const string Source = """
+        const string source = """
             using BunnyTail.Resolver;
 
             [assembly: GenerateComponentFactory(typeof(Demo.Uncontrolled))]
@@ -438,7 +440,7 @@ public sealed class GeneratorOutputTest
 
         var result = CreateRunner()
             .VerifyCompiles()
-            .Run(Source);
+            .Run(source);
 
         var generated = result.GeneratedSource("GeneratedComponents.g.cs");
 
@@ -452,7 +454,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void GenerateComponentFactoryEmitsPostConstruct()
     {
-        const string Source = """
+        const string source = """
             using BunnyTail.Resolver;
 
             [assembly: GenerateComponentFactory(typeof(Demo.Uncontrolled), PostConstruct = "Prepare")]
@@ -469,7 +471,7 @@ public sealed class GeneratorOutputTest
 
         var result = CreateRunner()
             .VerifyCompiles()
-            .Run(Source);
+            .Run(source);
 
         var generated = result.GeneratedSource("GeneratedComponents.g.cs");
 
@@ -482,7 +484,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void InvalidGenerateComponentFactoryPostConstructIsReported()
     {
-        const string Source = """
+        const string source = """
             using BunnyTail.Resolver;
 
             [assembly: GenerateComponentFactory(typeof(Demo.Uncontrolled), PostConstruct = "Missing")]
@@ -492,7 +494,7 @@ public sealed class GeneratorOutputTest
             public sealed class Uncontrolled;
             """;
 
-        var result = CreateRunner().Run(Source);
+        var result = CreateRunner().Run(source);
 
         Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0006");
     }
@@ -500,7 +502,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void InvalidGenerateComponentFactoryTargetIsReported()
     {
-        const string Source = """
+        const string source = """
             using BunnyTail.Resolver;
 
             [assembly: GenerateComponentFactory(typeof(Demo.NotConstructible))]
@@ -510,7 +512,7 @@ public sealed class GeneratorOutputTest
             public abstract class NotConstructible;
             """;
 
-        var result = CreateRunner().Run(Source);
+        var result = CreateRunner().Run(source);
 
         Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0004");
     }
@@ -522,7 +524,7 @@ public sealed class GeneratorOutputTest
     {
         // このテストアセンブリのメタデータから規約で候補を拾う (Generator 非参照ライブラリ相当)
         // Picks candidates from this test assembly's metadata, standing in for a library without the generator.
-        const string Source = """
+        const string source = """
             using BunnyTail.Resolver;
 
             using Microsoft.Extensions.DependencyInjection;
@@ -542,7 +544,7 @@ public sealed class GeneratorOutputTest
             .WithReference(typeof(IServiceCollection).Assembly)
             .WithReference(typeof(GeneratorOutputTest).Assembly)
             .VerifyCompiles()
-            .Run(Source);
+            .Run(source);
 
         var generated = result.GeneratedSource("Demo_Registrations.g.cs");
 
@@ -556,7 +558,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void MissingAssemblyIsReported()
     {
-        const string Source = """
+        const string source = """
             using BunnyTail.Resolver;
 
             using Microsoft.Extensions.DependencyInjection;
@@ -570,7 +572,7 @@ public sealed class GeneratorOutputTest
             }
             """;
 
-        var result = CreateRunner().Run(Source);
+        var result = CreateRunner().Run(source);
 
         Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0003");
     }
@@ -580,7 +582,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void ModuleMarkerIsEmittedForAttributeComponents()
     {
-        const string Source = """
+        const string source = """
             using BunnyTail.Resolver;
 
             namespace Demo;
@@ -594,7 +596,7 @@ public sealed class GeneratorOutputTest
             .WithReference(typeof(SingletonAttribute).Assembly)
             .WithReference(typeof(IServiceCollection).Assembly)
             .VerifyCompiles()
-            .Run(Source);
+            .Run(source);
 
         var generated = result.GeneratedSource("GeneratedComponents.g.cs");
 
@@ -609,7 +611,7 @@ public sealed class GeneratorOutputTest
     {
         // このテストアセンブリ自身が属性コンポーネントを持つ生成モジュール (マーカー入り) なので、参照モジュールとして使う
         // This test assembly itself is a generated module with the marker, so it doubles as the referenced module.
-        const string Source = """
+        const string source = """
             using BunnyTail.Resolver;
 
             namespace Demo;
@@ -624,7 +626,7 @@ public sealed class GeneratorOutputTest
             .WithReference(typeof(IServiceCollection).Assembly)
             .WithReference(typeof(GeneratorOutputTest).Assembly)
             .VerifyCompiles()
-            .Run(Source);
+            .Run(source);
 
         var generated = result.GeneratedSource("GeneratedComponents.g.cs");
 
@@ -641,7 +643,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void EnumerableFactoryIsGeneratedForAllTransientElements()
     {
-        const string Source = """
+        const string source = """
             using Microsoft.Extensions.DependencyInjection;
 
             namespace Demo;
@@ -664,7 +666,7 @@ public sealed class GeneratorOutputTest
 
         var result = CreateRunner()
             .VerifyCompiles()
-            .Run(Source);
+            .Run(source);
 
         var generated = result.GeneratedSource("GeneratedComponents.g.cs");
 
@@ -683,7 +685,7 @@ public sealed class GeneratorOutputTest
     {
         // typeof の出現なし。コンストラクタ依存だけから閉型ファクトリが発見される
         // No typeof usage anywhere; the closed factory is discovered from the constructor dependency alone.
-        const string Source = """
+        const string source = """
             using Microsoft.Extensions.DependencyInjection;
 
             namespace Demo;
@@ -709,7 +711,7 @@ public sealed class GeneratorOutputTest
 
         var result = CreateRunner()
             .VerifyCompiles()
-            .Run(Source);
+            .Run(source);
 
         var generated = result.GeneratedSource("GeneratedComponents.g.cs");
 
@@ -724,7 +726,7 @@ public sealed class GeneratorOutputTest
         // 参照型引数側は AOT でも動くため警告しない
         // A default-valued constructor makes generation ineligible, leaving the closed forms on the runtime path.
         // The value type argument case reports BTRS0011; the reference type case works on AOT and stays silent.
-        const string Source = """
+        const string source = """
             using Microsoft.Extensions.DependencyInjection;
 
             namespace Demo;
@@ -756,17 +758,17 @@ public sealed class GeneratorOutputTest
             }
             """;
 
-        var result = CreateRunner().Run(Source);
+        var result = CreateRunner().Run(source);
 
         var diagnostics = result.Diagnostics(["BTRS"]).Where(static x => x.Id == "BTRS0011").ToArray();
         Assert.Single(diagnostics);
-        Assert.Contains("Repository<int>", diagnostics[0].GetMessage(null), StringComparison.Ordinal);
+        Assert.Contains("Repository<int>", diagnostics[0].GetMessage(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal);
     }
 
     [Fact]
     public void ClosedGenericFactoriesAreGeneratedFromOpenGenericRegistrations()
     {
-        const string Source = """
+        const string source = """
             using System;
 
             using Microsoft.Extensions.DependencyInjection;
@@ -798,7 +800,7 @@ public sealed class GeneratorOutputTest
 
         var result = CreateRunner()
             .VerifyCompiles()
-            .Run(Source);
+            .Run(source);
 
         var generated = result.GeneratedSource("GeneratedComponents.g.cs");
 
@@ -814,7 +816,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void InitializationCallbacksAreEmitted()
     {
-        const string Source = """
+        const string source = """
             using BunnyTail.Resolver;
 
             namespace Demo;
@@ -841,7 +843,7 @@ public sealed class GeneratorOutputTest
 
         var result = CreateRunner()
             .VerifyCompiles()
-            .Run(Source);
+            .Run(source);
 
         var generated = result.GeneratedSource("GeneratedComponents.g.cs");
 
@@ -862,7 +864,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void InvalidPostConstructIsReported()
     {
-        const string Source = """
+        const string source = """
             using BunnyTail.Resolver;
 
             namespace Demo;
@@ -871,7 +873,7 @@ public sealed class GeneratorOutputTest
             public sealed class Component;
             """;
 
-        var result = CreateRunner().Run(Source);
+        var result = CreateRunner().Run(source);
 
         Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0006");
     }
@@ -879,7 +881,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void ConflictingPostConstructIsReported()
     {
-        const string Source = """
+        const string source = """
             using BunnyTail.Resolver;
 
             namespace Demo;
@@ -898,7 +900,7 @@ public sealed class GeneratorOutputTest
             }
             """;
 
-        var result = CreateRunner().Run(Source);
+        var result = CreateRunner().Run(source);
 
         Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0007");
     }
@@ -906,7 +908,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void InvalidPatternIsReported()
     {
-        const string Source = """
+        const string source = """
             using BunnyTail.Resolver;
             using Microsoft.Extensions.DependencyInjection;
 
@@ -919,7 +921,7 @@ public sealed class GeneratorOutputTest
             }
             """;
 
-        var result = CreateRunner().Run(Source);
+        var result = CreateRunner().Run(source);
 
         Assert.Contains(result.Diagnostics(["BTRS"]), static x => x.Id == "BTRS0002");
     }
