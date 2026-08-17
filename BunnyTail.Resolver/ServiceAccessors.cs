@@ -164,7 +164,7 @@ internal sealed class FactoryAccessor : ServiceAccessor
         Factory = factory;
     }
 
-    protected override object? Create(ServiceProviderScope scope) => Factory(scope);
+    protected override object Create(ServiceProviderScope scope) => Factory(scope);
 }
 
 // 依存を解決済み配列で受け取る生成ファクトリ (deps 形)。インスタンススロットは root 解決済みインスタンス、
@@ -196,7 +196,7 @@ internal sealed class DepsFactoryAccessor : ServiceAccessor
         this.dependencyHandles = dependencyHandles;
     }
 
-    protected override object? Create(ServiceProviderScope scope)
+    protected override object Create(ServiceProviderScope scope)
     {
         var deps = resolved ?? FillDependencies(scope);
         return Factory(scope, deps);
@@ -239,7 +239,7 @@ internal sealed class KeyedDepsFactoryAccessor : ServiceAccessor
         this.dependencyHandles = dependencyHandles;
     }
 
-    protected override object? Create(ServiceProviderScope scope)
+    protected override object Create(ServiceProviderScope scope)
     {
         var deps = resolved ?? FillDependencies(scope);
         return factory(scope, key, deps);
@@ -274,7 +274,7 @@ internal sealed class KeyedFactoryAccessor : ServiceAccessor
         this.key = key;
     }
 
-    protected override object? Create(ServiceProviderScope scope) => factory(scope, key);
+    protected override object Create(ServiceProviderScope scope) => factory(scope, key);
 }
 
 // コンストラクタ引数の解決計画
@@ -356,7 +356,7 @@ internal sealed class ConstructorAccessor : ServiceAccessor
         this.initializable = initializable;
     }
 
-    protected override object? Create(ServiceProviderScope scope)
+    protected override object Create(ServiceProviderScope scope)
     {
         object instance;
         if (plans.Length == 0)

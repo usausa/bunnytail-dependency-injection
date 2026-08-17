@@ -61,7 +61,7 @@ public class ResolutionEntryBenchmark
             Cache = cache;
         }
 
-        public virtual object? GetValue(object scope)
+        public object? GetValue(object scope)
         {
             if (Cache == CacheKind.None)
             {
@@ -80,17 +80,17 @@ public class ResolutionEntryBenchmark
         public void Prime(object scope) => rootCached = GetValue(scope) ?? NullSentinel;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private object? CreateRoot(object scope)
+        private object CreateRoot(object scope)
         {
             var value = Create(scope);
-            Volatile.Write(ref rootCached, value ?? NullSentinel);
+            Volatile.Write(ref rootCached, value);
             return value;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static object? Unwrap(object value) => ReferenceEquals(value, NullSentinel) ? null : value;
 
-        protected abstract object? Create(object scope);
+        protected abstract object Create(object scope);
     }
 
     public sealed class SingletonAccessor : Accessor
@@ -103,7 +103,7 @@ public class ResolutionEntryBenchmark
             this.instance = instance;
         }
 
-        protected override object? Create(object scope) => instance;
+        protected override object Create(object scope) => instance;
     }
 
     // 現状形状: ノードは accessor だけを持つ
@@ -314,6 +314,7 @@ public class ResolutionEntryBenchmark
     {
         object? last = null;
         var keys = sequence;
+        // ReSharper disable once ForCanBeConvertedToForeach
         for (var i = 0; i < keys.Length; i++)
         {
             last = accessorTable.Resolve(keys[i], scope);
@@ -330,6 +331,7 @@ public class ResolutionEntryBenchmark
     {
         object? last = null;
         var keys = sequence;
+        // ReSharper disable once ForCanBeConvertedToForeach
         for (var i = 0; i < keys.Length; i++)
         {
             last = constantTable.Resolve(keys[i], scope);
