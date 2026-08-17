@@ -63,7 +63,7 @@ internal sealed class ServiceRegistry
         typeTable = new FixedTypeServiceTable([]);
         keyedTable = new FixedKeyedServiceTable([]);
 
-        descriptors = source.ToArray();
+        descriptors = [.. source];
         exactMap = [];
         keyedServiceTypes = [];
         foreach (var descriptor in descriptors)
@@ -322,6 +322,7 @@ internal sealed class ServiceRegistry
         }
     }
 
+    // ReSharper disable ParameterTypeCanBeEnumerable.Local
     private static InvalidOperationException CreateCircularDependencyException(List<ServiceIdentifier> stack, int startIndex, ServiceIdentifier id)
     {
         var chain = string.Join(" -> ", stack.Skip(startIndex).Select(static x => TypeNameHelper.GetTypeDisplayName(x.ServiceType)));
@@ -330,6 +331,7 @@ internal sealed class ServiceRegistry
                       + chain + " -> " + TypeNameHelper.GetTypeDisplayName(id.ServiceType);
         return new InvalidOperationException(message);
     }
+    // ReSharper restore ParameterTypeCanBeEnumerable.Local
 
     private ServiceAccessor? CreateEntry(ServiceIdentifier id)
     {
@@ -666,8 +668,10 @@ internal sealed class ServiceRegistry
         return new ConstructorAccessor(constructor, plans, properties, postConstruct, initializable, cache, slot, track);
     }
 
+    // ReSharper disable ParameterTypeCanBeEnumerable.Local
     private static bool AllPlansAreServices(ParameterPlan[] plans)
     {
+        // ReSharper disable once LoopCanBeConvertedToQuery
         foreach (var plan in plans)
         {
             if (!plan.IsService)
@@ -678,9 +682,12 @@ internal sealed class ServiceRegistry
 
         return true;
     }
+    // ReSharper restore ParameterTypeCanBeEnumerable.Local
 
+    // ReSharper disable ParameterTypeCanBeEnumerable.Local
     private static bool AllPlansAreServicesOrServiceKey(ParameterPlan[] plans)
     {
+        // ReSharper disable once LoopCanBeConvertedToQuery
         foreach (var plan in plans)
         {
             if (!plan.IsService && !plan.IsServiceKey)
@@ -691,6 +698,7 @@ internal sealed class ServiceRegistry
 
         return true;
     }
+    // ReSharper restore ParameterTypeCanBeEnumerable.Local
 
     // インライン展開された依存の前提検証。生成ファクトリが依存をリテラル new で展開している場合、
     // その依存サービスの実行時解決が「前提どおりの実装型の生成ファクトリによる transient 解決」になる場合のみ
@@ -701,6 +709,7 @@ internal sealed class ServiceRegistry
     // assumed implementation type's generated factory. Each inlined factory goes through the same validation when
     // adopted, so validating direct dependencies transitively guarantees the whole graph. On mismatch (replacement,
     // lifetime change, factory registration, ...) the caller falls back to the runtime path.
+    // ReSharper disable ParameterTypeCanBeEnumerable.Local
     private bool InlinedDependenciesMatch(InlinedDependency[] dependencies)
     {
         foreach (var dependency in dependencies)
@@ -715,6 +724,7 @@ internal sealed class ServiceRegistry
 
         return true;
     }
+    // ReSharper restore ParameterTypeCanBeEnumerable.Local
 
     // deps スロット前提の検証。インスタンススロットは「前提どおりの実装型の生成ファクトリによる singleton 解決」を
     // 要求する。アクセサスロットは解決可能なことだけを要求する (accessor 呼び出しはレジストリ解決と意味論同一のため、
@@ -774,6 +784,7 @@ internal sealed class ServiceRegistry
             return false;
         }
 
+        // ReSharper disable once LoopCanBeConvertedToQuery
         for (var i = 0; i < parameters.Length; i++)
         {
             if (!ReferenceEquals(parameters[i].ParameterType, assumedParameterTypes[i]))
@@ -825,7 +836,7 @@ internal sealed class ServiceRegistry
             (list ??= []).Add(new PropertyInjection(property, ParameterPlan.FromService(accessor)));
         }
 
-        return list is null ? EmptyPropertyInjections : list.ToArray();
+        return list is null ? EmptyPropertyInjections : [.. list];
     }
 
     private ParameterPlan[]? BuildParameterPlans(ConstructorInfo constructor, Type implementationType, object? serviceKey, bool throwOnMiss)
@@ -984,7 +995,7 @@ internal sealed class ServiceRegistry
             return new FactoryAccessor(generatedEnumerable.Factory, ResultCache.None, -1, trackDisposable: false);
         }
 
-        return new EnumerableAccessor(elementType, items.ToArray(), cache, cache == ResultCache.Scoped ? NextSlot() : -1);
+        return new EnumerableAccessor(elementType, [.. items], cache, cache == ResultCache.Scoped ? NextSlot() : -1);
     }
 
     // 各要素が「前提どおりの実装型の生成ファクトリによる transient 解決」であることを登録順に検証する
