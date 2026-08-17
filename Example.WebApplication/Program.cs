@@ -3,7 +3,9 @@
 // Sample replacing the ASP.NET Core DI container with BunnyTail.Resolver. The swap is a single
 // UseServiceProviderFactory line, and everything including framework services keeps working MEDI compatible.
 using BunnyTail.Resolver;
+#if DEBUG
 using BunnyTail.Resolver.Diagnostics;
+#endif
 
 using Example.WebApplication;
 

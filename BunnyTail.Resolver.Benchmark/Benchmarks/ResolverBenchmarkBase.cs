@@ -13,7 +13,7 @@ public abstract class ResolverBenchmarkBase
 {
     private IServiceProvider provider = default!;
 
-    private IServiceScope scope = default!;
+    private IServiceScope serviceScope = default!;
 
     private IServiceProvider scopeProvider = default!;
 
@@ -27,8 +27,8 @@ public abstract class ResolverBenchmarkBase
 
         // Scoped は解決済みスコープからの読み出しを測るため、スコープ生成と初回解決を事前に済ませる
         // Scoped measures reads from an already-populated scope, so scope creation and first resolution happen up front.
-        scope = provider.GetRequiredService<IServiceScopeFactory>().CreateScope();
-        scopeProvider = scope.ServiceProvider;
+        serviceScope = provider.GetRequiredService<IServiceScopeFactory>().CreateScope();
+        scopeProvider = serviceScope.ServiceProvider;
         _ = scopeProvider.GetService(typeof(IScoped1));
         _ = scopeProvider.GetService(typeof(IScoped2));
         _ = scopeProvider.GetService(typeof(IScoped3));
@@ -39,7 +39,7 @@ public abstract class ResolverBenchmarkBase
     [GlobalCleanup]
     public void Cleanup()
     {
-        scope.Dispose();
+        serviceScope.Dispose();
         (provider as IDisposable)?.Dispose();
     }
 
@@ -76,11 +76,11 @@ public abstract class ResolverBenchmarkBase
     [Benchmark(OperationsPerInvoke = 5)]
     public void Complex()
     {
-        _ = provider.GetService(typeof(Classes.Complex));
-        _ = provider.GetService(typeof(Classes.Complex));
-        _ = provider.GetService(typeof(Classes.Complex));
-        _ = provider.GetService(typeof(Classes.Complex));
-        _ = provider.GetService(typeof(Classes.Complex));
+        _ = provider.GetService(typeof(Complex));
+        _ = provider.GetService(typeof(Complex));
+        _ = provider.GetService(typeof(Complex));
+        _ = provider.GetService(typeof(Complex));
+        _ = provider.GetService(typeof(Complex));
     }
 
     [Benchmark(OperationsPerInvoke = 5)]
@@ -132,6 +132,8 @@ public abstract class ResolverBenchmarkBase
         EnumerateMultipleSingleton();
     }
 
+    // ローカルの scope はフィールドの scope (計測対象の常設スコープ) とは別物で、意図的に分けている
+    // The local scope is deliberately separate from the scope field, which holds the long-lived scope being measured.
     private void EnumerateMultipleSingleton()
     {
         foreach (var service in (IEnumerable<IMultipleSingletonService>)provider.GetService(typeof(IEnumerable<IMultipleSingletonService>))!)

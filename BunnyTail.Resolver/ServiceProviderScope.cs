@@ -7,6 +7,9 @@ using Microsoft.Extensions.DependencyInjection;
 
 // スコープ。ルートプロバイダも root スコープとして同じ実装を使う。注入される IServiceProvider はこのスコープ自身 (MEDI 互換)
 // Scope. The root provider uses the same implementation as its root scope. The injected IServiceProvider is this scope itself (MEDI compatible).
+// 基底インタフェースの明示列挙は冗長だが、公開契約を型宣言だけで読めるようにするため残す
+// Explicitly listing base interfaces is redundant but kept so the public contract is readable from the declaration alone.
+// ReSharper disable RedundantExtendsListEntry
 public sealed class ServiceProviderScope :
     IServiceScope,
     IServiceProvider,
@@ -14,6 +17,7 @@ public sealed class ServiceProviderScope :
     ISupportRequiredService,
     IDisposable,
     IAsyncDisposable
+// ReSharper restore RedundantExtendsListEntry
 {
     private static readonly object NullSentinel = new();
 

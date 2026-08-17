@@ -46,7 +46,7 @@ internal static class TypeNameHelper
 
     private static string GetFullNameWithoutArity(Type type)
     {
-        var name = (type.IsNested ? type.DeclaringType!.FullName + "+" + type.Name : type.Namespace + "." + type.Name) ?? type.Name;
+        var name = type.IsNested ? type.DeclaringType!.FullName + "+" + type.Name : type.Namespace + "." + type.Name;
         var index = name.IndexOf('`', StringComparison.Ordinal);
         return index >= 0 ? name[..index] : name;
     }

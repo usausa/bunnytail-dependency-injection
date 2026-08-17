@@ -61,6 +61,9 @@ public sealed class RuntimeBehaviorTest
             .BuildGeneratedServiceProvider();
 
         var results = new SlowSingleton[32];
+        // Parallel.For は using スコープを抜ける前に完走するため、捕捉した provider は破棄されていない
+        // Parallel.For completes before the using scope ends, so the captured provider is not disposed yet.
+        // ReSharper disable once AccessToDisposedClosure
         Parallel.For(0, results.Length, i => results[i] = provider.GetRequiredService<SlowSingleton>());
 
         Assert.Equal(1, SlowSingleton.Created);
@@ -80,6 +83,9 @@ public sealed class RuntimeBehaviorTest
 
         var first = new SlowScoped[16];
         var second = new SlowScoped[16];
+        // Parallel.For は using スコープを抜ける前に完走するため、捕捉した provider は破棄されていない
+        // Parallel.For completes before the using scope ends, so the captured provider is not disposed yet.
+        // ReSharper disable once AccessToDisposedClosure
         Parallel.For(0, 32, i =>
         {
             if (i < 16)
@@ -112,6 +118,9 @@ public sealed class RuntimeBehaviorTest
         // Resolves the same singleton directly and through a dependency at the same time.
         var direct = new SlowSingleton[16];
         var indirect = new SlowDependency[16];
+        // Parallel.For は using スコープを抜ける前に完走するため、捕捉した provider は破棄されていない
+        // Parallel.For completes before the using scope ends, so the captured provider is not disposed yet.
+        // ReSharper disable once AccessToDisposedClosure
         Parallel.For(0, 32, i =>
         {
             if (i < 16)
@@ -290,6 +299,9 @@ public sealed class RuntimeBehaviorTest
 
         // スコープの生成・解決・破棄を並行に回し、破棄漏れ・二重破棄が出ないこと
         // Creates, resolves and disposes scopes concurrently; nothing is missed or disposed twice.
+        // Parallel.For は using スコープを抜ける前に完走するため、捕捉した provider は破棄されていない
+        // Parallel.For completes before the using scope ends, so the captured provider is not disposed yet.
+        // ReSharper disable once AccessToDisposedClosure
         Parallel.For(0, 32, index =>
         {
             _ = index;

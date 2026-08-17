@@ -24,12 +24,18 @@ public class DisposalTrackingBenchmark
         }
     }
 
+    // 追跡リストは disposal 追跡のコストを再現するためのもので、内容の参照はしない
+    // The tracking list reproduces the cost of disposal tracking; its contents are never read.
+    // ReSharper disable once CollectionNeverQueried.Local
     private readonly List<IDisposable> tracked = new(CreateCount * 2);
 
     private Func<object> plainFactory = default!;
     private Func<object> disposableFactory = default!;
     private Func<DisposableService> disposableTypedFactory = default!;
 
+    // 計測結果の格納先。読み出さないが、書き込むことで JIT のデッドコード削除を防ぐ
+    // Sink for measured values: never read, but written so the JIT cannot eliminate the work.
+    // ReSharper disable once NotAccessedField.Local
     private object? sink;
 
     [GlobalSetup]

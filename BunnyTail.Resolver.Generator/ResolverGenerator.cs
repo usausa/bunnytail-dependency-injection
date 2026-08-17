@@ -682,7 +682,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             foreach (var argument in invocation.ArgumentList.Arguments)
             {
                 if ((argument.Expression is TypeOfExpressionSyntax typeOf)
-                    && (context.SemanticModel.GetTypeInfo(typeOf.Type).Type is ITypeSymbol typeSymbol))
+                    && (context.SemanticModel.GetTypeInfo(typeOf.Type).Type is { } typeSymbol))
                 {
                     typeofTypes.Add(typeSymbol);
                 }
@@ -1098,7 +1098,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
     private static CandidateModel? CreateCandidateModel(GeneratorSyntaxContext context)
     {
         var syntax = (ClassDeclarationSyntax)context.Node;
-        if (context.SemanticModel.GetDeclaredSymbol(syntax) is not INamedTypeSymbol symbol)
+        if (context.SemanticModel.GetDeclaredSymbol(syntax) is not { } symbol)
         {
             return null;
         }
@@ -2040,7 +2040,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
             result = string.CompareOrdinal(x.Pattern, y.Pattern);
             return result != 0 ? result : string.CompareOrdinal(x.Namespace, y.Namespace);
         });
-        return new EquatableArray<ExternalRequest>(requests.ToArray());
+        return new EquatableArray<ExternalRequest>([.. requests]);
     }
 
     // 外部アセンブリの候補走査。要求されたアセンブリだけを歩き、名前と名前空間で絞ってから
@@ -2206,7 +2206,7 @@ public sealed class ResolverGenerator : IIncrementalGenerator
         }
 
         modules.Sort(StringComparer.Ordinal);
-        return new EquatableArray<string>(modules.ToArray());
+        return new EquatableArray<string>([.. modules]);
     }
 
     private static void EmitGeneratedComponents(SourceProductionContext context, string assemblyName, ComponentModel[] components, List<FactoryModel> unkeyedFactories, List<FactoryModel> keyedFactories, List<(string ElementServiceType, List<FactoryModel> Elements)> enumerableModels, InlineTargetMap inlineMap, EquatableArray<string> referencedModules, List<(string ImplementationType, string PostConstruct)> generatedInitializers)

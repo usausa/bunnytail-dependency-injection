@@ -36,7 +36,6 @@ internal sealed class FixedTypeServiceTable
     private static readonly Node EmptyNode = new(typeof(EmptySentinel), null!);
 
     private readonly Node[] nodes;
-    private readonly int mask;
 
     // バケット選択のハッシュ源は TypeHandle (表す型の MethodTable ポインタ)。identity hash の
     // ランタイムヘルパ呼び出し (約 1.0ns) が純粋なフィールド読み (約 0.3ns) になる。
@@ -62,7 +61,7 @@ internal sealed class FixedTypeServiceTable
             capacity <<= 1;
         }
 
-        mask = capacity - 1;
+        var mask = capacity - 1;
         nodes = new Node[capacity];
         for (var i = 0; i < nodes.Length; i++)
         {
@@ -190,7 +189,6 @@ internal sealed class FixedKeyedServiceTable
     private static readonly Node EmptyNode = new(typeof(EmptySentinel), string.Empty, null!);
 
     private readonly Node[] nodes;
-    private readonly int mask;
 
     public FixedKeyedServiceTable(IReadOnlyList<(Type Type, object Key, ServiceAccessor Accessor)> source)
     {
@@ -200,7 +198,7 @@ internal sealed class FixedKeyedServiceTable
             capacity <<= 1;
         }
 
-        mask = capacity - 1;
+        var mask = capacity - 1;
         nodes = new Node[capacity];
         for (var i = 0; i < nodes.Length; i++)
         {

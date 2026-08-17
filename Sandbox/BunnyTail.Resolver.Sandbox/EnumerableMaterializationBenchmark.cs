@@ -26,6 +26,9 @@ public class EnumerableMaterializationBenchmark
     private Array prototype = default!;
     private Func<int, Array> typedFactory = default!;
 
+    // 計測結果の格納先。読み出さないが、書き込むことで JIT のデッドコード削除を防ぐ
+    // Sink for measured values: never read, but written so the JIT cannot eliminate the work.
+    // ReSharper disable once NotAccessedField.Local
     private object? sink;
 
     [GlobalSetup]

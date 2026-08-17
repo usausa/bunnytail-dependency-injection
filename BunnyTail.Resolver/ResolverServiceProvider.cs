@@ -6,6 +6,11 @@ using Microsoft.Extensions.DependencyInjection;
 
 // ルートプロバイダ。状態 (Singleton 等) はインスタンスメンバとして保持する (プロセス static は使わない)
 // Root provider. State such as singletons is held as instance members (no process-wide statics).
+// 基底インタフェースの明示列挙は冗長だが、公開契約を型宣言だけで読めるようにするため残す
+// (実装するインタフェース集合は同じで、ディスパッチコストも変わらない)
+// Explicitly listing base interfaces is redundant but kept so the public contract is readable from the declaration
+// alone (the implemented interface set and dispatch cost are identical either way).
+// ReSharper disable RedundantExtendsListEntry
 public sealed class ResolverServiceProvider :
     IServiceProvider,
     IKeyedServiceProvider,
@@ -15,6 +20,7 @@ public sealed class ResolverServiceProvider :
     IServiceProviderIsKeyedService,
     IDisposable,
     IAsyncDisposable
+// ReSharper restore RedundantExtendsListEntry
 {
     internal ServiceProviderScope RootScope { get; }
 

@@ -303,6 +303,9 @@ public sealed class ComponentResolutionTest
 
     // ---- open generic の閉型生成 / closed factories from open generic registrations ----
 
+    // open generic 登録の検証用マーカー。型引数は登録形状のためだけに必要
+    // Marker for verifying open generic registration; the type parameter exists only to shape the registration.
+    // ReSharper disable once UnusedTypeParameter
     public interface IGenericContainer<T>;
 
     public sealed class GenericContainer<T> : IGenericContainer<T>;
@@ -427,6 +430,9 @@ public sealed class ComponentResolutionTest
             .BuildGeneratedServiceProvider();
 
         var results = new CountingSingleton[16];
+        // Parallel.For は using スコープを抜ける前に完走するため、捕捉した provider は破棄されていない
+        // Parallel.For completes before the using scope ends, so the captured provider is not disposed yet.
+        // ReSharper disable once AccessToDisposedClosure
         Parallel.For(0, results.Length, i => results[i] = provider.GetRequiredService<CountingSingleton>());
 
         Assert.All(results, x => Assert.Same(results[0], x));

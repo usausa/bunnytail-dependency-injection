@@ -60,7 +60,7 @@ public class EnumerableResolutionBenchmark
             this.factory = factory;
         }
 
-        protected override object? Create(object scope) => factory(scope);
+        protected override object Create(object scope) => factory(scope);
     }
 
     public sealed class EnumerableAccessorModel : AccessorModel
@@ -76,7 +76,7 @@ public class EnumerableResolutionBenchmark
             this.arrayFactory = arrayFactory;
         }
 
-        protected override object? Create(object scope)
+        protected override object Create(object scope)
         {
             var typed = arrayFactory(items.Length);
             var view = (object?[])typed;
@@ -117,8 +117,10 @@ public class EnumerableResolutionBenchmark
     public int CurrentShapeWithForeach()
     {
         var count = 0;
+        // ReSharper disable once LoopCanBeConvertedToQuery
         foreach (var element in (IEnumerable<IElement>)enumerableAccessor.GetValue(scope)!)
         {
+            // ReSharper disable once ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
             count += element is null ? 0 : 1;
         }
 
@@ -135,17 +137,24 @@ public class EnumerableResolutionBenchmark
         return sink;
     }
 
-    // S-6 の目標形状: 配列リテラル直書き + 列挙
-    // The S-6 target shape: a literal array expression, plus enumeration.
+    // S-6 の目標形状: 配列リテラル直書き + 列挙。利用側の実際の形に合わせ、必ずインタフェース経由で列挙する
+    // (キャストを外すと配列列挙になり、比較対象が別物になる)
+    // The S-6 target shape: a literal array expression plus enumeration. It always enumerates through the interface to
+    // match how consumers actually resolve (dropping the cast would turn it into array enumeration, changing what is compared).
     [Benchmark]
     public int InlineArrayWithForeach()
     {
         IElement[] array = [new Element1(), new Element2(), new Element3(), new Element4(), new Element5()];
         var count = 0;
-        foreach (var element in array)
+        // ReSharper disable once RedundantCast
+        // ReSharper disable once LoopCanBeConvertedToQuery
+#pragma warning disable IDE0004
+        foreach (var element in (IEnumerable<IElement>)array)
         {
+            // ReSharper disable once ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
             count += element is null ? 0 : 1;
         }
+#pragma warning restore IDE0004
 
         sink = count;
         return count;
@@ -154,23 +163,28 @@ public class EnumerableResolutionBenchmark
     // S-6 の目標形状のみ (下限)
     // The S-6 target shape alone (the floor).
     [Benchmark]
-    public object? InlineArrayOnly()
+    public object InlineArrayOnly()
     {
         IElement[] array = [new Element1(), new Element2(), new Element3(), new Element4(), new Element5()];
         sink = array;
         return array;
     }
 
-    // 列挙コスト単体 (キャッシュ済み配列を IEnumerable<T> 経由で列挙)
-    // Enumeration cost alone (a cached array enumerated through IEnumerable<T>).
+    // 列挙コスト単体 (キャッシュ済み配列を IEnumerable<T> 経由で列挙)。キャストが計測対象そのもの
+    // Enumeration cost alone (a cached array enumerated through IEnumerable<T>); the cast is what is being measured.
     [Benchmark]
     public int ForeachOnCachedArray()
     {
         var count = 0;
-        foreach (var element in cachedArray)
+        // ReSharper disable once RedundantCast
+        // ReSharper disable once LoopCanBeConvertedToQuery
+#pragma warning disable IDE0004
+        foreach (var element in (IEnumerable<IElement>)cachedArray)
         {
+            // ReSharper disable once ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
             count += element is null ? 0 : 1;
         }
+#pragma warning restore IDE0004
 
         sink = count;
         return count;

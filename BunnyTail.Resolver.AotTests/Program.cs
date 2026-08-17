@@ -39,6 +39,9 @@ using (var provider = services.BuildGeneratedServiceProvider())
     var t2 = provider.GetRequiredService<AotTransient>();
     Assert(!ReferenceEquals(t1, t2), "transient distinct");
     Assert(ReferenceEquals(t1.Singleton, s1), "constructor injection");
+    // 注釈上は非 null だが、注入前は default! なので「注入されたか」を実際に確認する意味がある
+    // The annotation says non-null, yet the value is default! before injection, so checking it verifies injection actually happened.
+    // ReSharper disable once ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
     Assert(t1.Prop is not null, "inject property");
 
     // Scoped
@@ -139,6 +142,9 @@ namespace BunnyTail.Resolver.AotTests
         public void Initialize() => Initialized = true;
     }
 
+    // open generic 登録の検証用マーカー。型引数は登録形状のためだけに必要
+    // Marker for verifying open generic registration; the type parameter exists only to shape the registration.
+    // ReSharper disable once UnusedTypeParameter
     public interface IAotGeneric<T>;
 
     public sealed class AotGeneric<T> : IAotGeneric<T>;

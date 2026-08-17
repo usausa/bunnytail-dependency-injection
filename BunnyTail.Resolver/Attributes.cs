@@ -35,7 +35,7 @@ public sealed class TransientAttribute : Attribute
 
 // プロパティインジェクションのマーカー。インスタンス生成後に注入される
 // Marker for property injection. Injected after the instance is constructed.
-[AttributeUsage(AttributeTargets.Property, Inherited = false)]
+[AttributeUsage(AttributeTargets.Property)]
 public sealed class InjectAttribute : Attribute
 {
 }

@@ -152,7 +152,7 @@ internal sealed class ServiceRegistry
     // generated factory was adopted. Realization builds accessors only and never creates instances.
     internal List<Diagnostics.ServiceFactoryReportEntry> CreateFactoryReport()
     {
-        var entries = new List<Diagnostics.ServiceFactoryReportEntry>();
+        var report = new List<Diagnostics.ServiceFactoryReportEntry>();
         foreach (var pair in exactMap)
         {
             // 実際に解決されるのは同一 (サービス型, キー) の最後の登録 (MEDI の last-wins)
@@ -168,7 +168,7 @@ internal sealed class ServiceRegistry
             // classified, so generated factories are never confused with user delegates.
             if ((implementationType is null) || implementationType.IsGenericTypeDefinition || descriptor.ServiceType.IsGenericTypeDefinition)
             {
-                entries.Add(new Diagnostics.ServiceFactoryReportEntry(descriptor.ServiceType, implementationType, key, descriptor.Lifetime, Diagnostics.ServiceFactoryStatus.NotApplicable));
+                report.Add(new Diagnostics.ServiceFactoryReportEntry(descriptor.ServiceType, implementationType, key, descriptor.Lifetime, Diagnostics.ServiceFactoryStatus.NotApplicable));
                 continue;
             }
 
@@ -189,10 +189,10 @@ internal sealed class ServiceRegistry
                 null => Diagnostics.ServiceFactoryStatus.Unresolvable,
                 _ => Diagnostics.ServiceFactoryStatus.NotApplicable
             };
-            entries.Add(new Diagnostics.ServiceFactoryReportEntry(descriptor.ServiceType, implementationType, key, descriptor.Lifetime, status));
+            report.Add(new Diagnostics.ServiceFactoryReportEntry(descriptor.ServiceType, implementationType, key, descriptor.Lifetime, status));
         }
 
-        return entries;
+        return report;
     }
 
     //--------------------------------------------------------------------------------

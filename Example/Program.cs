@@ -48,7 +48,7 @@ internal static class Program
         services.AddLibraryWorkers();
         services.AddManualServices();
         services.AddLibrary1Services();
-        Example.Library2.ReportedServiceRegistrations.AddReportedService(services);
+        Library2.ReportedServiceRegistrations.AddReportedService(services);
 
         using (var provider = services.BuildGeneratedServiceProvider())
         {
@@ -70,22 +70,24 @@ internal static class Program
             Assert(!ReferenceEquals(provider.GetRequiredService<LibraryWorker>(), provider.GetRequiredService<LibraryWorker>()), "library transient distinct");
 
             // 手動宣言モジュール (Example.Library2) も集約される / the manually declared module is aggregated as well
-            var messageSource = provider.GetRequiredService<Example.Library2.IMessageSource>();
+            var messageSource = provider.GetRequiredService<Library2.IMessageSource>();
             Assert(messageSource.GetMessage() == "manual module", "manual module registration");
-            Assert(ReferenceEquals(messageSource, provider.GetRequiredService<Example.Library2.IMessageSource>()), "manual module singleton identity");
+            Assert(ReferenceEquals(messageSource, provider.GetRequiredService<Library2.IMessageSource>()), "manual module singleton identity");
 
             // Assembly 指定の規約登録 (Generator 非参照ライブラリの素の型) / assembly scoped convention registration
-            var worker = provider.GetRequiredService<Example.Library2.ExternalWorker>();
+            var worker = provider.GetRequiredService<Library2.ExternalWorker>();
             Assert(worker.Describe() == "external worker (manual module)", "assembly scoped convention registration");
-            Assert(!ReferenceEquals(worker, provider.GetRequiredService<Example.Library2.ExternalWorker>()), "assembly scoped convention transient");
+            Assert(!ReferenceEquals(worker, provider.GetRequiredService<Library2.ExternalWorker>()), "assembly scoped convention transient");
 
             // ライブラリが提供する登録用拡張メソッド経由の登録。登録は通常の MEDI 動作で、
             // 生成ファクトリはライブラリ側のジェネレータが出力したものが実装型で自動採用される
             // Registration through the library's own extension method. Registration is ordinary MEDI behavior, and the
             // generated factory emitted by the library's generator is adopted automatically by implementation type.
-            var plain = provider.GetRequiredService<Example.Library1.IPlainLibraryService>();
+            var plain = provider.GetRequiredService<IPlainLibraryService>();
             Assert(plain.Describe().StartsWith("plain library service", StringComparison.Ordinal), "library extension method registration");
-            Assert(ReferenceEquals(plain, provider.GetRequiredService<Example.Library1.IPlainLibraryService>()), "library extension method singleton");
+            // 同一式どうしの比較は「2 回解決して同一インスタンスか」の検証そのもの
+            // Comparing identical expressions is the verification itself: resolve twice and check identity.
+            Assert(ReferenceEquals(plain, provider.GetRequiredService<IPlainLibraryService>()), "library extension method singleton");
 
             // 標準 Add* 登録 (属性なし)。ジェネリック / typeof / keyed / TryAddEnumerable / ファクトリの各形
             // Standard Add* registrations without attributes: generic, typeof, keyed, TryAddEnumerable and factory shapes.
@@ -98,15 +100,15 @@ internal static class Program
             // 診断レポートで経路を確認する (開発時のみの用途)
             // A type marked with [GenerateComponentFactory] resolves through the generated path even when the registration
             // comes from another library's extension method. The diagnostic report shows the actual path (development use only).
-            var reported = provider.GetRequiredService<Example.Library2.ReportedService>();
+            var reported = provider.GetRequiredService<Library2.ReportedService>();
             Assert(reported.Describe().StartsWith("reported service", StringComparison.Ordinal), "generate factory target resolves");
             Assert(reported.Prepared, "generate factory post construct");
 
             var report = provider.CreateFactoryReport();
-            var reportedEntry = report.First(static x => x.ImplementationType == typeof(Example.Library2.ReportedService));
+            var reportedEntry = report.First(static x => x.ImplementationType == typeof(Library2.ReportedService));
             Assert(reportedEntry.Status == ServiceFactoryStatus.Generated, "generate factory target uses generated path");
 
-            var messageEntry = report.First(static x => x.ImplementationType == typeof(Example.Library2.MessageSource));
+            var messageEntry = report.First(static x => x.ImplementationType == typeof(Library2.MessageSource));
             Assert(messageEntry.Status == ServiceFactoryStatus.RuntimeFallback, "untracked library type falls back");
 
             // 実行時経路の型は、貼り付け可能な属性行として書き出せる
