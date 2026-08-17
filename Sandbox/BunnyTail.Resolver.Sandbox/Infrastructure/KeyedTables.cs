@@ -164,6 +164,7 @@ public sealed class BucketCompositeTable<TValue>
         var bucket = buckets[Hash(type, key) & mask];
         if (bucket is not null)
         {
+            // ReSharper disable once ForCanBeConvertedToForeach
             for (var i = 0; i < bucket.Length; i++)
             {
                 ref readonly var entry = ref bucket[i];

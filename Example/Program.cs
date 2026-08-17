@@ -67,6 +67,7 @@ internal static class Program
             Assert(store.Values.Count == 1, "shared singleton state");
 
             // transient は毎回新規 / transients are fresh per resolution
+            // ReSharper disable once EqualExpressionComparison
             Assert(!ReferenceEquals(provider.GetRequiredService<LibraryWorker>(), provider.GetRequiredService<LibraryWorker>()), "library transient distinct");
 
             // 手動宣言モジュール (Example.Library2) も集約される / the manually declared module is aggregated as well
