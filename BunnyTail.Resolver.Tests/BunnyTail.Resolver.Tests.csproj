@@ -25,7 +25,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\BunnyTail.Resolver\BunnyTail.Resolver.csproj" />
-    <ProjectReference Include="..\BunnyTail.Resolver.Extensions.DependencyInjection\BunnyTail.Resolver.Extensions.DependencyInjection.csproj" />
     <!-- ジェネレータは 2 回参照: analyzer として (生成コードの適用) + 通常参照 (harness テスト用) -->
     <ProjectReference Include="..\BunnyTail.Resolver.Generator\BunnyTail.Resolver.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\BunnyTail.Resolver.Generator\BunnyTail.Resolver.Generator.csproj" />

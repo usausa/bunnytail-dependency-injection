@@ -8,7 +8,6 @@
   <Folder Name="/Library/">
     <Project Path="BunnyTail.Resolver/BunnyTail.Resolver.csproj" />
     <Project Path="BunnyTail.Resolver.Generator/BunnyTail.Resolver.Generator.csproj" />
-    <Project Path="BunnyTail.Resolver.Extensions.DependencyInjection/BunnyTail.Resolver.Extensions.DependencyInjection.csproj" />
   </Folder>
   <Folder Name="/Solution Items/">
     <File Path=".editorconfig" />

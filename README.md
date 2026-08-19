@@ -3,7 +3,6 @@
 | Package | Info |
 |:-|:-|
 | BunnyTail.Resolver | [![NuGet](https://img.shields.io/nuget/v/BunnyTail.Resolver.svg)](https://www.nuget.org/packages/BunnyTail.Resolver) |
-| BunnyTail.Resolver.Extensions.DependencyInjection | [![NuGet](https://img.shields.io/nuget/v/BunnyTail.Resolver.Extensions.DependencyInjection.svg)](https://www.nuget.org/packages/BunnyTail.Resolver.Extensions.DependencyInjection) |
 
 ## ❓ What is this?
 
@@ -251,7 +250,7 @@ Every entry point carries `Generated` in its name: that is the source generated,
 
 ## 🔌 Microsoft.Extensions.DependencyInjection integration
 
-The `BunnyTail.Resolver.Extensions.DependencyInjection` package provides the MEDI bridge: `BuildGeneratedServiceProvider()` and `GeneratedServiceProviderFactory`.
+The MEDI bridge — `BuildGeneratedServiceProvider()` and `GeneratedServiceProviderFactory` — ships in the package itself; no separate integration package is needed.
 
 ### ServiceCollection
 

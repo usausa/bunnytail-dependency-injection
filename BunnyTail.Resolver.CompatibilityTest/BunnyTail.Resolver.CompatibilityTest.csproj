@@ -15,7 +15,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\BunnyTail.Resolver\BunnyTail.Resolver.csproj" />
-    <ProjectReference Include="..\BunnyTail.Resolver.Extensions.DependencyInjection\BunnyTail.Resolver.Extensions.DependencyInjection.csproj" />
   </ItemGroup>
 
 </Project>
