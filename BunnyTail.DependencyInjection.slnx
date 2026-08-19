@@ -5,9 +5,15 @@
   <Folder Name="/Sandbox/">
     <Project Path="Sandbox/BunnyTail.DependencyInjection.Sandbox/BunnyTail.DependencyInjection.Sandbox.csproj" />
   </Folder>
+  <Folder Name="/Example/">
+    <Project Path="Example.Library1/Example.Library1.csproj" />
+    <Project Path="Example.Library2/Example.Library2.csproj" />
+    <Project Path="Example.WebApplication/Example.WebApplication.csproj" />
+    <Project Path="Example/Example.csproj" />
+  </Folder>
   <Folder Name="/Library/">
-    <Project Path="BunnyTail.DependencyInjection/BunnyTail.DependencyInjection.csproj" />
     <Project Path="BunnyTail.DependencyInjection.Generator/BunnyTail.DependencyInjection.Generator.csproj" />
+    <Project Path="BunnyTail.DependencyInjection/BunnyTail.DependencyInjection.csproj" />
   </Folder>
   <Folder Name="/Solution Items/">
     <File Path=".editorconfig" />
@@ -25,12 +31,8 @@
     <File Path="README.md" />
   </Folder>
   <Folder Name="/Tests/">
-    <Project Path="BunnyTail.DependencyInjection.Tests/BunnyTail.DependencyInjection.Tests.csproj" />
-    <Project Path="BunnyTail.DependencyInjection.CompatibilityTest/BunnyTail.DependencyInjection.CompatibilityTest.csproj" />
     <Project Path="BunnyTail.DependencyInjection.AotTests/BunnyTail.DependencyInjection.AotTests.csproj" />
+    <Project Path="BunnyTail.DependencyInjection.CompatibilityTest/BunnyTail.DependencyInjection.CompatibilityTest.csproj" />
+    <Project Path="BunnyTail.DependencyInjection.Tests/BunnyTail.DependencyInjection.Tests.csproj" />
   </Folder>
-  <Project Path="Example.Library1/Example.Library1.csproj" />
-  <Project Path="Example.Library2/Example.Library2.csproj" />
-  <Project Path="Example/Example.csproj" DefaultStartup="true" />
-  <Project Path="Example.WebApplication/Example.WebApplication.csproj" />
 </Solution>

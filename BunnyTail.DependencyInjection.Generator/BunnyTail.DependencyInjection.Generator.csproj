@@ -14,7 +14,6 @@
     <PackageReference Include="SourceGenerateHelper" Version="1.20.0" GeneratePathProperty="true" PrivateAssets="all" />
   </ItemGroup>
 
-  <!-- VS/コンパイラがジェネレータの依存 DLL を解決できるようにする定番回避策 (Generator2 定型) -->
   <PropertyGroup>
     <GetTargetPathDependsOn>$(GetTargetPathDependsOn);GetDependencyTargetPaths</GetTargetPathDependsOn>
   </PropertyGroup>

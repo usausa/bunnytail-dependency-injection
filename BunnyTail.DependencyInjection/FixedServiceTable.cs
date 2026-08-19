@@ -3,7 +3,7 @@ namespace BunnyTail.DependencyInjection;
 using System.Runtime.CompilerServices;
 
 //--------------------------------------------------------------------------------
-// Type table (非 keyed)
+// Type table
 //--------------------------------------------------------------------------------
 
 internal sealed class FixedTypeServiceTable
@@ -127,7 +127,7 @@ internal sealed class FixedTypeServiceTable
 }
 
 //--------------------------------------------------------------------------------
-// Keyed table ((Type, key) 複合キー)
+// Keyed table
 //--------------------------------------------------------------------------------
 
 internal sealed class FixedKeyedServiceTable
