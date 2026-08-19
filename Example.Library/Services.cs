@@ -1,4 +1,4 @@
-namespace Example.Library1;
+namespace Example.Library;
 
 using BunnyTail.DependencyInjection;
 
@@ -70,9 +70,9 @@ public sealed class PlainLibraryService : IPlainLibraryService
     public string Describe() => $"plain library service (counter {counter.Increment()})";
 }
 
-public static class Library1ServiceCollectionExtensions
+public static class LibraryServiceCollectionExtensions
 {
-    public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddLibrary1Services(
+    public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddLibraryServices(
         this Microsoft.Extensions.DependencyInjection.IServiceCollection services)
     {
         Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddSingleton<IPlainLibraryService, PlainLibraryService>(services);

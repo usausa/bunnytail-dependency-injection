@@ -3,7 +3,8 @@ namespace Example;
 using BunnyTail.DependencyInjection;
 using BunnyTail.DependencyInjection.Diagnostics;
 
-using Example.Library1;
+using Example.Library;
+using Example.ThirdPartyLibrary;
 
 using Microsoft.Extensions.DependencyInjection;
 
@@ -30,12 +31,14 @@ internal sealed class AppService
     }
 }
 
-// モジュール集約 (案 1) の検証。AddAllGeneratedComponents が参照モジュール 2 種
-// (Example.Library1 = 生成コードによる自動マーカー / Example.Library2 = 手書きマーカー + 自作モジュール) と
-// 自アセンブリ (Example) の属性コンポーネントを 1 呼び出しで登録することを確認する
-// Verification of module aggregation. AddAllGeneratedComponents registers both kinds of referenced modules
-// (Example.Library1 with the auto-embedded marker, Example.Library2 with a hand-written marker and module)
-// plus this assembly's attribute components in a single call.
+// モジュール集約の検証。AddAllGeneratedComponents が、参照モジュール (Example.Library = 生成コードによる
+// 自動マーカー) と自アセンブリ (Example) の属性コンポーネントを 1 呼び出しで登録することを確認する。
+// Example.ThirdPartyLibrary は BunnyTail を参照しないサードパーティの代役で、集約対象にはならず、
+// 自身の拡張メソッド経由で登録される
+// Verification of module aggregation. AddAllGeneratedComponents registers the referenced module
+// (Example.Library, with the auto-embedded marker) plus this assembly's attribute components in a single call.
+// Example.ThirdPartyLibrary stands in for a third party that does not reference BunnyTail: it is not an
+// aggregation target and registers through its own extension methods.
 internal static class Program
 {
     private static int failed;
@@ -46,8 +49,9 @@ internal static class Program
         services.AddAllGeneratedComponents();
         services.AddLibraryWorkers();
         services.AddManualServices();
-        services.AddLibrary1Services();
-        Library2.ReportedServiceRegistrations.AddReportedService(services);
+        services.AddLibraryServices();
+        services.AddMessageSource();
+        services.AddReportedService();
 
         using (var provider = services.BuildGeneratedServiceProvider())
         {
@@ -69,15 +73,15 @@ internal static class Program
             // ReSharper disable once EqualExpressionComparison
             Assert(!ReferenceEquals(provider.GetRequiredService<LibraryWorker>(), provider.GetRequiredService<LibraryWorker>()), "library transient distinct");
 
-            // 手動宣言モジュール (Example.Library2) も集約される / the manually declared module is aggregated as well
-            var messageSource = provider.GetRequiredService<Library2.IMessageSource>();
-            Assert(messageSource.GetMessage() == "manual module", "manual module registration");
-            Assert(ReferenceEquals(messageSource, provider.GetRequiredService<Library2.IMessageSource>()), "manual module singleton identity");
+            // サードパーティの拡張メソッド経由の登録 / registration through the third party's own extension method
+            var messageSource = provider.GetRequiredService<ThirdPartyLibrary.IMessageSource>();
+            Assert(messageSource.GetMessage() == "third party message", "third party extension method registration");
+            Assert(ReferenceEquals(messageSource, provider.GetRequiredService<ThirdPartyLibrary.IMessageSource>()), "third party singleton identity");
 
-            // Assembly 指定の規約登録 (Generator 非参照ライブラリの素の型) / assembly scoped convention registration
-            var worker = provider.GetRequiredService<Library2.ExternalWorker>();
-            Assert(worker.Describe() == "external worker (manual module)", "assembly scoped convention registration");
-            Assert(!ReferenceEquals(worker, provider.GetRequiredService<Library2.ExternalWorker>()), "assembly scoped convention transient");
+            // Assembly 指定の規約登録 (サードパーティの素の型) / assembly scoped convention registration
+            var worker = provider.GetRequiredService<ThirdPartyLibrary.ExternalWorker>();
+            Assert(worker.Describe() == "external worker (third party message)", "assembly scoped convention registration");
+            Assert(!ReferenceEquals(worker, provider.GetRequiredService<ThirdPartyLibrary.ExternalWorker>()), "assembly scoped convention transient");
 
             // ライブラリが提供する登録用拡張メソッド経由の登録。登録は通常の MEDI 動作で、
             // 生成ファクトリはライブラリ側のジェネレータが出力したものが実装型で自動採用される
@@ -100,20 +104,20 @@ internal static class Program
             // 診断レポートで経路を確認する (開発時のみの用途)
             // A type marked with [GenerateComponentFactory] resolves through the generated path even when the registration
             // comes from another library's extension method. The diagnostic report shows the actual path (development use only).
-            var reported = provider.GetRequiredService<Library2.ReportedService>();
+            var reported = provider.GetRequiredService<ThirdPartyLibrary.ReportedService>();
             Assert(reported.Describe().StartsWith("reported service", StringComparison.Ordinal), "generate factory target resolves");
             Assert(reported.Prepared, "generate factory post construct");
 
             var report = provider.CreateFactoryReport();
-            var reportedEntry = report.First(static x => x.ImplementationType == typeof(Library2.ReportedService));
+            var reportedEntry = report.First(static x => x.ImplementationType == typeof(ThirdPartyLibrary.ReportedService));
             Assert(reportedEntry.Status == ServiceFactoryStatus.Generated, "generate factory target uses generated path");
 
-            var messageEntry = report.First(static x => x.ImplementationType == typeof(Library2.MessageSource));
+            var messageEntry = report.First(static x => x.ImplementationType == typeof(ThirdPartyLibrary.MessageSource));
             Assert(messageEntry.Status == ServiceFactoryStatus.RuntimeFallback, "untracked library type falls back");
 
             // Runtime path types can be written out as ready-to-paste attribute lines
             var suggestion = provider.DescribeRuntimeFallbacks();
-            Assert(suggestion.Contains("Example.Library2.MessageSource", StringComparison.Ordinal), "runtime fallback is suggested");
+            Assert(suggestion.Contains("Example.ThirdPartyLibrary.MessageSource", StringComparison.Ordinal), "runtime fallback is suggested");
             Console.Write(suggestion);
 
             using (var manualScope = provider.CreateScope())

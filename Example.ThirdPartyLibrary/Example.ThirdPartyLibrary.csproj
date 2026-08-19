@@ -6,12 +6,9 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
+  <!-- Stands in for a third party library: it knows nothing about BunnyTail.DependencyInjection -->
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\BunnyTail.DependencyInjection\BunnyTail.DependencyInjection.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,9 +1,9 @@
-// ComponentModule attribute is used to mark a module type that provides component registrations for dependency injection
-[assembly: BunnyTail.DependencyInjection.ComponentModule(typeof(Example.Library2.LibraryModule))]
-
-namespace Example.Library2;
+namespace Example.ThirdPartyLibrary;
 
 using Microsoft.Extensions.DependencyInjection;
+
+// This project stands in for a third party library. It does not reference BunnyTail.DependencyInjection,
+// so none of its types carry attributes and its registrations are invisible to the application's generator.
 
 public interface IMessageSource
 {
@@ -12,19 +12,20 @@ public interface IMessageSource
 
 public sealed class MessageSource : IMessageSource
 {
-    public string GetMessage() => "manual module";
+    public string GetMessage() => "third party message";
 }
 
-public static class LibraryModule
+// Registered through the library's own extension method, which is how a third party library ships registrations
+public static class MessageSourceRegistrations
 {
-    public static IServiceCollection AddGeneratedComponents(this IServiceCollection services)
+    public static IServiceCollection AddMessageSource(this IServiceCollection services)
     {
         services.AddSingleton<IMessageSource, MessageSource>();
         return services;
     }
 }
 
-// ComponentRegistration target
+// ComponentRegistration target: a plain type registered by convention from the application side
 public sealed class ExternalWorker
 {
     private readonly IMessageSource source;
@@ -37,7 +38,7 @@ public sealed class ExternalWorker
     public string Describe() => $"external worker ({source.GetMessage()})";
 }
 
-// Library2 module registration through a conventional extension method
+// GenerateComponentFactory target: registered by the library's own extension method
 public sealed class ReportedService
 {
     private readonly IMessageSource source;

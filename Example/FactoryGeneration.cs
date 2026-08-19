@@ -1,4 +1,4 @@
-// Example.Library2 does not reference the generator and registers through its own AddReportedService()
+// Example.ThirdPartyLibrary knows nothing about the generator and registers through its own AddReportedService()
 [assembly: BunnyTail.DependencyInjection.GenerateComponentFactory(
-    typeof(Example.Library2.ReportedService),
-    PostConstruct = nameof(Example.Library2.ReportedService.Prepare))]
+    typeof(Example.ThirdPartyLibrary.ReportedService),
+    PostConstruct = nameof(Example.ThirdPartyLibrary.ReportedService.Prepare))]

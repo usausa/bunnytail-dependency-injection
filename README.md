@@ -224,9 +224,9 @@ using var provider = new ServiceCollection()
     .BuildGeneratedServiceProvider();
 ```
 
-Each module's `AddGeneratedComponents()` registers only its own components, so modules can still be registered individually when finer control is needed.
+`AddAllGeneratedComponents()` is what an application calls. It is equivalent to `AddGeneratedComponents()` when nothing else is referenced, and it saves you from tracking which referenced libraries carry a module — including the transitively referenced ones. Each module's `AddGeneratedComponents()` registers only its own components, so a module can still be registered individually when a library should deliberately be left out.
 
-A library without the generator can participate by declaring a module by hand — a static class with an `AddGeneratedComponents(IServiceCollection)` method, plus `[assembly: ComponentModule(typeof(...))]`:
+The marker is embedded for assemblies that have attribute components. A library that has none — one that registers everything through factories or its own conditional logic — gets no marker, and declares a module by hand instead:
 
 ```csharp
 [assembly: BunnyTail.DependencyInjection.ComponentModule(typeof(MyLibrary.LibraryModule))]
@@ -237,13 +237,15 @@ public static class LibraryModule
 {
     public static IServiceCollection AddGeneratedComponents(this IServiceCollection services)
     {
-        services.AddSingleton<IMessageSource, MessageSource>();
+        services.AddSingleton<IMessageSource>(static provider => new MessageSource(provider.GetRequiredService<Config>().Prefix));
         return services;
     }
 }
 ```
 
-Both patterns are shown working in `Example` / `Example.Library1` (generated marker) / `Example.Library2` (hand-written marker).
+Only one marker per assembly is allowed, so the embedded and the hand-written form are mutually exclusive. A library that does not reference this package at all cannot declare a module — its registrations come from its own extension methods, as usual, and `[GenerateComponentFactory]` puts the types it constructs on the generated path.
+
+`Example` with `Example.Library` shows the embedded marker.
 
 ## 📖 API reference
 
@@ -403,9 +405,9 @@ Behavior always follows the actual registrations: a descriptor that no longer ma
 
 | Project | Contents |
 |---|---|
-| `Example` | Console sample asserting every feature: attribute components, module aggregation across two libraries, convention registration scanning a referenced assembly, and standard `Add*` registrations (generic, open generic, keyed, `TryAddEnumerable`, factory) |
-| `Example.Library1` | Class library referencing the generator: its components form a module marked automatically |
-| `Example.Library2` | Class library **without** the generator: a hand-written module marker plus plain types picked up by convention scanning |
+| `Example` | Console sample asserting every feature: attribute components, module aggregation, convention registration scanning a referenced assembly, `[GenerateComponentFactory]`, the diagnostic report, and standard `Add*` registrations (generic, open generic, keyed, `TryAddEnumerable`, factory) |
+| `Example.Library` | Class library referencing this package: its components are marked as a module automatically and aggregated by the application |
+| `Example.ThirdPartyLibrary` | Stands in for a third party library, referencing nothing of this package. Its registrations come from its own extension methods, so they are invisible to the application's generator — the target of convention scanning, `[GenerateComponentFactory]` and the runtime fallback diagnostics |
 | `Example.WebApplication` | ASP.NET Core minimal API with the container replaced, showing singleton / scoped / transient behavior per request |
 
 ## ⚡ Benchmark

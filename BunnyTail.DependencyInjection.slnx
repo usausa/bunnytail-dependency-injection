@@ -6,8 +6,8 @@
     <Project Path="Sandbox/BunnyTail.DependencyInjection.Sandbox/BunnyTail.DependencyInjection.Sandbox.csproj" />
   </Folder>
   <Folder Name="/Example/">
-    <Project Path="Example.Library1/Example.Library1.csproj" />
-    <Project Path="Example.Library2/Example.Library2.csproj" />
+    <Project Path="Example.Library/Example.Library.csproj" />
+    <Project Path="Example.ThirdPartyLibrary/Example.ThirdPartyLibrary.csproj" />
     <Project Path="Example.WebApplication/Example.WebApplication.csproj" />
     <Project Path="Example/Example.csproj" />
   </Folder>
