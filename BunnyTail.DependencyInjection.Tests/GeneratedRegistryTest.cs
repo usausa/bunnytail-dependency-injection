@@ -47,7 +47,7 @@ public sealed class GeneratedRegistryTest
         GeneratedComponentRegistry.Register(
             typeof(MismatchComponent),
             Type.EmptyTypes,
-            static _ => throw new InvalidOperationException("生成ファクトリが誤って使用された"));
+            static _ => throw new InvalidOperationException("The generated factory was used unexpectedly"));
 
         // Keyed generated factory
         GeneratedComponentRegistry.RegisterKeyed(
@@ -71,37 +71,45 @@ public sealed class GeneratedRegistryTest
     [Fact]
     public void GeneratedFactoryIsUsedWhenConstructorMatches()
     {
+        // Arrange
         using var provider = new ServiceCollection()
             .AddTransient<HookComponent>()
             .BuildGeneratedServiceProvider();
 
+        // Act
         var instance = provider.GetRequiredService<HookComponent>();
 
+        // Assert
         Assert.True(instance.CreatedByGeneratedFactory);
     }
 
     [Fact]
     public void FallsBackToReflectionWhenConstructorMismatches()
     {
+        // Arrange
         using var provider = new ServiceCollection()
             .AddTransient<HookComponent>()
             .AddTransient<MismatchComponent>()
             .BuildGeneratedServiceProvider();
 
+        // Act
         // The reflection path must be used instead of the generated factory
         var instance = provider.GetRequiredService<MismatchComponent>();
 
+        // Assert
         Assert.NotNull(instance);
     }
 
     [Fact]
     public void KeyedGeneratedFactoryIsUsedAndReceivesKey()
     {
+        // Arrange
         using var provider = new ServiceCollection()
             .AddKeyedTransient<KeyedHookComponent>("first")
             .AddKeyedTransient<KeyedHookComponent>(KeyedService.AnyKey)
             .BuildGeneratedServiceProvider();
 
+        // Act & Assert
         var exact = provider.GetRequiredKeyedService<KeyedHookComponent>("first");
         Assert.Equal("first", exact.ReceivedKey);
 
@@ -113,54 +121,66 @@ public sealed class GeneratedRegistryTest
     [Fact]
     public void InlinedFactoryIsUsedWhenAssumptionHolds()
     {
+        // Arrange
         using var provider = new ServiceCollection()
             .AddTransient<InlineDependencyComponent>()
             .AddTransient<InlineRootComponent>()
             .BuildGeneratedServiceProvider();
 
+        // Act
         var instance = provider.GetRequiredService<InlineRootComponent>();
 
+        // Assert
         Assert.True(instance.CreatedByGeneratedFactory);
     }
 
     [Fact]
     public void InlinedFactoryFallsBackWhenDependencyLifetimeDiffers()
     {
+        // Arrange
         // Assumed transient but registered as singleton at runtime
         using var provider = new ServiceCollection()
             .AddSingleton<InlineDependencyComponent>()
             .AddTransient<InlineRootComponent>()
             .BuildGeneratedServiceProvider();
 
+        // Act
         var instance = provider.GetRequiredService<InlineRootComponent>();
 
+        // Assert
         Assert.False(instance.CreatedByGeneratedFactory);
     }
 
     [Fact]
     public void InlinedFactoryFallsBackWhenDependencyIsFactoryRegistered()
     {
+        // Arrange
         // The dependency was replaced by a user factory registration
         using var provider = new ServiceCollection()
             .AddTransient(static _ => new InlineDependencyComponent())
             .AddTransient<InlineRootComponent>()
             .BuildGeneratedServiceProvider();
 
+        // Act
         var instance = provider.GetRequiredService<InlineRootComponent>();
 
+        // Assert
         Assert.False(instance.CreatedByGeneratedFactory);
     }
 
     [Fact]
     public void FactoryRegistrationIsNotAffectedByGeneratedFactory()
     {
+        // Arrange
         // ImplementationFactory registrations take precedence over generated factories
         using var provider = new ServiceCollection()
             .AddTransient(static _ => new HookComponent { CreatedByGeneratedFactory = false })
             .BuildGeneratedServiceProvider();
 
+        // Act
         var instance = provider.GetRequiredService<HookComponent>();
 
+        // Assert
         Assert.False(instance.CreatedByGeneratedFactory);
     }
 }

@@ -6,6 +6,8 @@ using System.Collections.Immutable;
 using System.Linq;
 using System.Text.RegularExpressions;
 
+using BunnyTail.DependencyInjection.Generator.Models;
+
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -303,7 +305,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             {
                 var parameter = constructor.Parameters[i];
                 var (typeName, kind, keyLiteral, inCompilation, isValueType) = CreateDependencyModel(parameter.Type, parameter.GetAttributes(), compilationAssembly);
-                parameters[i] = new ParameterModel(typeName, kind, keyLiteral, inCompilation, isValueType);
+                parameters[i] = new ParameterModel(typeName, inCompilation, isValueType, kind, keyLiteral);
 
                 // 既定値付き引数は生成ファクトリ不可 (GetRequiredService と挙動が変わるため互換経路へ)
                 // Parameters with default values disqualify the generated factory (behavior differs from GetRequiredService; runtime path is used).
@@ -351,7 +353,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                 eligibleUnkeyed = false;
             }
 
-            injectProperties.Add(new PropertyModel(property.Name, typeName, kind, keyLiteral, inCompilation, isValueType));
+            injectProperties.Add(new PropertyModel(property.Name, typeName, inCompilation, isValueType, kind, keyLiteral));
         }
 
         // IDisposable / IAsyncDisposable 実装型は disposal 追跡が必要なためインライン展開不可
@@ -403,8 +405,6 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
         return new FactoryModel(
             implementationType,
-            new EquatableArray<ParameterModel>(parameters),
-            new EquatableArray<PropertyModel>([.. injectProperties]),
             eligibleUnkeyed,
             eligibleKeyed,
             ambiguous,
@@ -412,7 +412,9 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             postConstruct,
             initializableInterface,
             invalidPostConstruct,
-            conflictingPostConstruct);
+            conflictingPostConstruct,
+            new EquatableArray<ParameterModel>(parameters),
+            new EquatableArray<PropertyModel>([.. injectProperties]));
     }
 
     private static bool HasValidPostConstructMethod(INamedTypeSymbol symbol, string name)
@@ -806,7 +808,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         }
 
         var serviceType = serviceArgument.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-        return new CollectedModel(factory, serviceType, lifetime, invocation.SyntaxTree.FilePath, invocation.SpanStart, kind);
+        return new CollectedModel(factory, serviceType, lifetime, kind, invocation.SyntaxTree.FilePath, invocation.SpanStart);
     }
 
     // ------------------------------------------------------------
@@ -999,8 +1001,8 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
         return new ClosedGenericUsageModel(
             DefinitionKey(closed),
-            new EquatableArray<string>(arguments),
             hasValueType,
+            new EquatableArray<string>(arguments),
             locationNode.SyntaxTree.FilePath,
             locationNode.SpanStart,
             LocationInfo.CreateFrom(locationNode));
@@ -1128,8 +1130,8 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         return Results.Success(new MethodModel(
             containingNamespace,
             symbol.ContainingType.Name,
+            symbol.DeclaredAccessibility,
             symbol.Name,
-            symbol.DeclaredAccessibility.ToText(),
             new EquatableArray<PatternModel>([.. patterns]),
             LocationInfo.CreateFrom(syntax)));
     }
@@ -1177,13 +1179,13 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         }
 
         return new CandidateModel(
-            symbol.Name,
             symbol.ContainingNamespace.IsGlobalNamespace ? string.Empty : symbol.ContainingNamespace.ToDisplayString(),
+            symbol.Name,
             CreateFactoryModel(symbol, context.SemanticModel.Compilation.Assembly),
+            null,
             CollectInterfaces(symbol),
             syntax.SyntaxTree.FilePath,
-            syntax.SpanStart,
-            null);
+            syntax.SpanStart);
     }
 
     // ------------------------------------------------------------
@@ -2242,13 +2244,13 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         }
 
         candidates.Add(new CandidateModel(
-            type.Name,
             namespaceName,
+            type.Name,
             CreateFactoryModel(type, compilation.Assembly),
+            assemblyName,
             CollectInterfaces(type),
             string.Empty,
-            0,
-            assemblyName));
+            0));
     }
 
     // 参照アセンブリの ComponentModule マーカーから生成モジュール型を収集する (AddAllGeneratedComponents の集約対象)。
@@ -2911,7 +2913,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
     private static void EmitConventionMethod(SourceBuilder builder, MethodModel method, List<(CandidateModel Candidate, string Lifetime)> matches)
     {
-        builder.Indent().Append(method.Accessibility).Append(" static partial global::Microsoft.Extensions.DependencyInjection.IServiceCollection ").Append(method.MethodName).Append("(this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)").NewLine();
+        builder.Indent().Append(method.MethodAccessibility.ToText()).Append(" static partial global::Microsoft.Extensions.DependencyInjection.IServiceCollection ").Append(method.MethodName).Append("(this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)").NewLine();
         builder.BeginScope();
 
         foreach (var (candidate, lifetime) in matches)

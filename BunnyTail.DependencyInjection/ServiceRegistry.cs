@@ -466,9 +466,9 @@ internal sealed class ServiceRegistry
     // Builds the closed type from an open generic definition (runtime path only). On NativeAOT, reference type
     // arguments work through shared generics and only value type arguments may fail at runtime
     // (the generated path closes types at compile time and is unaffected).
-    [UnconditionalSuppressMessage("AotAnalysis", "IL3050", Justification = "値型引数の open generic のみ実行時に失敗し得る。互換経路限定の挙動としてドキュメント化済み")]
-    [UnconditionalSuppressMessage("Trimming", "IL2055", Justification = "closed 型のコンストラクタは登録された open generic 実装型のメタデータから保持される")]
-    [UnconditionalSuppressMessage("Trimming", "IL2068", Justification = "同上")]
+    [UnconditionalSuppressMessage("AotAnalysis", "IL3050", Justification = "Only open generics with value type arguments can fail at runtime, which is documented as a runtime path limitation.")]
+    [UnconditionalSuppressMessage("Trimming", "IL2055", Justification = "Constructors of the closed type are preserved through the metadata of the registered open generic implementation type.")]
+    [UnconditionalSuppressMessage("Trimming", "IL2068", Justification = "Same as above.")]
     [return: DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
     private static Type MakeClosedGenericType(Type definition, Type[] typeArguments) => definition.MakeGenericType(typeArguments);
 
@@ -568,7 +568,7 @@ internal sealed class ServiceRegistry
     // the accessor is built, so types without initialization pay no resolve-time cost. PostConstruct methods are
     // statically referenced by the generated path and therefore preserved; only the combination of trimming +
     // runtime-only registrations + PostConstruct is constrained (same as [Inject]).
-    [UnconditionalSuppressMessage("Trimming", "IL2070", Justification = "PostConstruct 指定付き型は生成コードが静的参照するため保持される。実行時登録のみの型は制約としてドキュメント化")]
+    [UnconditionalSuppressMessage("Trimming", "IL2070", Justification = "Types with a PostConstruct specification are preserved because generated code references them statically, and types registered only at runtime are documented as a limitation.")]
     private static (MethodInfo? PostConstruct, bool Initializable) ResolveInitializer(Type implType)
     {
         string? name = null;
@@ -802,7 +802,7 @@ internal sealed class ServiceRegistry
     // 「トリミング環境 + 実行時のみ判明する登録 + [Inject] プロパティ」の組合せのみ制約 (ドキュメント化済み)
     // [Inject] properties are statically referenced by the generated path and therefore preserved. Only the
     // combination of trimming + runtime-only registrations + [Inject] properties is constrained (documented).
-    [UnconditionalSuppressMessage("Trimming", "IL2070", Justification = "[Inject] プロパティ付き型は生成コードが静的参照するため保持される。実行時登録のみの型は制約としてドキュメント化")]
+    [UnconditionalSuppressMessage("Trimming", "IL2070", Justification = "Types with [Inject] properties are preserved because generated code references them statically, and types registered only at runtime are documented as a limitation.")]
     private PropertyInjection[] BuildPropertyInjections(Type implType, object? serviceKey)
     {
         List<PropertyInjection>? list = null;

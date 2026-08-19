@@ -13,22 +13,26 @@ public sealed class HostIntegrationTest
     [Fact]
     public void HostUsesGeneratedServiceProvider()
     {
+        // Arrange
         using var host = new HostBuilder()
             .UseServiceProviderFactory(new GeneratedServiceProviderFactory())
             .ConfigureServices(static services => services.AddGeneratedComponents())
             .Build();
 
+        // Act & Assert
         Assert.IsType<GeneratedServiceProvider>(host.Services);
     }
 
     [Fact]
     public void HostResolvesComponentsAndFrameworkServices()
     {
+        // Arrange
         using var host = new HostBuilder()
             .UseServiceProviderFactory(new GeneratedServiceProviderFactory())
             .ConfigureServices(static services => services.AddGeneratedComponents())
             .Build();
 
+        // Act & Assert
         // Application component
         var component = host.Services.GetRequiredService<TransientComponent>();
         Assert.NotNull(component.Prop);
@@ -47,11 +51,13 @@ public sealed class HostIntegrationTest
     [Fact]
     public async Task HostStartsAndStops()
     {
+        // Arrange
         using var host = new HostBuilder()
             .UseServiceProviderFactory(new GeneratedServiceProviderFactory())
             .ConfigureServices(static services => services.AddGeneratedComponents())
             .Build();
 
+        // Act
         await host.StartAsync(TestContext.Current.CancellationToken);
         await host.StopAsync(TestContext.Current.CancellationToken);
     }

@@ -2,6 +2,10 @@ namespace BunnyTail.DependencyInjection;
 
 using System.Runtime.CompilerServices;
 
+//--------------------------------------------------------------------------------
+// Type table (非 keyed)
+//--------------------------------------------------------------------------------
+
 internal sealed class FixedTypeServiceTable
 {
 #pragma warning disable CA1812
@@ -121,6 +125,10 @@ internal sealed class FixedTypeServiceTable
         return false;
     }
 }
+
+//--------------------------------------------------------------------------------
+// Keyed table ((Type, key) 複合キー)
+//--------------------------------------------------------------------------------
 
 internal sealed class FixedKeyedServiceTable
 {

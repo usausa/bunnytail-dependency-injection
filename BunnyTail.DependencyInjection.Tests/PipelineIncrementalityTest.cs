@@ -61,6 +61,7 @@ public sealed class PipelineIncrementalityTest
     [Fact]
     public void UnrelatedEditKeepsOutputCached()
     {
+        // Arrange
         var parseOptions = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview);
         var componentTree = CSharpSyntaxTree.ParseText(
             ComponentSource,
@@ -98,8 +99,11 @@ public sealed class PipelineIncrementalityTest
             cancellationToken: TestContext.Current.CancellationToken);
         driver = driver.RunGenerators(compilation.ReplaceSyntaxTree(bodyTree, editedBody), TestContext.Current.CancellationToken);
 
+        // Act
         // Assembly scoped external scan is active, but every output stays cached and Execute is not rerun
         var reasons = OutputReasons(driver);
+
+        // Assert
         Assert.NotEmpty(reasons);
         Assert.All(reasons, static x => Assert.Equal(IncrementalStepRunReason.Cached, x));
     }
@@ -107,6 +111,7 @@ public sealed class PipelineIncrementalityTest
     [Fact]
     public void ComponentEditRegeneratesOutput()
     {
+        // Arrange
         var parseOptions = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview);
         var componentTree = CSharpSyntaxTree.ParseText(
             ComponentSource,
@@ -133,7 +138,10 @@ public sealed class PipelineIncrementalityTest
             cancellationToken: TestContext.Current.CancellationToken);
         driver = driver.RunGenerators(compilation.ReplaceSyntaxTree(componentTree, editedTree), TestContext.Current.CancellationToken);
 
+        // Act
         var reasons = OutputReasons(driver);
+
+        // Assert
         Assert.NotEmpty(reasons);
         Assert.Contains(reasons, static x => x != IncrementalStepRunReason.Cached);
     }

@@ -64,6 +64,10 @@ public sealed class DependencyPlan
 // (otherwise it falls back to the reflection path).
 public static class GeneratedComponentRegistry
 {
+    //--------------------------------------------------------------------------------
+    // Entries (採用判定に使う前提の保持)
+    //--------------------------------------------------------------------------------
+
     internal sealed class Entry
     {
 #pragma warning disable SA1401
@@ -151,6 +155,10 @@ public static class GeneratedComponentRegistry
         }
     }
 
+    //--------------------------------------------------------------------------------
+    // Registration (生成コードからの登録)
+    //--------------------------------------------------------------------------------
+
     private static readonly ConcurrentDictionary<Type, Entry> Map = new(IdentityTypeComparer.Instance);
 
     private static readonly ConcurrentDictionary<Type, KeyedEntry> KeyedMap = new(IdentityTypeComparer.Instance);
@@ -227,6 +235,10 @@ public static class GeneratedComponentRegistry
         ArgumentNullException.ThrowIfNull(postConstructMethodName);
         InitializerMap[implementationType] = postConstructMethodName;
     }
+
+    //--------------------------------------------------------------------------------
+    // Lookup (エンジンからの参照)
+    //--------------------------------------------------------------------------------
 
     internal static bool TryGet(Type implementationType, out Entry entry) => Map.TryGetValue(implementationType, out entry!);
 

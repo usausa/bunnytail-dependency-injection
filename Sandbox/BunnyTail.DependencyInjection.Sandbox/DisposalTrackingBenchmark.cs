@@ -2,10 +2,10 @@ namespace BunnyTail.DependencyInjection.Sandbox;
 
 using BenchmarkDotNet.Attributes;
 
-// transient の disposal 追跡コストの検証。
-// 「MEDI 互換のため transient も追跡する」という DI 固有の制約下で、追跡要否を生成時に型で確定させれば
-// 非 disposable の resolve に追跡コストが発生しないことを定量化する。互換経路の実行時 is チェックとの差を測る。
-// 実行時型チェックが JIT に畳み込まれないよう、互換経路を模して Func<object> ファクトリ経由で生成する
+// Verification of the disposal tracking cost of transients.
+// Under the DI specific constraint that transients are tracked for MEDI compatibility, this quantifies that
+// resolving a non disposable costs nothing once the need for tracking is settled by type at generation time,
+// and measures the gap against the runtime is check. Instances come from a Func<object> factory that mimics the runtime path so the check is not folded away by the JIT.
 // Verification of transient disposal tracking cost. Under the DI-specific constraint that transients must also be
 // tracked (MEDI compatibility), settling the tracking decision from the type at generation time removes the cost
 // for non-disposable resolutions. Instances are created through a Func<object> factory, mirroring the runtime path,
@@ -24,7 +24,7 @@ public class DisposalTrackingBenchmark
         }
     }
 
-    // 追跡リストは disposal 追跡のコストを再現するためのもので、内容の参照はしない
+    // The tracking list only reproduces the cost of disposal tracking; its contents are never read.
     // The tracking list reproduces the cost of disposal tracking; its contents are never read.
     // ReSharper disable once CollectionNeverQueried.Local
     private readonly List<IDisposable> tracked = [with(CreateCount * 2)];
@@ -33,7 +33,7 @@ public class DisposalTrackingBenchmark
     private Func<object> disposableFactory = default!;
     private Func<DisposableService> disposableTypedFactory = default!;
 
-    // 計測結果の格納先。読み出さないが、書き込むことで JIT のデッドコード削除を防ぐ
+    // Sink for the measured results. It is never read, but writing to it prevents JIT dead code elimination.
     // Sink for measured values: never read, but written so the JIT cannot eliminate the work.
     // ReSharper disable once NotAccessedField.Local
     private object? sink;
@@ -46,7 +46,7 @@ public class DisposalTrackingBenchmark
         disposableTypedFactory = static () => new DisposableService();
     }
 
-    // 生成経路: 非 disposable と生成時に確定 → チェックも追跡もなし
+    // Generated path: settled as non disposable at generation time, so there is neither a check nor tracking.
     // Generated path: settled as non-disposable at generation time, so neither check nor tracking remains.
     [Benchmark(Baseline = true, OperationsPerInvoke = CreateCount)]
     public void KnownPlain()
@@ -59,7 +59,7 @@ public class DisposalTrackingBenchmark
         tracked.Clear();
     }
 
-    // 互換経路: 実行時 is チェック (非 disposable なので分岐は不成立)
+    // Runtime path: a runtime is check, whose branch is not taken because the type is not disposable.
     // Runtime path: runtime is-check (the branch never taken because the type is not disposable).
     [Benchmark(OperationsPerInvoke = CreateCount)]
     public void RuntimeCheckPlain()
@@ -77,7 +77,7 @@ public class DisposalTrackingBenchmark
         tracked.Clear();
     }
 
-    // 生成経路: disposable と生成時に確定 → 型チェックなしで無条件追跡
+    // Generated path: settled as disposable at generation time, so tracking is unconditional with no type check.
     // Generated path: settled as disposable at generation time, so tracking happens unconditionally with no type check.
     [Benchmark(OperationsPerInvoke = CreateCount)]
     public void KnownDisposable()
@@ -92,7 +92,7 @@ public class DisposalTrackingBenchmark
         tracked.Clear();
     }
 
-    // 互換経路: 実行時 is チェック (disposable なので分岐成立 + 追跡)
+    // Runtime path: a runtime is check, whose branch is taken because the type is disposable, followed by tracking.
     // Runtime path: runtime is-check (the branch is taken and the instance is tracked).
     [Benchmark(OperationsPerInvoke = CreateCount)]
     public void RuntimeCheckDisposable()

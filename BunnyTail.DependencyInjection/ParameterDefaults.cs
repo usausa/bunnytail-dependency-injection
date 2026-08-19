@@ -5,7 +5,7 @@ using System.Reflection;
 
 internal static class ParameterDefaults
 {
-    [UnconditionalSuppressMessage("Trimming", "IL2072", Justification = "値型の default 値の生成のみ (値型の既定コンストラクタはメタデータ不要)")]
+    [UnconditionalSuppressMessage("Trimming", "IL2072", Justification = "Only default values of value types are created, and the default constructor of a value type requires no metadata.")]
     public static bool TryGetDefaultValue(ParameterInfo parameter, out object? defaultValue)
     {
         defaultValue = null;

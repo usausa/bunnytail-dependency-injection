@@ -1,6 +1,8 @@
 namespace BunnyTail.DependencyInjection;
 
+//--------------------------------------------------------------------------------
 // Scope
+//--------------------------------------------------------------------------------
 
 [AttributeUsage(AttributeTargets.Class, AllowMultiple = true, Inherited = false)]
 public sealed class SingletonAttribute : Attribute
@@ -32,14 +34,18 @@ public sealed class TransientAttribute : Attribute
     public string? PostConstruct { get; set; }
 }
 
+//--------------------------------------------------------------------------------
 // Property injection
+//--------------------------------------------------------------------------------
 
 [AttributeUsage(AttributeTargets.Property)]
 public sealed class InjectAttribute : Attribute
 {
 }
 
+//--------------------------------------------------------------------------------
 // Convention based
+//--------------------------------------------------------------------------------
 
 public enum Lifetime
 {
@@ -68,7 +74,9 @@ public sealed class ComponentRegistrationAttribute : Attribute
     }
 }
 
+//--------------------------------------------------------------------------------
 // Assembly module
+//--------------------------------------------------------------------------------
 
 [AttributeUsage(AttributeTargets.Assembly)]
 public sealed class ComponentModuleAttribute : Attribute
@@ -81,7 +89,9 @@ public sealed class ComponentModuleAttribute : Attribute
     }
 }
 
+//--------------------------------------------------------------------------------
 // Generated factory
+//--------------------------------------------------------------------------------
 
 [AttributeUsage(AttributeTargets.Assembly, AllowMultiple = true)]
 public sealed class GenerateComponentFactoryAttribute : Attribute

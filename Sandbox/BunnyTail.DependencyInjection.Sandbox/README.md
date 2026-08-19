@@ -1,40 +1,40 @@
 # BunnyTail.DependencyInjection.Sandbox
 
-DI 固有の設計判断を検証するためのベンチマーク。ライブラリ本体には残っていない「採用しなかった候補」の実装を持ち、採用形状との比較を再現できる状態で保つ。
+Benchmarks that verify DI specific design decisions. The rejected candidates are kept here with their implementations, so every comparison against the adopted shape stays reproducible even though the library itself no longer carries them.
 
-汎用的な性能パターン(型キー lookup、dispatch 形状、遅延生成、`Unsafe.As` など)は **[dotnet-performance](https://github.com/usausa/dotnet-performance) のカタログを参照する**。ここには置かない。
+General purpose performance patterns (type keyed lookup, dispatch shapes, lazy creation, `Unsafe.As` and the like) **belong in the [dotnet-performance](https://github.com/usausa/dotnet-performance) catalog**, not here.
 
-## 収録項目
+## Contents
 
-| ベンチマーク | 検証内容 | なぜ DI 固有か |
+| Benchmark | Subject | Why it is DI specific |
 |---|---|---|
-| `KeyedLookupBenchmark` | keyed services の `(Type, key)` lookup 構造 | MEDI の keyed services は「同一サービス型 × 複数キー」という形状を持ち、単一 `Type` キーのテーブルでは答えが出ない |
-| `DisposalTrackingBenchmark` | transient の disposal 追跡コスト | 「transient も追跡して破棄する」は MEDI 互換のための制約。追跡要否を生成時に型で確定する効果を測る |
-| `EnumerableMaterializationBenchmark` | `IEnumerable<T>` 実体化の配列生成方式 | 要素型が実行時にしか判らないのに `T[]` の実体を返す必要があり、transient 要素は解決のたびに再構築するという DI 固有の制約下の比較 |
-| `ResolutionEntryBenchmark` | 解決エントリの形状(accessor 仮想呼び出し vs 定数短絡) | サービステーブルのエントリが「lifetime 管理する仮想層」を持つか「解決済みインスタンスを直接持つか」という DI コンテナ固有の設計比較(逆アセンブル付き) |
-| `EnumerableConsumptionBenchmark` | 解決した `IEnumerable<T>` の消費形状(インタフェース列挙 vs `T[]` キャスト列挙) | コンテナは MEDI 互換のため `T[]` を実体化して返すのに、利用側がインタフェース越しに列挙すると enumerator 確保が乗る。NativeAOT では escape analysis が効かず差が表面化する(AOT 実測: 44.5ns/32B → 12.0ns/0B) |
+| `KeyedLookupBenchmark` | `(Type, key)` lookup structures for keyed services | Keyed services in MEDI have the shape of one service type with several keys, which a table keyed by `Type` alone cannot answer |
+| `DisposalTrackingBenchmark` | Disposal tracking cost of transients | Tracking and disposing transients is a constraint imposed by MEDI compatibility; this measures the gain from settling the need for tracking by type at generation time |
+| `EnumerableMaterializationBenchmark` | Array creation strategies for `IEnumerable<T>` materialization | A comparison under the DI specific constraint that a real `T[]` must be returned even though the element type is known only at runtime, and that transient elements are rebuilt on every resolution |
+| `ResolutionEntryBenchmark` | Resolution entry shapes: accessor virtual call against a constant short circuit | A container specific design comparison of whether a service table entry holds a virtual layer that manages lifetime or the resolved instance directly, with disassembly |
+| `EnumerableConsumptionBenchmark` | Consumption shapes of a resolved `IEnumerable<T>`: interface enumeration against `T[]` cast enumeration | The container materializes and returns a `T[]` for MEDI compatibility, yet enumerating through the interface adds an enumerator allocation. Escape analysis does not help on NativeAOT, where the difference surfaces (measured on AOT: 44.5ns/32B against 12.0ns/0B) |
 
-## dotnet-performance を参照する項目
+## Subjects that defer to dotnet-performance
 
-以下はここで検証したが、結論が dotnet-performance のカタログと一致したため実装ごと削除した。再検討が必要になったらカタログ側を見る。
+The following were verified here, then removed along with their implementations because the conclusions matched the dotnet-performance catalog. Consult the catalog when they need to be revisited.
 
-| 元の検証内容 | 参照先 | 結論 |
+| Original subject | Reference | Conclusion |
 |---|---|---|
-| `Type → Entry` の主テーブル形状(identity hash / ノードリスト / Robin Hood / `FrozenDictionary`) | `CandidateVerification.Benchmarks` の `TypeIdentityHashBenchmark` / `NodeTypeHashMap` / `RobinHoodTypeTable`、TYP-01、R-08 | identity hash + 参照比較 + 2^n マスクのノードリストが最速。`FrozenDictionary` は `Type` キーで `Dictionary` に負ける |
-| ジェネリック公開 API の解決経路(`typeof(T)` 分岐 / `TypeSlot<T>`) | TYP-01、JIT-03 | 型引数が静的に判る経路では分岐チェーンが約 0.23ns。実行時 `Type` を経由する二段 lookup は `Dictionary` より遅い |
-| ファクトリの dispatch 形状(closed delegate / sealed 仮想 / interface / `delegate*`) | DSP-02、`GuardedDevirtBenchmark` | `delegate*` は `calli` がインライン・投機不可のため不採用。closed instance delegate を採用 |
-| Singleton / Scoped の保持形状(型付きフィールド / `object[]` スロット / lazy) | STK-07、TYP-05、MEM-02 | 型付きフィールドを採用。スロットを使う箇所は `castclass` ではなく `Unsafe.As` |
+| Main table shape for `Type` to `Entry` (identity hash / node list / Robin Hood / `FrozenDictionary`) | `TypeIdentityHashBenchmark`, `NodeTypeHashMap` and `RobinHoodTypeTable` in `CandidateVerification.Benchmarks`, TYP-01, R-08 | A node list with identity hash, reference comparison and a 2^n mask is fastest. `FrozenDictionary` loses to `Dictionary` for `Type` keys |
+| Resolution path of generic public APIs (`typeof(T)` branching / `TypeSlot<T>`) | TYP-01, JIT-03 | A branch chain costs about 0.23ns where the type argument is statically known. A two level lookup through a runtime `Type` is slower than `Dictionary` |
+| Factory dispatch shapes (closed delegate / sealed virtual / interface / `delegate*`) | DSP-02, `GuardedDevirtBenchmark` | `delegate*` was rejected because `calli` can be neither inlined nor speculated. A closed instance delegate was adopted |
+| Storage shapes for singletons and scoped instances (typed field / `object[]` slot / lazy) | STK-07, TYP-05, MEM-02 | Typed fields were adopted. Where slots are used, they go through `Unsafe.As` rather than `castclass` |
 
-## 実行
+## Running
 
 ```bash
-dotnet run -c Release -- --verify                    # 等価性検証のみ
-dotnet run -c Release -- --filter "*Keyed*"          # keyed テーブル
-dotnet run -c Release -- --filter "*"                # 全件
+dotnet run -c Release -- --verify                    # equivalence verification only
+dotnet run -c Release -- --filter "*Keyed*"          # keyed tables
+dotnet run -c Release -- --filter "*"                # everything
 ```
 
-測定の作法(判定は速度・アロケーション・コードサイズの 3 軸、CI が重ならない場合のみ有意、測定前に等価性検証)は dotnet-performance の `docs/benchmark-methodology.md` に従う。
+Measurement practice follows `docs/benchmark-methodology.md` in dotnet-performance: judge on the three axes of time, allocation and code size, treat a result as significant only when the confidence intervals do not overlap, and verify equivalence before measuring.
 
-## 維持上の注意
+## Maintenance note
 
-`NodeCompositeTable` は本体の `FixedKeyedServiceTable` と同じレイアウトを写したもの。**本体側のレイアウトを変えたらここも合わせる**(でないと比較の意味がなくなる)。
+`NodeCompositeTable` mirrors the layout of `FixedKeyedServiceTable` in the library. **When that layout changes, change this one too**, otherwise the comparison stops meaning anything.

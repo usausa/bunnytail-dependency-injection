@@ -38,13 +38,16 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void GeneratedSourceMatchesHandWrittenPrototype()
     {
+        // Arrange
         var source = ImplicitUsings + File.ReadAllText(Path.Combine("Components", "Components.cs"));
         var expected = File.ReadAllText(Path.Combine("Expected", "ComponentRegistration.expected.txt"));
 
+        // Act
         var result = CreateRunner()
             .VerifyCompiles()
             .Run(source);
 
+        // Assert
         var actual = result.GeneratedSource("GeneratedComponents.g.cs");
 
         File.WriteAllText("actual-generated.txt", actual);
@@ -59,6 +62,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void FactoryIsCollectedFromAddInvocation()
     {
+        // Arrange
         const string source = """
             using Microsoft.Extensions.DependencyInjection;
 
@@ -74,15 +78,17 @@ public sealed class GeneratorOutputTest
                 {
                     services.AddTransient<CollectedComponent>();
                     services.AddSingleton<DependentComponent>();
-                    services.AddSingleton(static _ => new CollectedComponent());   // factory 登録は収集対象外
+                    services.AddSingleton(static _ => new CollectedComponent());   // factory registrations are not collected
                 }
             }
             """;
 
+        // Act
         var result = CreateRunner()
             .VerifyCompiles()
             .Run(source);
 
+        // Assert
         var generated = result.GeneratedSource("GeneratedComponents.g.cs");
 
         Assert.Contains("typeof(global::Demo.CollectedComponent)", generated, StringComparison.Ordinal);
@@ -101,6 +107,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void ConventionMethodBodyIsGenerated()
     {
+        // Arrange
         const string source = """
             using BunnyTail.DependencyInjection;
             using Microsoft.Extensions.DependencyInjection;
@@ -122,10 +129,12 @@ public sealed class GeneratorOutputTest
             }
             """;
 
+        // Act
         var result = CreateRunner()
             .VerifyCompiles()
             .Run(source);
 
+        // Assert
         var generated = result.GeneratedSource("Demo_Registrations.g.cs");
 
         Assert.Contains("services.AddScoped<global::Demo.IFooService, global::Demo.FooService>();", generated, StringComparison.Ordinal);
@@ -139,6 +148,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void ConventionMethodsOnSameClassShareOneOutputFile()
     {
+        // Arrange
         const string source = """
             using BunnyTail.DependencyInjection;
             using Microsoft.Extensions.DependencyInjection;
@@ -159,10 +169,12 @@ public sealed class GeneratorOutputTest
             }
             """;
 
+        // Act
         var result = CreateRunner()
             .VerifyCompiles()
             .Run(source);
 
+        // Assert
         var generated = result.GeneratedSource("Demo_Registrations.g.cs");
 
         Assert.Contains("public static partial global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddServices", generated, StringComparison.Ordinal);
@@ -174,6 +186,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void ConventionMethodKeepsDeclaredAccessibility()
     {
+        // Arrange
         const string source = """
             using BunnyTail.DependencyInjection;
             using Microsoft.Extensions.DependencyInjection;
@@ -191,10 +204,12 @@ public sealed class GeneratorOutputTest
             }
             """;
 
+        // Act
         var result = CreateRunner()
             .VerifyCompiles()
             .Run(source);
 
+        // Assert
         var generated = result.GeneratedSource("Demo_Registrations.g.cs");
 
         Assert.Contains("private static partial global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddServices", generated, StringComparison.Ordinal);
@@ -207,6 +222,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void IgnoredInterfaceIsExcludedFromRegistration()
     {
+        // Arrange
         const string source = """
             using BunnyTail.DependencyInjection;
             using Microsoft.Extensions.DependencyInjection;
@@ -229,11 +245,13 @@ public sealed class GeneratorOutputTest
             }
             """;
 
+        // Act
         var result = CreateRunner()
             .WithGlobalOption("build_property.DependencyInjectionIgnoreInterface", "Demo.IIgnored")
             .VerifyCompiles()
             .Run(source);
 
+        // Assert
         var components = result.GeneratedSource("GeneratedComponents.g.cs");
         Assert.Contains("services.AddSingleton<global::Demo.IKept>(", components, StringComparison.Ordinal);
         Assert.DoesNotContain("global::Demo.IIgnored", components, StringComparison.Ordinal);
@@ -250,6 +268,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void InvalidMethodDefinitionIsReported()
     {
+        // Arrange
         const string source = """
             using BunnyTail.DependencyInjection;
             using Microsoft.Extensions.DependencyInjection;
@@ -259,18 +278,21 @@ public sealed class GeneratorOutputTest
             public static class Registrations
             {
                 [ComponentRegistration(Lifetime.Singleton, "Service$")]
-                public static IServiceCollection AddServices(IServiceCollection services) => services;   // partial でも拡張メソッドでもない
+                public static IServiceCollection AddServices(IServiceCollection services) => services;   // neither partial nor an extension method
             }
             """;
 
+        // Act
         var result = CreateRunner().Run(source);
 
+        // Assert
         Assert.Contains(result.Diagnostics(["BTDI"]), static x => x.Id == "BTDI0001");
     }
 
     [Fact]
     public void CircularDependencyIsReported()
     {
+        // Arrange
         const string source = """
             using BunnyTail.DependencyInjection;
 
@@ -283,14 +305,17 @@ public sealed class GeneratorOutputTest
             public sealed class Second(First first);
             """;
 
+        // Act
         var result = CreateRunner().Run(source);
 
+        // Assert
         Assert.Contains(result.Diagnostics(["BTDI"]), static x => x.Id == "BTDI0008");
     }
 
     [Fact]
     public void UnresolvedDependencyIsReported()
     {
+        // Arrange
         const string source = """
             using BunnyTail.DependencyInjection;
 
@@ -302,14 +327,17 @@ public sealed class GeneratorOutputTest
             public sealed class Component(NotRegistered dependency);
             """;
 
+        // Act
         var result = CreateRunner().Run(source);
 
+        // Assert
         Assert.Contains(result.Diagnostics(["BTDI"]), static x => x.Id == "BTDI0009");
     }
 
     [Fact]
     public void CaptiveDependencyIsReported()
     {
+        // Arrange
         const string source = """
             using BunnyTail.DependencyInjection;
 
@@ -322,14 +350,17 @@ public sealed class GeneratorOutputTest
             public sealed class SingletonComponent(ScopedDependency dependency);
             """;
 
+        // Act
         var result = CreateRunner().Run(source);
 
+        // Assert
         Assert.Contains(result.Diagnostics(["BTDI"]), static x => x.Id == "BTDI0010");
     }
 
     [Fact]
     public void AmbiguousConstructorIsReported()
     {
+        // Arrange
         const string source = """
             using BunnyTail.DependencyInjection;
 
@@ -350,14 +381,17 @@ public sealed class GeneratorOutputTest
             }
             """;
 
+        // Act
         var result = CreateRunner().Run(source);
 
+        // Assert
         Assert.Contains(result.Diagnostics(["BTDI"]), static x => x.Id == "BTDI0005");
     }
 
     [Fact]
     public void KeyedFactoryIsGeneratedWithServiceKeyInjection()
     {
+        // Arrange
         const string source = """
             using BunnyTail.DependencyInjection;
             using Microsoft.Extensions.DependencyInjection;
@@ -370,10 +404,12 @@ public sealed class GeneratorOutputTest
             public sealed class KeyedComponent([ServiceKey] string key) : IKeyed;
             """;
 
+        // Act
         var result = CreateRunner()
             .VerifyCompiles()
             .Run(source);
 
+        // Assert
         var generated = result.GeneratedSource("GeneratedComponents.g.cs");
 
         Assert.Contains("RegisterKeyed(", generated, StringComparison.Ordinal);
@@ -388,6 +424,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void TransientDependenciesAreInlined()
     {
+        // Arrange
         const string source = """
             using System;
 
@@ -419,10 +456,12 @@ public sealed class GeneratorOutputTest
             public sealed class Mixed(Shared shared, Leaf leaf, DisposableLeaf disposable);
             """;
 
+        // Act
         var result = CreateRunner()
             .VerifyCompiles()
             .Run(source);
 
+        // Assert
         var generated = result.GeneratedSource("GeneratedComponents.g.cs");
 
         Assert.Contains("new global::Demo.Branch(new global::Demo.Leaf()),", generated, StringComparison.Ordinal);
@@ -440,6 +479,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void TransientCycleDoesNotBreakInlineExpansion()
     {
+        // Arrange
         const string source = """
             using BunnyTail.DependencyInjection;
 
@@ -452,8 +492,10 @@ public sealed class GeneratorOutputTest
             public sealed class Second(First first);
             """;
 
+        // Act
         var result = CreateRunner().Run(source);
 
+        // Assert
         Assert.Contains(result.Diagnostics(["BTDI"]), static x => x.Id == "BTDI0008");
 
         var generated = result.GeneratedSource("GeneratedComponents.g.cs");
@@ -467,6 +509,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void ExpandedAddShapesGenerateFactories()
     {
+        // Arrange
         const string source = """
             using Microsoft.Extensions.DependencyInjection;
             using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -498,10 +541,12 @@ public sealed class GeneratorOutputTest
             }
             """;
 
+        // Act
         var result = CreateRunner()
             .VerifyCompiles()
             .Run(source);
 
+        // Assert
         var generated = result.GeneratedSource("GeneratedComponents.g.cs");
 
         Assert.Contains("typeof(global::Demo.ThingA)", generated, StringComparison.Ordinal);
@@ -521,6 +566,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void GenerateComponentFactoryEmitsFactoryWithoutRegistration()
     {
+        // Arrange
         const string source = """
             using BunnyTail.DependencyInjection;
 
@@ -541,10 +587,12 @@ public sealed class GeneratorOutputTest
             }
             """;
 
+        // Act
         var result = CreateRunner()
             .VerifyCompiles()
             .Run(source);
 
+        // Assert
         var generated = result.GeneratedSource("GeneratedComponents.g.cs");
 
         Assert.Contains("typeof(global::Demo.Uncontrolled)", generated, StringComparison.Ordinal);
@@ -555,6 +603,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void GenerateComponentFactoryEmitsPostConstruct()
     {
+        // Arrange
         const string source = """
             using BunnyTail.DependencyInjection;
 
@@ -570,10 +619,12 @@ public sealed class GeneratorOutputTest
             }
             """;
 
+        // Act
         var result = CreateRunner()
             .VerifyCompiles()
             .Run(source);
 
+        // Assert
         var generated = result.GeneratedSource("GeneratedComponents.g.cs");
 
         Assert.Contains("instance.Prepare();", generated, StringComparison.Ordinal);
@@ -583,6 +634,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void InvalidGenerateComponentFactoryPostConstructIsReported()
     {
+        // Arrange
         const string source = """
             using BunnyTail.DependencyInjection;
 
@@ -593,14 +645,17 @@ public sealed class GeneratorOutputTest
             public sealed class Uncontrolled;
             """;
 
+        // Act
         var result = CreateRunner().Run(source);
 
+        // Assert
         Assert.Contains(result.Diagnostics(["BTDI"]), static x => x.Id == "BTDI0006");
     }
 
     [Fact]
     public void InvalidGenerateComponentFactoryTargetIsReported()
     {
+        // Arrange
         const string source = """
             using BunnyTail.DependencyInjection;
 
@@ -611,8 +666,10 @@ public sealed class GeneratorOutputTest
             public abstract class NotConstructible;
             """;
 
+        // Act
         var result = CreateRunner().Run(source);
 
+        // Assert
         Assert.Contains(result.Diagnostics(["BTDI"]), static x => x.Id == "BTDI0004");
     }
 
@@ -623,6 +680,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void AssemblyScopedConventionRegistersExternalTypes()
     {
+        // Arrange
         const string source = """
             using BunnyTail.DependencyInjection;
 
@@ -637,6 +695,7 @@ public sealed class GeneratorOutputTest
             }
             """;
 
+        // Act
         var result = GeneratorTestRunner.For<DependencyInjectionGenerator>()
             .WithAssemblyName("Demo")
             .WithReference(typeof(SingletonAttribute).Assembly)
@@ -645,6 +704,7 @@ public sealed class GeneratorOutputTest
             .VerifyCompiles()
             .Run(source);
 
+        // Assert
         var generated = result.GeneratedSource("Demo_Registrations.g.cs");
 
         Assert.Contains("global::BunnyTail.DependencyInjection.Tests.Components.MultiLeafA", generated, StringComparison.Ordinal);
@@ -655,6 +715,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void MissingAssemblyIsReported()
     {
+        // Arrange
         const string source = """
             using BunnyTail.DependencyInjection;
 
@@ -669,8 +730,10 @@ public sealed class GeneratorOutputTest
             }
             """;
 
+        // Act
         var result = CreateRunner().Run(source);
 
+        // Assert
         Assert.Contains(result.Diagnostics(["BTDI"]), static x => x.Id == "BTDI0003");
     }
 
@@ -681,6 +744,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void ModuleMarkerIsEmittedForAttributeComponents()
     {
+        // Arrange
         const string source = """
             using BunnyTail.DependencyInjection;
 
@@ -690,6 +754,7 @@ public sealed class GeneratorOutputTest
             public sealed class AppComponent;
             """;
 
+        // Act
         var result = GeneratorTestRunner.For<DependencyInjectionGenerator>()
             .WithAssemblyName("Demo")
             .WithReference(typeof(SingletonAttribute).Assembly)
@@ -697,6 +762,7 @@ public sealed class GeneratorOutputTest
             .VerifyCompiles()
             .Run(source);
 
+        // Assert
         var generated = result.GeneratedSource("GeneratedComponents.g.cs");
 
         Assert.Contains("[assembly: global::BunnyTail.DependencyInjection.ComponentModule(typeof(global::Demo.GeneratedComponents))]", generated, StringComparison.Ordinal);
@@ -706,6 +772,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void ReferencedModulesAreAggregatedIntoAddAllGeneratedComponents()
     {
+        // Arrange
         const string source = """
             using BunnyTail.DependencyInjection;
 
@@ -715,6 +782,7 @@ public sealed class GeneratorOutputTest
             public sealed class AppComponent;
             """;
 
+        // Act
         var result = GeneratorTestRunner.For<DependencyInjectionGenerator>()
             .WithAssemblyName("Demo")
             .WithReference(typeof(SingletonAttribute).Assembly)
@@ -723,6 +791,7 @@ public sealed class GeneratorOutputTest
             .VerifyCompiles()
             .Run(source);
 
+        // Assert
         var generated = result.GeneratedSource("GeneratedComponents.g.cs");
 
         Assert.Contains("global::BunnyTail.DependencyInjection.Tests.GeneratedComponents.AddGeneratedComponents(services);", generated, StringComparison.Ordinal);
@@ -738,6 +807,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void EnumerableFactoryIsGeneratedForAllTransientElements()
     {
+        // Arrange
         const string source = """
             using Microsoft.Extensions.DependencyInjection;
 
@@ -759,10 +829,12 @@ public sealed class GeneratorOutputTest
             }
             """;
 
+        // Act
         var result = CreateRunner()
             .VerifyCompiles()
             .Run(source);
 
+        // Assert
         var generated = result.GeneratedSource("GeneratedComponents.g.cs");
 
         Assert.Contains("RegisterEnumerable(", generated, StringComparison.Ordinal);
@@ -778,6 +850,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void ClosedGenericFactoriesAreDiscoveredFromConstructorDependencies()
     {
+        // Arrange
         const string source = """
             using Microsoft.Extensions.DependencyInjection;
 
@@ -802,10 +875,12 @@ public sealed class GeneratorOutputTest
             }
             """;
 
+        // Act
         var result = CreateRunner()
             .VerifyCompiles()
             .Run(source);
 
+        // Assert
         var generated = result.GeneratedSource("GeneratedComponents.g.cs");
 
         Assert.Contains("typeof(global::Demo.Repository<int>)", generated, StringComparison.Ordinal);
@@ -815,6 +890,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void ValueTypeRuntimeGenericIsReported()
     {
+        // Arrange
         const string source = """
             using Microsoft.Extensions.DependencyInjection;
 
@@ -847,8 +923,10 @@ public sealed class GeneratorOutputTest
             }
             """;
 
+        // Act
         var result = CreateRunner().Run(source);
 
+        // Assert
         var diagnostics = result.Diagnostics(["BTDI"]).Where(static x => x.Id == "BTDI0011").ToArray();
         Assert.Single(diagnostics);
         Assert.Contains("Repository<int>", diagnostics[0].GetMessage(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal);
@@ -857,6 +935,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void ClosedGenericFactoriesAreGeneratedFromOpenGenericRegistrations()
     {
+        // Arrange
         const string source = """
             using System;
 
@@ -887,10 +966,12 @@ public sealed class GeneratorOutputTest
             }
             """;
 
+        // Act
         var result = CreateRunner()
             .VerifyCompiles()
             .Run(source);
 
+        // Assert
         var generated = result.GeneratedSource("GeneratedComponents.g.cs");
 
         Assert.Contains("typeof(global::Demo.Repository<string>)", generated, StringComparison.Ordinal);
@@ -905,6 +986,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void InitializationCallbacksAreEmitted()
     {
+        // Arrange
         const string source = """
             using BunnyTail.DependencyInjection;
 
@@ -930,10 +1012,12 @@ public sealed class GeneratorOutputTest
             public sealed class Parent(WithInterface dependency);
             """;
 
+        // Act
         var result = CreateRunner()
             .VerifyCompiles()
             .Run(source);
 
+        // Assert
         var generated = result.GeneratedSource("GeneratedComponents.g.cs");
 
         Assert.Contains("instance.Setup();", generated, StringComparison.Ordinal);
@@ -947,6 +1031,7 @@ public sealed class GeneratorOutputTest
     [Fact]
     public void InvalidPostConstructIsReported()
     {
+        // Arrange
         const string source = """
             using BunnyTail.DependencyInjection;
 
@@ -956,14 +1041,17 @@ public sealed class GeneratorOutputTest
             public sealed class Component;
             """;
 
+        // Act
         var result = CreateRunner().Run(source);
 
+        // Assert
         Assert.Contains(result.Diagnostics(["BTDI"]), static x => x.Id == "BTDI0006");
     }
 
     [Fact]
     public void ConflictingPostConstructIsReported()
     {
+        // Arrange
         const string source = """
             using BunnyTail.DependencyInjection;
 
@@ -983,14 +1071,17 @@ public sealed class GeneratorOutputTest
             }
             """;
 
+        // Act
         var result = CreateRunner().Run(source);
 
+        // Assert
         Assert.Contains(result.Diagnostics(["BTDI"]), static x => x.Id == "BTDI0007");
     }
 
     [Fact]
     public void InvalidPatternIsReported()
     {
+        // Arrange
         const string source = """
             using BunnyTail.DependencyInjection;
             using Microsoft.Extensions.DependencyInjection;
@@ -1004,8 +1095,10 @@ public sealed class GeneratorOutputTest
             }
             """;
 
+        // Act
         var result = CreateRunner().Run(source);
 
+        // Assert
         Assert.Contains(result.Diagnostics(["BTDI"]), static x => x.Id == "BTDI0002");
     }
 }

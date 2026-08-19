@@ -15,16 +15,20 @@ public sealed class ConventionResolutionTest
     [Fact]
     public void SelfRegistrationWhenNoInterface()
     {
+        // Arrange
         using var provider = CreateProvider();
 
+        // Act & Assert
         Assert.NotNull(provider.GetService<EchoService>());
     }
 
     [Fact]
     public void InterfaceRegistrationWhenSingleInterface()
     {
+        // Arrange
         using var provider = CreateProvider();
 
+        // Act & Assert
         Assert.IsType<BarService>(provider.GetRequiredService<IBarService>());
         Assert.Null(provider.GetService<BarService>());
     }
@@ -32,9 +36,13 @@ public sealed class ConventionResolutionTest
     [Fact]
     public void ForwardingRegistrationWhenMultipleInterfaces()
     {
+        // Arrange
         using var provider = CreateProvider();
 
+        // Act
         var self = provider.GetRequiredService<MixedService>();
+
+        // Assert
         Assert.Same(self, provider.GetRequiredService<IMixed1>());
         Assert.Same(self, provider.GetRequiredService<IMixed2>());
     }
@@ -42,11 +50,13 @@ public sealed class ConventionResolutionTest
     [Fact]
     public void MultipleRegistrationMethodsOnSameClass()
     {
+        // Arrange
         using var provider = new ServiceCollection()
             .AddConventionServices()
             .AddConventionRepositories()
             .BuildGeneratedServiceProvider();
 
+        // Act & Assert
         Assert.NotNull(provider.GetService<EchoService>());
         Assert.NotNull(provider.GetService<SampleRepository>());
     }
@@ -54,18 +64,22 @@ public sealed class ConventionResolutionTest
     [Fact]
     public void NonPublicRegistrationMethodIsGenerated()
     {
+        // Arrange
         using var provider = new ServiceCollection()
             .AddConventionGadgetsThroughWrapper()
             .BuildGeneratedServiceProvider();
 
+        // Act & Assert
         Assert.NotNull(provider.GetService<SampleGadget>());
     }
 
     [Fact]
     public void IgnoredInterfaceIsNotRegistered()
     {
+        // Arrange
         using var provider = CreateProvider();
 
+        // Act & Assert
         Assert.NotNull(provider.GetService<IgnoredMarkerService>());
         Assert.Null(provider.GetService<IIgnoredMarker>());
     }

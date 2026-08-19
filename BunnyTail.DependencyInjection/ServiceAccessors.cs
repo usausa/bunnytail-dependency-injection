@@ -1,8 +1,13 @@
 namespace BunnyTail.DependencyInjection;
 
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
+
+//--------------------------------------------------------------------------------
+// Accessor base (アクセサ基底)
+//--------------------------------------------------------------------------------
 
 // 解決結果のキャッシュ位置
 // Cache location of the resolved instance.
@@ -132,6 +137,10 @@ internal abstract class ServiceAccessor
 
     protected abstract object? Create(ServiceProviderScope scope);
 }
+
+//--------------------------------------------------------------------------------
+// Constant / factory accessors (定数・ファクトリ経路)
+//--------------------------------------------------------------------------------
 
 // 定数 (ImplementationInstance)。外部所有のため dispose 追跡しない
 // Constant (ImplementationInstance). Externally owned, so it is not tracked for disposal.
@@ -277,6 +286,10 @@ internal sealed class KeyedFactoryAccessor : ServiceAccessor
     protected override object Create(ServiceProviderScope scope) => factory(scope, key);
 }
 
+//--------------------------------------------------------------------------------
+// Constructor invocation (互換経路のコンストラクタ呼び出し)
+//--------------------------------------------------------------------------------
+
 // コンストラクタ引数の解決計画
 // Resolution plan for a constructor parameter.
 internal sealed class ParameterPlan
@@ -404,17 +417,21 @@ internal sealed class ConstructorAccessor : ServiceAccessor
     }
 }
 
+//--------------------------------------------------------------------------------
+// Special accessors (値型・enumerable・provider)
+//--------------------------------------------------------------------------------
+
 // 引数なし値型 (Activator 経由)
 // Parameterless value type (through Activator).
 internal sealed class ValueTypeAccessor : ServiceAccessor
 {
-    [System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
     private readonly Type type;
 
     private readonly bool initializable;
 
     public ValueTypeAccessor(
-        [System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] Type type,
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] Type type,
         bool initializable,
         ResultCache cache,
         int slot,
@@ -473,14 +490,14 @@ internal sealed class EnumerableAccessor : ServiceAccessor
     // 値型引数は実行時に失敗するため、呼び出し元が IsValueType で除外している
     // Reference type arguments work on NativeAOT through shared generics (confirmed by the sandbox AOT probe).
     // Value type arguments would fail at runtime, so the caller excludes them via IsValueType.
-    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("AotAnalysis", "IL3050", Justification = "参照型要素のみ (shared generic で動作)。値型要素は Array.CreateInstance へフォールバックする")]
-    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2060", Justification = "対象はこのクラス内の new T[n] のみで、型引数にメタデータ要求はない")]
+    [UnconditionalSuppressMessage("AotAnalysis", "IL3050", Justification = "Reference type elements only, which run through shared generics; value type elements fall back to Array.CreateInstance.")]
+    [UnconditionalSuppressMessage("Trimming", "IL2060", Justification = "The only target is new T[n] inside this class, and the type argument carries no metadata requirement.")]
     private static Func<int, Array> CreateArrayFactory(Type elementType) =>
         CreateTypedArrayMethod.MakeGenericMethod(elementType).CreateDelegate<Func<int, Array>>();
 
     // 要素型 T の配列は IEnumerable<T> の要求経路 (呼び出し側の型参照) でメタデータが保持される
     // Metadata of T[] is preserved through the IEnumerable<T> request path (the caller's type reference).
-    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("AotAnalysis", "IL3050", Justification = "IEnumerable<T> が要求される要素型の配列型は参照経路で保持される (AotTests で検証済み)")]
+    [UnconditionalSuppressMessage("AotAnalysis", "IL3050", Justification = "Array types of element types requested through IEnumerable<T> are preserved by the reference path, as verified by AotTests.")]
     protected override object Create(ServiceProviderScope scope)
     {
         if (arrayFactory is not null)

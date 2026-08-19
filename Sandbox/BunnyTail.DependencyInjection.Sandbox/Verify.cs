@@ -2,7 +2,7 @@ namespace BunnyTail.DependencyInjection.Sandbox;
 
 using BunnyTail.DependencyInjection.Sandbox.Infrastructure;
 
-// ベンチマーク実行前の等価性検証。全候補が「同一入力 → 同一結果」であることを確認してから測定する
+// Equivalence verification before running the benchmarks. Measurement starts only after every candidate is confirmed to give the same result for the same input.
 // Equivalence verification before running benchmarks. Every candidate must produce identical results for identical input.
 public static class Verify
 {
@@ -23,7 +23,7 @@ public static class Verify
         }
     }
 
-    // 現状形状と定数短絡形状が同一インスタンスを返すことを確認する
+    // Confirms that the current shape and the constant short circuit shape return the same instance.
     // Confirms the current shape and the constant short-circuit shape return the same instances.
     private static void VerifyResolutionEntry()
     {
@@ -51,7 +51,7 @@ public static class Verify
             Assert(ReferenceEquals(viaAccessor, viaConstant), "resolution entry identity");
         }
 
-        // 未登録型は双方 null
+        // An unregistered type is null on both sides.
         // Unregistered types resolve to null in both shapes.
         Assert(accessorTable.Resolve(typeof(Verify), scope) is null, "resolution entry miss");
         Assert(constantTable.Resolve(typeof(Verify), scope) is null, "resolution entry miss");

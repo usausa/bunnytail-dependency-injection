@@ -5,9 +5,9 @@ using System.Runtime.CompilerServices;
 
 using BenchmarkDotNet.Attributes;
 
-// IEnumerable<T> 実体化の格納方式の比較。
-// DI 固有の制約: 要素型は実行時にしか判らない (Type 変数) が、返す配列は要求された T[] の実体でなければならない。
-// かつ要素が transient の場合はキャッシュできず、解決のたびに配列を作り直す
+// Comparison of storage strategies for IEnumerable<T> materialization.
+// DI specific constraint: the element type is known only at runtime as a Type value, yet the returned array must
+// be a real T[], and transient elements cannot be cached, so the array is rebuilt on every resolution.
 // Comparison of store strategies when materializing IEnumerable<T>. DI-specific constraint: the element type is only
 // known at runtime (as a Type), yet the returned array must be an actual T[]. When elements are transient the array
 // cannot be cached and must be rebuilt on every resolution.
@@ -26,7 +26,7 @@ public class EnumerableMaterializationBenchmark
     private Array prototype = default!;
     private Func<int, Array> typedFactory = default!;
 
-    // 計測結果の格納先。読み出さないが、書き込むことで JIT のデッドコード削除を防ぐ
+    // Sink for the measured results. It is never read, but writing to it prevents JIT dead code elimination.
     // Sink for measured values: never read, but written so the JIT cannot eliminate the work.
     // ReSharper disable once NotAccessedField.Local
     private object? sink;
@@ -42,7 +42,7 @@ public class EnumerableMaterializationBenchmark
 
         elementType = typeof(IElement);
 
-        // 長さは accessor ごとに固定なので、ビルド時に 1 本作っておける
+        // The length is fixed per accessor, so one instance can be built up front.
         // The length is fixed per accessor, so a single instance can be built up front.
         prototype = Array.CreateInstance(elementType, N);
 
@@ -54,7 +54,7 @@ public class EnumerableMaterializationBenchmark
 
     private static Array CreateTyped<T>(int length) => new T[length];
 
-    // 現状の実装: Array.CreateInstance + Array.SetValue (どちらもリフレクション経路)
+    // Current implementation: Array.CreateInstance plus Array.SetValue, both on the reflection path.
     // Current implementation: Array.CreateInstance + Array.SetValue (both go through reflection).
     [Benchmark(Baseline = true)]
     public object SetValueLoop()
@@ -69,8 +69,8 @@ public class EnumerableMaterializationBenchmark
         return array;
     }
 
-    // 候補: 参照型要素なら T[] は object[] として共変に見えるので、素の配列書き込みで格納する
-    // (書き込みは stelem.ref の共変チェックのみ。値型要素には適用できない)
+    // Candidate: for reference type elements a T[] is covariantly visible as object[], so plain array writes can store them
+    // and the write only pays the stelem.ref covariance check. It cannot be applied to value type elements.
     // Candidate: for reference element types a T[] is covariantly viewable as object[], so plain array stores can be used
     // (the write only pays the stelem.ref covariance check). Not applicable to value type elements.
     [Benchmark]
@@ -87,7 +87,7 @@ public class EnumerableMaterializationBenchmark
         return array;
     }
 
-    // 上限の目安: 要素型がコンパイル時に判る場合 (生成経路が到達しうる理想形)
+    // Upper bound reference: the element type known at compile time, the ideal shape the generated path can reach.
     // Upper bound: the element type known at compile time (the ideal shape a generated path could reach).
     [Benchmark]
     public object TypedArray()
@@ -102,7 +102,7 @@ public class EnumerableMaterializationBenchmark
         return array;
     }
 
-    // 候補: 長さ固定のプロトタイプを保持し、解決のたびに Clone する (Array.CreateInstance を回避)
+    // Candidate: hold a fixed length prototype and clone it on every resolution, avoiding Array.CreateInstance.
     // Candidate: keep a fixed-length prototype and Clone it per resolution, avoiding Array.CreateInstance.
     [Benchmark]
     public object ClonePrototype()
@@ -118,8 +118,8 @@ public class EnumerableMaterializationBenchmark
         return array;
     }
 
-    // 候補: 型付き配列を作るデリゲートを一度だけ構築してキャッシュする
-    // (MakeGenericMethod を使うため値型要素は NativeAOT で不可。参照型は shared generic で動く)
+    // Candidate: build and cache a delegate that creates the typed array once.
+    // It uses MakeGenericMethod, so value type elements are unavailable on NativeAOT; reference types run through shared generics.
     // Candidate: build a typed array creation delegate once and cache it.
     // (MakeGenericMethod means value type elements are unusable on NativeAOT; reference types work via shared generics.)
     [Benchmark]
@@ -136,7 +136,7 @@ public class EnumerableMaterializationBenchmark
         return array;
     }
 
-    // 配分の切り分け: 生成コストのみ (格納なし)
+    // Cost breakdown: creation only, without storing the elements.
     // Cost attribution: allocation only, no stores.
     [Benchmark]
     public object CreateOnly()
