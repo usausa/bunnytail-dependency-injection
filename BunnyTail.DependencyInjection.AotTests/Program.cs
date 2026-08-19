@@ -19,9 +19,9 @@ void Assert(bool condition, string name)
     }
 }
 
-// AddAllGeneratedComponents = attribute components in one call (module aggregation included) / AddTransient = Add* collection -> generated factory
+// AddGeneratedComponents = attribute components in one call (module aggregation included) / AddTransient = Add* collection -> generated factory
 var services = new ServiceCollection()
-    .AddAllGeneratedComponents()
+    .AddGeneratedComponents()
     .AddTransient<RuntimeRegistered>()
     .AddTransient(typeof(IAotGeneric<>), typeof(AotGeneric<>));
 

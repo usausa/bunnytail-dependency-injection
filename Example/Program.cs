@@ -31,11 +31,11 @@ internal sealed class AppService
     }
 }
 
-// モジュール集約の検証。AddAllGeneratedComponents が、参照モジュール (Example.Library = 生成コードによる
+// モジュール集約の検証。AddGeneratedComponents が、参照モジュール (Example.Library = 生成コードによる
 // 自動マーカー) と自アセンブリ (Example) の属性コンポーネントを 1 呼び出しで登録することを確認する。
 // Example.ThirdPartyLibrary は BunnyTail を参照しないサードパーティの代役で、集約対象にはならず、
 // 自身の拡張メソッド経由で登録される
-// Verification of module aggregation. AddAllGeneratedComponents registers the referenced module
+// Verification of module aggregation. AddGeneratedComponents registers the referenced module
 // (Example.Library, with the auto-embedded marker) plus this assembly's attribute components in a single call.
 // Example.ThirdPartyLibrary stands in for a third party that does not reference BunnyTail: it is not an
 // aggregation target and registers through its own extension methods.
@@ -46,7 +46,7 @@ internal static class Program
     public static int Main()
     {
         var services = new ServiceCollection();
-        services.AddAllGeneratedComponents();
+        services.AddGeneratedComponents();
         services.AddLibraryWorkers();
         services.AddManualServices();
         services.AddLibraryServices();

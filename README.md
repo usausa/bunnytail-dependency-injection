@@ -209,7 +209,7 @@ Not every fallback is worth marking:
 Components can live in other projects:
 
 * A class library referencing the generator compiles its components into that library's own `GeneratedComponents` module, marked with an assembly level `[ComponentModule]`
-* The application's generated `AddAllGeneratedComponents()` discovers every referenced module — transitively, each exactly once — and registers them with the application's own components in a single call
+* The application's generated `AddGeneratedComponents()` discovers every referenced module — transitively, each exactly once — and registers them with the application's own components in a single call
 
 ```csharp
 // Class library (references BunnyTail.DependencyInjection and the generator)
@@ -220,11 +220,13 @@ public sealed class LibraryComponent;
 ```csharp
 // Application
 using var provider = new ServiceCollection()
-    .AddAllGeneratedComponents()       // referenced modules + own components
+    .AddGeneratedComponents()          // referenced modules + own components
     .BuildGeneratedServiceProvider();
 ```
 
-`AddAllGeneratedComponents()` is what an application calls. It is equivalent to `AddGeneratedComponents()` when nothing else is referenced, and it saves you from tracking which referenced libraries carry a module — including the transitively referenced ones. Each module's `AddGeneratedComponents()` registers only its own components, so a module can still be registered individually when a library should deliberately be left out.
+`AddGeneratedComponents()` is the only registration method to call, whatever the module layout. With nothing else referenced it registers just this assembly's components; with referenced modules it adds theirs too, so there is no list of libraries to keep track of and nothing to forget when a reference is added.
+
+Each module also gets a `RegisterComponents(IServiceCollection)` that registers only its own components. That is the integration point the aggregation calls across assembly boundaries — deliberately not an extension method, so it stays out of `IServiceCollection` completion. Call it directly only to register one specific module while deliberately leaving others out.
 
 The marker is embedded for assemblies that have attribute components. A library that has none — one that registers everything through factories or its own conditional logic — gets no marker, and declares a module by hand instead:
 
@@ -235,7 +237,7 @@ namespace MyLibrary;
 
 public static class LibraryModule
 {
-    public static IServiceCollection AddGeneratedComponents(this IServiceCollection services)
+    public static IServiceCollection RegisterComponents(IServiceCollection services)
     {
         services.AddSingleton<IMessageSource>(static provider => new MessageSource(provider.GetRequiredService<Config>().Prefix));
         return services;
@@ -255,8 +257,8 @@ Every entry point carries `Generated` in its name: that is the source generated,
 
 | Method | Target | Description |
 |---|---|---|
-| `AddGeneratedComponents()` | `IServiceCollection` | Registers the attribute components (`[Singleton]` / `[Scoped]` / `[Transient]`) of **this assembly**. Emitted by the generator into `<AssemblyName>.GeneratedComponents` |
-| `AddAllGeneratedComponents()` | `IServiceCollection` | Registers the attribute components of this assembly **plus every referenced component module** (transitively, each exactly once). Emitted whenever components or referenced modules exist |
+| `AddGeneratedComponents()` | `IServiceCollection` | The one method to call. Registers the attribute components (`[Singleton]` / `[Scoped]` / `[Transient]`) of this assembly **plus every referenced component module** (transitively, each exactly once). Emitted into `<AssemblyName>.GeneratedComponents` whenever components or referenced modules exist |
+| `RegisterComponents()` | *(static, not an extension)* | The registration unit of one module: this assembly's components only. The integration point the aggregation calls across assemblies; call it directly only to leave other modules out |
 | `BuildGeneratedServiceProvider()` | `IServiceCollection` | Builds the `GeneratedServiceProvider`. The counterpart of MEDI's `BuildServiceProvider()` |
 | *(user defined)* | `IServiceCollection` | Partial methods annotated with `[ComponentRegistration]` get their body generated from class name patterns |
 
@@ -276,7 +278,7 @@ Every entry point carries `Generated` in its name: that is the source generated,
 | `[Singleton]` / `[Scoped]` / `[Transient]` | class | Registration with `As`, `Key` and `PostConstruct` parameters |
 | `[Inject]` | property | Property injection after construction |
 | `[ComponentRegistration]` | partial method | Convention based registration with `Lifetime`, `Pattern`, `Namespace` and `Assembly` parameters |
-| `[ComponentModule]` | assembly | Marks the module type aggregated by `AddAllGeneratedComponents()`. Emitted automatically; hand-write it for libraries without the generator |
+| `[ComponentModule]` | assembly | Marks the module type aggregated by `AddGeneratedComponents()`. Emitted automatically for assemblies with attribute components; hand-write it when a library has none |
 | `[GenerateComponentFactory]` | assembly | Generates a factory for a type without registering it, for libraries you do not control. Supports `PostConstruct` |
 | `IInitializable` | interface | Initialization callback invoked after construction |
 
@@ -313,7 +315,7 @@ using var host = Host.CreateDefaultBuilder(args)
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseServiceProviderFactory(new GeneratedServiceProviderFactory());
-builder.Services.AddAllGeneratedComponents();
+builder.Services.AddGeneratedComponents();
 ```
 
 * Framework services registered by the host take the runtime path
@@ -329,10 +331,10 @@ At compile time the generator builds a registration model from four sources. All
 
 | Source | Collected from | Result |
 |---|---|---|
-| Attributes | `[Singleton]` / `[Scoped]` / `[Transient]` classes | `AddGeneratedComponents()` body + a factory per implementation |
+| Attributes | `[Singleton]` / `[Scoped]` / `[Transient]` classes | `RegisterComponents()` body + a factory per implementation |
 | `Add*` calls | `AddSingleton<T>()`, `typeof` overloads, `AddKeyed*`, `ServiceDescriptor` based `Add` / `TryAdd` / `TryAddEnumerable` in user code | A factory per implementation (the registration itself stays in user code) |
 | Conventions | `[ComponentRegistration]` partial methods, optionally scanning a referenced assembly | The method body + a factory per matched implementation |
-| Referenced modules | Assemblies marked with `[ComponentModule]` | The `AddAllGeneratedComponents()` aggregation |
+| Referenced modules | Assemblies marked with `[ComponentModule]` | The `AddGeneratedComponents()` aggregation |
 
 ### What the generator emits
 

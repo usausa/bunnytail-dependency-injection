@@ -766,11 +766,12 @@ public sealed class GeneratorOutputTest
         var generated = result.GeneratedSource("GeneratedComponents.g.cs");
 
         Assert.Contains("[assembly: global::BunnyTail.DependencyInjection.ComponentModule(typeof(global::Demo.GeneratedComponents))]", generated, StringComparison.Ordinal);
-        Assert.Contains("public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddAllGeneratedComponents(", generated, StringComparison.Ordinal);
+        Assert.Contains("public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddGeneratedComponents(", generated, StringComparison.Ordinal);
+        Assert.Contains("public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection RegisterComponents(", generated, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void ReferencedModulesAreAggregatedIntoAddAllGeneratedComponents()
+    public void ReferencedModulesAreAggregatedIntoAddGeneratedComponents()
     {
         // Arrange
         const string source = """
@@ -794,10 +795,13 @@ public sealed class GeneratorOutputTest
         // Assert
         var generated = result.GeneratedSource("GeneratedComponents.g.cs");
 
-        Assert.Contains("global::BunnyTail.DependencyInjection.Tests.GeneratedComponents.AddGeneratedComponents(services);", generated, StringComparison.Ordinal);
-        var moduleCall = generated.IndexOf("global::BunnyTail.DependencyInjection.Tests.GeneratedComponents.AddGeneratedComponents(services);", StringComparison.Ordinal);
-        var selfCall = generated.IndexOf("        AddGeneratedComponents(services);", StringComparison.Ordinal);
+        Assert.Contains("global::BunnyTail.DependencyInjection.Tests.GeneratedComponents.RegisterComponents(services);", generated, StringComparison.Ordinal);
+        var moduleCall = generated.IndexOf("global::BunnyTail.DependencyInjection.Tests.GeneratedComponents.RegisterComponents(services);", StringComparison.Ordinal);
+        var selfCall = generated.IndexOf("        RegisterComponents(services);", StringComparison.Ordinal);
         Assert.True((moduleCall >= 0) && (selfCall > moduleCall));
+
+        // The per-module unit is not an extension method, so it never appears in IServiceCollection completion
+        Assert.DoesNotContain("RegisterComponents(this global::", generated, StringComparison.Ordinal);
     }
 
     //--------------------------------------------------------------------------------

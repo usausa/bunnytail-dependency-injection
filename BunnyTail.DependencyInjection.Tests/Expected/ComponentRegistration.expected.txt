@@ -202,7 +202,8 @@ public static class GeneratedComponents
             });
     }
 
-    public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddGeneratedComponents(this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+    [global::System.ComponentModel.EditorBrowsable(global::System.ComponentModel.EditorBrowsableState.Never)]
+    public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection RegisterComponents(global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)
     {
         services.AddSingleton<global::BunnyTail.DependencyInjection.Tests.Components.PropDependency>();
         services.AddSingleton<global::BunnyTail.DependencyInjection.Tests.Components.SingletonComponent>();
@@ -230,9 +231,9 @@ public static class GeneratedComponents
         return services;
     }
 
-    public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddAllGeneratedComponents(this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+    public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddGeneratedComponents(this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)
     {
-        AddGeneratedComponents(services);
+        RegisterComponents(services);
         return services;
     }
 }

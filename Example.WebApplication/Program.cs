@@ -11,7 +11,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseServiceProviderFactory(new GeneratedServiceProviderFactory());
 
 // Register attribute components in one call (referenced modules included)
-builder.Services.AddAllGeneratedComponents();
+builder.Services.AddGeneratedComponents();
 // Register manually written services (conventional registration)
 builder.Services.AddSingleton<ClockService>();
 

@@ -1416,11 +1416,11 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     }
 
     // 生成 enumerable ファクトリの対象: 同一サービス型へ 2 件以上、全登録が direct (Add<S, I> 形式) かつ
-    // transient のインライン展開適格 (非 disposable・[Inject] なし・初期化なし)。順序は出力順 = AddGeneratedComponents 相当。
+    // transient のインライン展開適格 (非 disposable・[Inject] なし・初期化なし)。順序は出力順 = RegisterComponents 相当。
     // 実行時の構成差 (追加・差し替え・順序) は EnumerableElementsMatch が検出してフォールバックする
     // Targets for generated enumerable factories: two or more registrations for the same service type, all direct
     // (Add<S, I> style) transients eligible for inline expansion (no disposable/[Inject]/initializer). Order follows
-    // the emission order (equivalent to AddGeneratedComponents); runtime composition differences fall back via EnumerableElementsMatch.
+    // the emission order (equivalent to RegisterComponents); runtime composition differences fall back via EnumerableElementsMatch.
     // ReSharper disable ParameterTypeCanBeEnumerable.Local
     private static List<(string ElementServiceType, List<FactoryModel> Elements)> BuildEnumerableModels(
         ComponentModel[] components,
@@ -1949,8 +1949,8 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             }
         }
 
-        // 属性コンポーネント (AddGeneratedComponents の登録形と一致させる)
-        // Attribute components (kept consistent with the registration shape of AddGeneratedComponents).
+        // 属性コンポーネント (RegisterComponents の登録形と一致させる)
+        // Attribute components (kept consistent with the registration shape of RegisterComponents).
         foreach (var component in components)
         {
             if (component.KeyLiteral is not null)
@@ -2253,11 +2253,11 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             0));
     }
 
-    // 参照アセンブリの ComponentModule マーカーから生成モジュール型を収集する (AddAllGeneratedComponents の集約対象)。
+    // 参照アセンブリの ComponentModule マーカーから生成モジュール型を収集する (AddGeneratedComponents の集約対象)。
     // アセンブリ属性の走査のみで参照内の型列挙は行わないため、増分ビルドへの影響は参照 1 件あたり属性リスト 1 回分。
     // SDK プロジェクトの参照は推移的に compilation へ渡るため、間接参照のモジュールもフラットに列挙される
     // Collects generated module types from the ComponentModule markers of referenced assemblies (aggregation targets
-    // for AddAllGeneratedComponents). Only assembly attributes are inspected, never the types inside the references, so the
+    // for AddGeneratedComponents). Only assembly attributes are inspected, never the types inside the references, so the
     // incremental cost is one attribute list per reference. SDK projects flow references transitively into the
     // compilation, so indirectly referenced modules are enumerated flat as well.
     private static EquatableArray<string> CollectReferencedModules(Compilation compilation)
@@ -2372,10 +2372,16 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
         builder.EndScope();
 
+        // モジュール 1 個分の登録単位。集約側 (自アセンブリまたは参照元) から呼ばれる連携点で、利用者が呼ぶものではない。
+        // 拡張メソッドにしないのは IServiceCollection の補完に出さないため。マーカーが指す型の契約名でもある
+        // The registration unit of one module. It is the integration point invoked by the aggregator (this assembly or a
+        // referencing one), not something users call. It is deliberately not an extension method so it stays out of
+        // IServiceCollection completion, and its name is the contract of the type a marker points at.
         if (components.Length > 0)
         {
             builder.NewLine();
-            builder.AppendLine("public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddGeneratedComponents(this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)");
+            builder.AppendLine("[global::System.ComponentModel.EditorBrowsable(global::System.ComponentModel.EditorBrowsableState.Never)]");
+            builder.AppendLine("public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection RegisterComponents(global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)");
             builder.BeginScope();
 
             foreach (var component in components)
@@ -2387,25 +2393,25 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             builder.EndScope();
         }
 
-        // 参照モジュール + 自アセンブリの属性コンポーネントの一括登録。参照は推移的に見えるため
-        // フラットに列挙し、各モジュールの AddGeneratedComponents は自分の分だけを登録する (連鎖させると二重登録になる)
-        // One-call registration of referenced modules plus this assembly's attribute components. References are
-        // visible transitively, so the list is flat and each module's AddGeneratedComponents registers only its own
-        // components (chaining would register duplicates).
+        // 利用者が呼ぶ唯一の登録メソッド。参照モジュールと自アセンブリの属性コンポーネントを 1 呼び出しで登録する。
+        // 参照は推移的に見えるためフラットに列挙し、各モジュールは自分の分だけを登録する (連鎖させると二重登録になる)
+        // The only registration method users call. It registers the referenced modules plus this assembly's attribute
+        // components in one call. References are visible transitively, so the list is flat and each module registers
+        // only its own components (chaining would register duplicates).
         if ((components.Length > 0) || (referencedModules.Count > 0))
         {
             builder.NewLine();
-            builder.AppendLine("public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddAllGeneratedComponents(this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)");
+            builder.AppendLine("public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddGeneratedComponents(this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)");
             builder.BeginScope();
 
             foreach (var module in referencedModules)
             {
-                builder.Indent().Append(module).Append(".AddGeneratedComponents(services);").NewLine();
+                builder.Indent().Append(module).Append(".RegisterComponents(services);").NewLine();
             }
 
             if (components.Length > 0)
             {
-                builder.AppendLine("AddGeneratedComponents(services);");
+                builder.AppendLine("RegisterComponents(services);");
             }
 
             builder.AppendLine("return services;");

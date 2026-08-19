@@ -155,27 +155,33 @@ method is offered.
 
 ## Registration entry points
 
-### Why registration is split into two methods
+### One method to call, and the unit behind it
 
-| Method | Role | Emitted when |
+| Member | Role | Emitted when |
 |---|---|---|
-| `AddGeneratedComponents()` | The unit of **one module** — registers this assembly's components only | this assembly has attribute components |
-| `AddAllGeneratedComponents()` | The **application entry point** — calls every referenced module flatly, then its own | components or referenced modules exist |
+| `AddGeneratedComponents()` — extension | **The only method users call.** Registers every referenced module flatly, then this assembly's own components | components or referenced modules exist |
+| `RegisterComponents(IServiceCollection)` — plain static, `[EditorBrowsable(Never)]` | The registration unit of **one module**: this assembly's components only. The cross-assembly integration point the aggregation calls | this assembly has attribute components |
 
-An application that also wants components from other assemblies calls
-`AddAllGeneratedComponents()`.
+Whatever the module layout, `AddGeneratedComponents()` is the right call. With nothing else
+referenced it is exactly "this assembly's components"; with referenced modules it adds theirs. There
+is no list of libraries to track and nothing to forget when a reference is added.
 
-They cannot be merged into one method, because the aggregator calls every module flatly. References
-are visible transitively, so the application's generator can enumerate modules of indirectly
-referenced libraries. If a single method registered "its own plus its references", every module would
-re-register its own dependencies when the aggregator invoked it, and a diamond reference (A→B, A→C,
-B→D, C→D) would register D twice. MEDI accepts duplicate registrations, so this would surface quietly
-as an extra element in `IEnumerable<T>`.
+**Why a per-module member has to exist.** The aggregation lives in the application's assembly and must
+call into each referenced assembly, so a public entry point is required there. The application's
+generator deliberately reads only the `[ComponentModule]` assembly attribute — one attribute list per
+reference — and never enumerates the types inside references, which is what keeps the incremental cost
+flat. It therefore cannot inline a referenced library's registrations; it can only call them.
 
-The current split deduplicates **at compile time** through flat enumeration and costs nothing at
-runtime; merging would require runtime deduplication on every build of the provider. The split also
-leaves the finer-grained option open: an application can call one module's
-`AddGeneratedComponents()` directly to register just that library.
+**Why the two cannot be one member.** If a single method registered "its own plus its references",
+every module would re-register its own dependencies when the aggregation invoked it, and a diamond
+reference (A→B, A→C, B→D, C→D) would register D twice. MEDI accepts duplicate registrations, so this
+would surface quietly as an extra element in `IEnumerable<T>`. The split deduplicates **at compile
+time** through flat enumeration and costs nothing at runtime.
+
+**What the unit does not have to be.** It does not have to be an extension method — the generated
+aggregation already calls it in static form — and it does not have to share the user-facing name. It
+is emitted as a plain static `RegisterComponents`, so it never appears in `IServiceCollection`
+completion and the API surface users see is a single `AddGeneratedComponents()`.
 
 ---
 

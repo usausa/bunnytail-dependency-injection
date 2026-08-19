@@ -2,7 +2,7 @@ namespace Example.Library;
 
 using BunnyTail.DependencyInjection;
 
-// For AddAllGeneratedComponents to collect the generated factories,
+// For AddGeneratedComponents to collect the generated factories,
 
 public interface IDataStore
 {
