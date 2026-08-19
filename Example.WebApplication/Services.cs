@@ -2,10 +2,8 @@ namespace Example.WebApplication;
 
 using BunnyTail.DependencyInjection;
 
-// アプリケーションサービス。属性で登録され、生成ファクトリ経由で解決される
-// Application services registered by attributes and resolved through generated factories.
+// Singleton
 
-// リクエストをまたいで共有される状態 / state shared across requests
 [Singleton]
 internal sealed class CounterService
 {
@@ -16,16 +14,16 @@ internal sealed class CounterService
     public int Current => Volatile.Read(ref count);
 }
 
-// リクエストスコープごとに 1 つ。スコープ内では同一インスタンスが共有される
-// One per request scope; the same instance is shared inside the scope.
+// Scoped
+
 [Scoped]
 internal sealed class RequestContext
 {
     public Guid Id { get; } = Guid.NewGuid();
 }
 
-// 都度生成。scoped と singleton を注入して両者の寿命の違いを示す
-// Created per resolution, injecting the scoped and singleton services to show the lifetime difference.
+// Transient
+
 [Transient]
 internal sealed class GreetingService
 {
@@ -45,8 +43,8 @@ internal sealed class GreetingService
 
 internal sealed record GreetingResult(string Name, int Count, Guid RequestId);
 
-// 属性を付けない普通のクラス。標準の Add* 登録から生成ファクトリが作られる
-// A plain class without attributes; the generated factory comes from the standard Add* registration.
+// Plain class without attributes
+
 internal sealed class ClockService
 {
     private readonly string value = "fixed-clock";

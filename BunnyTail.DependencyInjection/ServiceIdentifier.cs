@@ -2,8 +2,6 @@ namespace BunnyTail.DependencyInjection;
 
 using System.Runtime.CompilerServices;
 
-// サービス lookup のキー。Type は identity hash + 参照比較 (dotnet-performance TYP-01 / 候補検証を参照)
-// Service lookup key. Type uses identity hash and reference comparison (see dotnet-performance TYP-01 and its candidate verification).
 internal readonly struct ServiceIdentifier : IEquatable<ServiceIdentifier>
 {
     public readonly Type ServiceType;

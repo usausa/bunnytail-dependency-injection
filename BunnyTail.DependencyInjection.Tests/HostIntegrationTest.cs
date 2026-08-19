@@ -8,8 +8,6 @@ using Microsoft.Extensions.Hosting;
 
 using Xunit;
 
-// UseServiceProviderFactory による Generic Host への差し替え検証
-// Verifies replacing the Generic Host provider via UseServiceProviderFactory.
 public sealed class HostIntegrationTest
 {
     [Fact]
@@ -31,16 +29,15 @@ public sealed class HostIntegrationTest
             .ConfigureServices(static services => services.AddGeneratedComponents())
             .Build();
 
-        // アプリコンポーネント / application components
+        // Application component
         var component = host.Services.GetRequiredService<TransientComponent>();
         Assert.NotNull(component.Prop);
 
-        // フレームワークサービス (Host 内部登録が互換経路で解決できること)
-        // Framework services (host-internal registrations must resolve through the runtime path).
+        // Framework services
         Assert.NotNull(host.Services.GetRequiredService<IHostEnvironment>());
         Assert.NotNull(host.Services.GetRequiredService<IHostApplicationLifetime>());
 
-        // スコープ動作 / scope behavior
+        // Scope behavior
         using var scope = host.Services.GetRequiredService<IServiceScopeFactory>().CreateScope();
         var scoped1 = scope.ServiceProvider.GetRequiredService<IScopedService>();
         var scoped2 = scope.ServiceProvider.GetRequiredService<IScopedService>();

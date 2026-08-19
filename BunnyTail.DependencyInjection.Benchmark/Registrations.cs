@@ -4,14 +4,9 @@ using BunnyTail.DependencyInjection.Benchmark.Classes;
 
 using Microsoft.Extensions.DependencyInjection;
 
-// 全プロバイダ共通の登録。同一の IServiceCollection を MEDI / BunnyTail / Smart の各ファクトリへ渡して比較する
-// Registrations shared by all providers. The same IServiceCollection is handed to the MEDI / BunnyTail / Smart factories for comparison.
 internal static class Registrations
 {
-    // MEDI は open generic + 値型引数を NativeAOT で解決できないため、AOT 比較サブセット実行時は
-    // generics シナリオを除外する (BUNNYTAIL_BENCH_NO_GENERICS=1)。static readonly なので JIT/AOT とも定数化される
-    // MEDI cannot resolve open generics with value type arguments on NativeAOT, so the AOT comparison subset
-    // excludes the generics scenario (BUNNYTAIL_BENCH_NO_GENERICS=1). Being static readonly it folds to a constant on JIT and AOT alike.
+    // MEDI cannot resolve open generics with value type arguments on NativeAOT
     internal static readonly bool SkipGenerics = Environment.GetEnvironmentVariable("BUNNYTAIL_BENCH_NO_GENERICS") == "1";
 
     public static IServiceCollection AddBenchmarkComponents(this IServiceCollection services)

@@ -2,8 +2,6 @@ namespace BunnyTail.DependencyInjection;
 
 using System.Text;
 
-// MEDI の TypeNameHelper 相当 (例外メッセージ用の型名表示。generics は <...> に展開)
-// Equivalent of MEDI's TypeNameHelper (type name display for exception messages, generics expanded as <...>).
 internal static class TypeNameHelper
 {
     public static string GetTypeDisplayName(Type type)

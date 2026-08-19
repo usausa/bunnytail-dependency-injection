@@ -23,8 +23,6 @@ public abstract class ProviderBenchmarkBase
         provider = CreateProvider();
         Validator.Validate(provider);
 
-        // Scoped は解決済みスコープからの読み出しを測るため、スコープ生成と初回解決を事前に済ませる
-        // Scoped measures reads from an already-populated scope, so scope creation and first resolution happen up front.
         serviceScope = provider.GetRequiredService<IServiceScopeFactory>().CreateScope();
         scopeProvider = serviceScope.ServiceProvider;
         _ = scopeProvider.GetService(typeof(IScoped1));
@@ -84,8 +82,6 @@ public abstract class ProviderBenchmarkBase
     [Benchmark(OperationsPerInvoke = 5)]
     public void Generics()
     {
-        // AOT 比較サブセットでは no-op (行は無効値になる)。static readonly なので通常実行では定数畳み込みされゼロコスト
-        // A no-op in the AOT comparison subset (the row becomes meaningless there). Being static readonly, normal runs fold the check away.
         if (Registrations.SkipGenerics)
         {
             return;
@@ -118,8 +114,6 @@ public abstract class ProviderBenchmarkBase
         _ = ((IKeyedServiceProvider)provider).GetRequiredKeyedService(typeof(IKeyedService), "key5");
     }
 
-    // 列挙まで行う。Smart.Resolver は遅延列挙 (要素は列挙時に解決) のため、取得だけではラッパー確保しか測れない
-    // Enumerate the result: Smart.Resolver materializes lazily, so fetching alone would only measure wrapper allocation.
     [Benchmark(OperationsPerInvoke = 5)]
     public void MultipleSingleton()
     {
@@ -130,8 +124,6 @@ public abstract class ProviderBenchmarkBase
         EnumerateMultipleSingleton();
     }
 
-    // ローカルの scope はフィールドの scope (計測対象の常設スコープ) とは別物で、意図的に分けている
-    // The local scope is deliberately separate from the scope field, which holds the long-lived scope being measured.
     private void EnumerateMultipleSingleton()
     {
         foreach (var service in (IEnumerable<IMultipleSingletonService>)provider.GetService(typeof(IEnumerable<IMultipleSingletonService>))!)

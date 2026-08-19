@@ -9,10 +9,6 @@ using Microsoft.Extensions.DependencyInjection;
 
 using Xunit;
 
-// パイプラインの増分性検証。モデルに影響しない編集では出力段 (Execute) が Cached のまま
-// = 出力テキストの再構築が走らないことを、ステップ追跡つきドライバで機械的に確認する
-// Incremental pipeline verification. With step tracking enabled, edits that do not affect the models must leave
-// the output stage (Execute) cached, proving the output text is not rebuilt.
 public sealed class PipelineIncrementalityTest
 {
     private const string ComponentSource = """
@@ -87,7 +83,7 @@ public sealed class PipelineIncrementalityTest
         var compilation = CreateCompilation(componentTree, bodyTree);
         var driver = CreateDriver().RunGenerators(compilation, TestContext.Current.CancellationToken);
 
-        // メソッド本体だけの編集 (モデル不変) / a method body only edit that leaves every model unchanged
+        // Method body edit that does not change any model
         var editedBody = CSharpSyntaxTree.ParseText(
             """
             namespace Demo;
@@ -102,8 +98,7 @@ public sealed class PipelineIncrementalityTest
             cancellationToken: TestContext.Current.CancellationToken);
         driver = driver.RunGenerators(compilation.ReplaceSyntaxTree(bodyTree, editedBody), TestContext.Current.CancellationToken);
 
-        // Assembly 指定の外部走査を含む状態でも、出力段はすべて Cached = Execute は再実行されない
-        // Even with the assembly-scoped external scan active, every output stays cached and Execute is not rerun.
+        // Assembly scoped external scan is active, but every output stays cached and Execute is not rerun
         var reasons = OutputReasons(driver);
         Assert.NotEmpty(reasons);
         Assert.All(reasons, static x => Assert.Equal(IncrementalStepRunReason.Cached, x));
@@ -122,8 +117,7 @@ public sealed class PipelineIncrementalityTest
         var compilation = CreateCompilation(componentTree);
         var driver = CreateDriver().RunGenerators(compilation, TestContext.Current.CancellationToken);
 
-        // コンポーネント追加 (モデル変化) では出力が再生成されること (追跡が空振りしていない対照)
-        // Adding a component (a model change) must regenerate the output, proving the tracking is not vacuous.
+        // Adding a component (a model change) must regenerate the output
         var editedTree = CSharpSyntaxTree.ParseText(
             ComponentSource +
             """
