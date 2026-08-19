@@ -9,6 +9,7 @@ using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Diagnostics;
 
 using SourceGenerateHelper;
 
@@ -29,6 +30,10 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     private const string ServiceCollectionName = "Microsoft.Extensions.DependencyInjection.IServiceCollection";
     private const string ServiceDescriptorName = "Microsoft.Extensions.DependencyInjection.ServiceDescriptor";
     private const string ServiceDescriptorCollectionName = "System.Collections.Generic.ICollection<Microsoft.Extensions.DependencyInjection.ServiceDescriptor>";
+
+    // 自動登録の対象から外すインタフェース (カンマ区切り)。IDisposable / IAsyncDisposable / IInitializable は常に除外
+    // Interfaces excluded from automatic registration (comma separated). IDisposable / IAsyncDisposable / IInitializable are always excluded.
+    private const string IgnoreInterfaceProperty = "build_property.DependencyInjectionIgnoreInterface";
 
     // ------------------------------------------------------------
     // Diagnostics
@@ -134,6 +139,11 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
+        // 除外インタフェース指定 (値等価なので、指定が変わらない限り下流は再実行されない)
+        // Ignored interface specification (value-equatable, so downstream reruns only when the specification changes).
+        var ignoreInterfacesProvider = context.AnalyzerConfigOptionsProvider
+            .Select(static (provider, _) => SelectIgnoreInterfaces(provider));
+
         var singletonProvider = CreateComponentProvider(context, SingletonAttributeName, "Singleton");
         var scopedProvider = CreateComponentProvider(context, ScopedAttributeName, "Scoped");
         var transientProvider = CreateComponentProvider(context, TransientAttributeName, "Transient");
@@ -230,12 +240,14 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             .Combine(externalCandidatesProvider)
             .Combine(closedFactoriesProvider)
             .Combine(assemblyNameProvider)
-            .Combine(referencedModulesProvider);
+            .Combine(referencedModulesProvider)
+            .Combine(ignoreInterfacesProvider);
 
         context.RegisterSourceOutput(source, static (context, source) =>
             Execute(
                 context,
-                source.Left.Left.Left.Left.Left.Left.Left.Left.Left.Left,
+                source.Left.Left.Left.Left.Left.Left.Left.Left.Left.Left.Left,
+                source.Left.Left.Left.Left.Left.Left.Left.Left.Left.Left.Right,
                 source.Left.Left.Left.Left.Left.Left.Left.Left.Left.Right,
                 source.Left.Left.Left.Left.Left.Left.Left.Left.Right,
                 source.Left.Left.Left.Left.Left.Left.Left.Right,
@@ -470,6 +482,55 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             .Where(static x => x is not ("global::System.IAsyncDisposable" or InitializableInterfaceName))
             .ToArray();
         return [with(interfaces)];
+    }
+
+    private static EquatableArray<string> SelectIgnoreInterfaces(AnalyzerConfigOptionsProvider provider)
+    {
+        if (!provider.GlobalOptions.TryGetValue(IgnoreInterfaceProperty, out var value) || String.IsNullOrWhiteSpace(value))
+        {
+            return [];
+        }
+
+        var names = value.Split(',')
+            .Select(static x => x.Trim())
+            .Where(static x => x.Length > 0)
+            .ToArray();
+        return [with(names)];
+    }
+
+    // 除外指定は名前空間つきの名前 (global:: なし) で比較する。ジェネリックは型引数まで含めた形が対象
+    // Exclusions are compared by namespace qualified name without global::; generics match the form including type arguments.
+    private static EquatableArray<string> FilterIgnoredInterfaces(EquatableArray<string> interfaces, EquatableArray<string> ignoreInterfaces)
+    {
+        if ((ignoreInterfaces.Count == 0) || (interfaces.Count == 0))
+        {
+            return interfaces;
+        }
+
+        var filtered = new List<string>(interfaces.Count);
+        foreach (var interfaceType in interfaces)
+        {
+            if (!IsIgnoredInterface(interfaceType, ignoreInterfaces))
+            {
+                filtered.Add(interfaceType);
+            }
+        }
+
+        return filtered.Count == interfaces.Count ? interfaces : [with(filtered.ToArray())];
+    }
+
+    private static bool IsIgnoredInterface(string fullyQualifiedName, EquatableArray<string> ignoreInterfaces)
+    {
+        var displayName = fullyQualifiedName.Replace("global::", string.Empty);
+        foreach (var ignore in ignoreInterfaces)
+        {
+            if (String.Equals(displayName, ignore, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool HasAttribute(ImmutableArray<AttributeData> attributes, string attributeName)
@@ -1068,7 +1129,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             containingNamespace,
             symbol.ContainingType.Name,
             symbol.Name,
-            symbol.DeclaredAccessibility == Accessibility.Public ? "public" : "internal",
+            symbol.DeclaredAccessibility.ToText(),
             new EquatableArray<PatternModel>([.. patterns]),
             LocationInfo.CreateFrom(syntax)));
     }
@@ -1141,7 +1202,8 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         ExternalScanResult externalScan,
         ClosedGenericScanResult closedGenerics,
         string assemblyName,
-        EquatableArray<string> referencedModules)
+        EquatableArray<string> referencedModules,
+        EquatableArray<string> ignoreInterfaces)
     {
         foreach (var method in methods)
         {
@@ -1152,6 +1214,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         }
 
         var components = singletons.Concat(scopeds).Concat(transients)
+            .Select(x => x with { Interfaces = FilterIgnoredInterfaces(x.Interfaces, ignoreInterfaces) })
             .OrderBy(static x => x.FilePath, StringComparer.Ordinal)
             .ThenBy(static x => x.SpanStart)
             .ToArray();
@@ -1167,7 +1230,9 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             .OrderBy(static x => x.FilePath, StringComparer.Ordinal)
             .ThenBy(static x => x.SpanStart)
             .ToArray();
-        var allCandidates = sortedCandidates.Concat(externalScan.Candidates).ToArray();
+        var allCandidates = sortedCandidates.Concat(externalScan.Candidates)
+            .Select(x => x with { Interfaces = FilterIgnoredInterfaces(x.Interfaces, ignoreInterfaces) })
+            .ToArray();
         var conventionMatches = new List<(MethodModel Method, List<(CandidateModel Candidate, string Lifetime)> Matches)>();
         foreach (var method in methods)
         {
@@ -1340,9 +1405,11 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
         // ---- 規約登録メソッドの本体 / convention registration method bodies ----
 
-        foreach (var (method, matches) in conventionMatches)
+        // 同一クラスの複数メソッドは 1 ファイルへまとめる (出力単位はクラス。分けると hintName が衝突する)
+        // Methods of the same class go into a single file (the output unit is the class; splitting would collide on hintName).
+        foreach (var group in conventionMatches.GroupBy(static x => (x.Method.Namespace, x.Method.ClassName)))
         {
-            EmitConventionMethod(context, method, matches);
+            EmitConventionClass(context, group.Key.Namespace, group.Key.ClassName, [.. group]);
         }
     }
 
@@ -2801,25 +2868,49 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         }
     }
 
-    private static void EmitConventionMethod(SourceProductionContext context, MethodModel method, List<(CandidateModel Candidate, string Lifetime)> matches)
+    private static void EmitConventionClass(
+        SourceProductionContext context,
+        string? classNamespace,
+        string className,
+        List<(MethodModel Method, List<(CandidateModel Candidate, string Lifetime)> Matches)> methods)
     {
         var builder = new SourceBuilder();
         builder.AutoGenerated();
         builder.EnableNullable();
         builder.NewLine();
 
-        if (method.Namespace is not null)
+        if (classNamespace is not null)
         {
-            builder.Namespace(method.Namespace);
+            builder.Namespace(classNamespace);
             builder.NewLine();
         }
 
         builder.Using("Microsoft.Extensions.DependencyInjection");
         builder.NewLine();
 
-        builder.Indent().Append("partial class ").Append(method.ClassName).NewLine();
+        builder.Indent().Append("partial class ").Append(className).NewLine();
         builder.BeginScope();
 
+        var first = true;
+        foreach (var (method, matches) in methods)
+        {
+            if (!first)
+            {
+                builder.NewLine();
+            }
+
+            first = false;
+            EmitConventionMethod(builder, method, matches);
+        }
+
+        builder.EndScope();
+
+        var hintName = (classNamespace is null ? className : classNamespace.Replace('.', '_') + "_" + className) + ".g.cs";
+        context.AddSource(hintName, builder);
+    }
+
+    private static void EmitConventionMethod(SourceBuilder builder, MethodModel method, List<(CandidateModel Candidate, string Lifetime)> matches)
+    {
         builder.Indent().Append(method.Accessibility).Append(" static partial global::Microsoft.Extensions.DependencyInjection.IServiceCollection ").Append(method.MethodName).Append("(this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)").NewLine();
         builder.BeginScope();
 
@@ -2849,10 +2940,5 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
         builder.AppendLine("return services;");
         builder.EndScope();
-
-        builder.EndScope();
-
-        var hintName = (method.Namespace is null ? method.ClassName : method.Namespace.Replace('.', '_') + "_" + method.ClassName) + ".g.cs";
-        context.AddSource(hintName, builder);
     }
 }

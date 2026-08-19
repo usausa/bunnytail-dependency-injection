@@ -5,4 +5,8 @@
     CompilerVisibleProperty を追加する場合はここに定義する。
   -->
 
+  <ItemGroup>
+    <CompilerVisibleProperty Include="DependencyInjectionIgnoreInterface" />
+  </ItemGroup>
+
 </Project>

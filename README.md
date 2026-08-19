@@ -111,6 +111,34 @@ public static partial class ServiceCollectionExtensions
 | `Namespace` | Namespace prefix to filter classes |
 | `Assembly` | Name of a referenced assembly to scan instead of the current project. Types come from metadata (publicly accessible classes only), so libraries without the generator can be registered by convention. An unreferenced name reports `BTDI0003` |
 
+A class can hold as many registration methods as you like, each with its own patterns and accessibility:
+
+```csharp
+public static partial class ServiceCollectionExtensions
+{
+    [ComponentRegistration(Lifetime.Singleton, "Service$")]
+    public static partial IServiceCollection AddServices(this IServiceCollection services);
+
+    [ComponentRegistration(Lifetime.Scoped, "Repository$")]
+    internal static partial IServiceCollection AddRepositories(this IServiceCollection services);
+}
+```
+
+### Excluding interfaces from automatic registration
+
+Registration without an explicit `As` covers the class and every interface it implements, inherited ones included. `DependencyInjectionIgnoreInterface` drops the ones that should not become service types:
+
+```xml
+<PropertyGroup>
+  <DependencyInjectionIgnoreInterface>MyApp.INavigation,System.ComponentModel.INotifyPropertyChanged</DependencyInjectionIgnoreInterface>
+</PropertyGroup>
+```
+
+* Comma separated, matched against the namespace-qualified name (write generics as they appear in source, such as `MyApp.IHandler<MyApp.Command>`)
+* Applies to attribute and convention registration alike
+* `IDisposable` / `IAsyncDisposable` / `IInitializable` are always excluded
+* An explicit `As = typeof(...)` is never affected
+
 ### Existing Add* registrations
 
 Registration calls in user code are detected by the generator, which emits reflection-free factories for the implementation types. Existing MEDI registration code gets the generated path with no changes. Collected shapes:
@@ -249,6 +277,12 @@ Every entry point carries `Generated` in its name: that is the source generated,
 | `[ComponentModule]` | assembly | Marks the module type aggregated by `AddAllGeneratedComponents()`. Emitted automatically; hand-write it for libraries without the generator |
 | `[GenerateComponentFactory]` | assembly | Generates a factory for a type without registering it, for libraries you do not control. Supports `PostConstruct` |
 | `IInitializable` | interface | Initialization callback invoked after construction |
+
+### MSBuild properties
+
+| Property | Default | Description |
+|---|---|---|
+| `DependencyInjectionIgnoreInterface` | (none) | Comma-separated interface names excluded from automatic registration. `IDisposable` / `IAsyncDisposable` / `IInitializable` are always excluded |
 
 ## 🔌 Replacing the engine
 

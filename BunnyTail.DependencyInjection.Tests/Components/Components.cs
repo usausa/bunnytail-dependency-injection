@@ -211,3 +211,14 @@ public sealed class EchoService;
 public sealed class BarService : IBarService;
 
 public sealed class MixedService : IMixed1, IMixed2;
+
+// 同一クラスの 2 つめの登録メソッド用 / for a second registration method on the same class
+public sealed class SampleRepository;
+
+// private な登録メソッド用 / for a private registration method
+public sealed class SampleGadget;
+
+// DependencyInjectionIgnoreInterface による除外対象 / excluded through DependencyInjectionIgnoreInterface
+public interface IIgnoredMarker;
+
+public sealed class IgnoredMarkerService : IIgnoredMarker;

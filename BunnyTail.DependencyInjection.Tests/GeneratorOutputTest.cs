@@ -144,6 +144,121 @@ public sealed class GeneratorOutputTest
         Assert.Contains("typeof(global::Demo.FooService)", factories, StringComparison.Ordinal);
     }
 
+    // 同一クラスの複数メソッドは 1 ファイルにまとめて出力する (メソッドごとに出すと hintName が衝突する)
+    // Methods of the same class are emitted into a single file (per-method output would collide on hintName).
+    [Fact]
+    public void ConventionMethodsOnSameClassShareOneOutputFile()
+    {
+        const string source = """
+            using BunnyTail.DependencyInjection;
+            using Microsoft.Extensions.DependencyInjection;
+
+            namespace Demo;
+
+            public sealed class FooService;
+
+            public sealed class BarRepository;
+
+            public static partial class Registrations
+            {
+                [ComponentRegistration(Lifetime.Singleton, "Service$")]
+                public static partial IServiceCollection AddServices(this IServiceCollection services);
+
+                [ComponentRegistration(Lifetime.Scoped, "Repository$")]
+                internal static partial IServiceCollection AddRepositories(this IServiceCollection services);
+            }
+            """;
+
+        var result = CreateRunner()
+            .VerifyCompiles()
+            .Run(source);
+
+        var generated = result.GeneratedSource("Demo_Registrations.g.cs");
+
+        Assert.Contains("public static partial global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddServices", generated, StringComparison.Ordinal);
+        Assert.Contains("internal static partial global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddRepositories", generated, StringComparison.Ordinal);
+        Assert.Contains("services.AddSingleton<global::Demo.FooService>();", generated, StringComparison.Ordinal);
+        Assert.Contains("services.AddScoped<global::Demo.BarRepository>();", generated, StringComparison.Ordinal);
+    }
+
+    // 宣言どおりのアクセシビリティで生成する (public 以外を internal へ丸めない)
+    // Emitted with the declared accessibility, without collapsing non-public to internal.
+    [Fact]
+    public void ConventionMethodKeepsDeclaredAccessibility()
+    {
+        const string source = """
+            using BunnyTail.DependencyInjection;
+            using Microsoft.Extensions.DependencyInjection;
+
+            namespace Demo;
+
+            public sealed class FooService;
+
+            public static partial class Registrations
+            {
+                [ComponentRegistration(Lifetime.Singleton, "Service$")]
+                private static partial IServiceCollection AddServices(this IServiceCollection services);
+
+                public static IServiceCollection Use(this IServiceCollection services) => services.AddServices();
+            }
+            """;
+
+        var result = CreateRunner()
+            .VerifyCompiles()
+            .Run(source);
+
+        var generated = result.GeneratedSource("Demo_Registrations.g.cs");
+
+        Assert.Contains("private static partial global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddServices", generated, StringComparison.Ordinal);
+    }
+
+    // ---- 除外インタフェース指定 / ignored interface option ----
+
+    // DependencyInjectionIgnoreInterface で指定したインタフェースは登録もフォワーディングも行わない
+    // Interfaces named by DependencyInjectionIgnoreInterface get neither a registration nor a forwarding.
+    [Fact]
+    public void IgnoredInterfaceIsExcludedFromRegistration()
+    {
+        const string source = """
+            using BunnyTail.DependencyInjection;
+            using Microsoft.Extensions.DependencyInjection;
+
+            namespace Demo;
+
+            public interface IKept;
+
+            public interface IIgnored;
+
+            [Singleton]
+            public sealed class AttributeComponent : IKept, IIgnored;
+
+            public sealed class ConventionService : IIgnored;
+
+            public static partial class Registrations
+            {
+                [ComponentRegistration(Lifetime.Singleton, "Service$")]
+                public static partial IServiceCollection AddServices(this IServiceCollection services);
+            }
+            """;
+
+        var result = CreateRunner()
+            .WithGlobalOption("build_property.DependencyInjectionIgnoreInterface", "Demo.IIgnored")
+            .VerifyCompiles()
+            .Run(source);
+
+        // 属性コンポーネント: IKept だけがフォワーディングされる
+        // Attribute component: only IKept is forwarded.
+        var components = result.GeneratedSource("GeneratedComponents.g.cs");
+        Assert.Contains("services.AddSingleton<global::Demo.IKept>(", components, StringComparison.Ordinal);
+        Assert.DoesNotContain("global::Demo.IIgnored", components, StringComparison.Ordinal);
+
+        // 規約登録: 除外後は 0 インタフェースなので自己登録になる
+        // Convention registration: with no interface left, it becomes a self registration.
+        var registrations = result.GeneratedSource("Demo_Registrations.g.cs");
+        Assert.Contains("services.AddSingleton<global::Demo.ConventionService>();", registrations, StringComparison.Ordinal);
+        Assert.DoesNotContain("global::Demo.IIgnored", registrations, StringComparison.Ordinal);
+    }
+
     // ---- 診断 / diagnostics ----
 
     [Fact]
