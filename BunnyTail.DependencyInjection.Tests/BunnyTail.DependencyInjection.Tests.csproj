@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <CodeAnalysisRuleSet>..\Analyzers.ruleset</CodeAnalysisRuleSet>
+    <IsPackable>false</IsPackable>
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+  </PropertyGroup>
+
+  <!-- Microsoft.Testing.Platform で実行する (CI のカバレッジ収集用) -->
+  <PropertyGroup>
+    <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+    <TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.10.0" />
+    <PackageReference Include="SourceGenerateHelper.Testing" Version="1.20.0" />
+    <PackageReference Include="xunit.v3.mtp-v2" Version="3.2.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BunnyTail.DependencyInjection\BunnyTail.DependencyInjection.csproj" />
+    <!-- ジェネレータは 2 回参照: analyzer として (生成コードの適用) + 通常参照 (harness テスト用) -->
+    <ProjectReference Include="..\BunnyTail.DependencyInjection.Generator\BunnyTail.DependencyInjection.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\BunnyTail.DependencyInjection.Generator\BunnyTail.DependencyInjection.Generator.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Components\Components.cs" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Expected\ComponentRegistration.expected.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

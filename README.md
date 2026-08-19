@@ -1,12 +1,12 @@
-# 🐰 BunnyTail.Resolver
+# 🐰 BunnyTail.DependencyInjection
 
 | Package | Info |
 |:-|:-|
-| BunnyTail.Resolver | [![NuGet](https://img.shields.io/nuget/v/BunnyTail.Resolver.svg)](https://www.nuget.org/packages/BunnyTail.Resolver) |
+| BunnyTail.DependencyInjection | [![NuGet](https://img.shields.io/nuget/v/BunnyTail.DependencyInjection.svg)](https://www.nuget.org/packages/BunnyTail.DependencyInjection) |
 
 ## ❓ What is this?
 
-Source generator based AOT-safe DI library, compatible with Microsoft.Extensions.DependencyInjection.
+A BunnyTail extension for Microsoft.Extensions.DependencyInjection — not another DI container. You keep the standard MEDI API with its exact semantics; this package swaps the engine underneath for an AOT-safe service provider that wires object graphs with source generated factories instead of reflection.
 
 * 🤝 **100% MEDI compatible** — passes the official `Microsoft.Extensions.DependencyInjection.Specification.Tests` suite in full (base + keyed, **143/143**), and drops in via `IServiceProviderFactory`
   * Keyed services: `KeyedService.AnyKey`, `[ServiceKey]`, `[FromKeyedServices]`
@@ -17,6 +17,8 @@ Source generator based AOT-safe DI library, compatible with Microsoft.Extensions
 * ⚡ **Source generator powered** — constructor selection, lifetime shapes, disposal tracking and transient graph inlining are all settled at compile time
 * 🔎 **Automatic registration** — components are collected from attributes, existing `Add*` calls and naming conventions
 
+Only need registration generation on top of the stock MEDI engine? That is the sibling package [BunnyTail.ServiceRegistration](https://www.nuget.org/packages/BunnyTail.ServiceRegistration) — this package replaces the engine itself.
+
 ## 🚀 Usage
 
 ### Attribute based registration
@@ -24,7 +26,7 @@ Source generator based AOT-safe DI library, compatible with Microsoft.Extensions
 Annotate components with `[Singleton]` / `[Scoped]` / `[Transient]`:
 
 ```csharp
-using BunnyTail.Resolver;
+using BunnyTail.DependencyInjection;
 
 [Singleton]
 public sealed class Component1;
@@ -107,7 +109,7 @@ public static partial class ServiceCollectionExtensions
 | `Lifetime` | Service lifetime: `Transient`, `Singleton`, or `Scoped` |
 | `Pattern` | Regex pattern to match class names to register |
 | `Namespace` | Namespace prefix to filter classes |
-| `Assembly` | Name of a referenced assembly to scan instead of the current project. Types come from metadata (publicly accessible classes only), so libraries without the generator can be registered by convention. An unreferenced name reports `BTRS0003` |
+| `Assembly` | Name of a referenced assembly to scan instead of the current project. Types come from metadata (publicly accessible classes only), so libraries without the generator can be registered by convention. An unreferenced name reports `BTDI0003` |
 
 ### Existing Add* registrations
 
@@ -140,12 +142,12 @@ A `PostConstruct` name can be given for types you cannot annotate. It runs on bo
 ```
 
 * Eligible targets: publicly accessible concrete classes with a usable public constructor
-* Anything else reports `BTRS0004`; an invalid `PostConstruct` name reports `BTRS0006`
+* Anything else reports `BTDI0004`; an invalid `PostConstruct` name reports `BTDI0006`
 
 To find the types worth marking, ask the built provider which registrations fell back at runtime. ⚠️ This is a development-time diagnostic — it realizes every entry (without creating instances), so keep it out of release paths:
 
 ```csharp
-using BunnyTail.Resolver.Diagnostics;
+using BunnyTail.DependencyInjection.Diagnostics;
 
 // Ready-to-paste attribute lines, limited to types the generated code can actually construct
 Console.Write(provider.DescribeRuntimeFallbacks());
@@ -182,7 +184,7 @@ Components can live in other projects:
 * The application's generated `AddAllGeneratedComponents()` discovers every referenced module — transitively, each exactly once — and registers them with the application's own components in a single call
 
 ```csharp
-// Class library (references BunnyTail.Resolver and the generator)
+// Class library (references BunnyTail.DependencyInjection and the generator)
 [Singleton]
 public sealed class LibraryComponent;
 ```
@@ -199,7 +201,7 @@ Each module's `AddGeneratedComponents()` registers only its own components, so m
 A library without the generator can participate by declaring a module by hand — a static class with an `AddGeneratedComponents(IServiceCollection)` method, plus `[assembly: ComponentModule(typeof(...))]`:
 
 ```csharp
-[assembly: BunnyTail.Resolver.ComponentModule(typeof(MyLibrary.LibraryModule))]
+[assembly: BunnyTail.DependencyInjection.ComponentModule(typeof(MyLibrary.LibraryModule))]
 
 namespace MyLibrary;
 
@@ -225,7 +227,7 @@ Every entry point carries `Generated` in its name: that is the source generated,
 |---|---|---|
 | `AddGeneratedComponents()` | `IServiceCollection` | Registers the attribute components (`[Singleton]` / `[Scoped]` / `[Transient]`) of **this assembly**. Emitted by the generator into `<AssemblyName>.GeneratedComponents` |
 | `AddAllGeneratedComponents()` | `IServiceCollection` | Registers the attribute components of this assembly **plus every referenced component module** (transitively, each exactly once). Emitted whenever components or referenced modules exist |
-| `BuildGeneratedServiceProvider()` | `IServiceCollection` | Builds the `ResolverServiceProvider`. The counterpart of MEDI's `BuildServiceProvider()` |
+| `BuildGeneratedServiceProvider()` | `IServiceCollection` | Builds the `GeneratedServiceProvider`. The counterpart of MEDI's `BuildServiceProvider()` |
 | *(user defined)* | `IServiceCollection` | Partial methods annotated with `[ComponentRegistration]` get their body generated from class name patterns |
 
 ### Types
@@ -233,9 +235,9 @@ Every entry point carries `Generated` in its name: that is the source generated,
 | Type | Description |
 |---|---|
 | `GeneratedServiceProviderFactory` | `IServiceProviderFactory<IServiceCollection>` for `UseServiceProviderFactory` (Generic Host / ASP.NET Core) |
-| `ResolverServiceProvider` | The provider itself. Implements `IServiceProvider`, `IKeyedServiceProvider`, `ISupportRequiredService`, `IServiceScopeFactory`, `IServiceProviderIsService`, `IServiceProviderIsKeyedService`, `IDisposable`, `IAsyncDisposable`. Also exposes typed `GetService<T>()` / `GetRequiredService<T>()` / `GetKeyedService<T>()` / `GetRequiredKeyedService<T>()` instance methods that skip the MEDI extension method dispatch |
+| `GeneratedServiceProvider` | The provider itself. Implements `IServiceProvider`, `IKeyedServiceProvider`, `ISupportRequiredService`, `IServiceScopeFactory`, `IServiceProviderIsService`, `IServiceProviderIsKeyedService`, `IDisposable`, `IAsyncDisposable`. Also exposes typed `GetService<T>()` / `GetRequiredService<T>()` / `GetKeyedService<T>()` / `GetRequiredKeyedService<T>()` instance methods that skip the MEDI extension method dispatch |
 | `ServiceProviderScope` | A scope, also the injected `IServiceProvider` inside that scope. Same typed methods as above |
-| `ServiceFactoryReportExtensions` | Development-time diagnostics (`BunnyTail.Resolver.Diagnostics`) as provider extension methods: `CreateFactoryReport()` classifies every registration by resolution path, `DescribeRuntimeFallbacks()` emits ready-to-paste `[GenerateComponentFactory]` lines for the publicly constructible ones |
+| `ServiceFactoryReportExtensions` | Development-time diagnostics (`BunnyTail.DependencyInjection.Diagnostics`) as provider extension methods: `CreateFactoryReport()` classifies every registration by resolution path, `DescribeRuntimeFallbacks()` emits ready-to-paste `[GenerateComponentFactory]` lines for the publicly constructible ones |
 
 ### Attributes
 
@@ -248,9 +250,9 @@ Every entry point carries `Generated` in its name: that is the source generated,
 | `[GenerateComponentFactory]` | assembly | Generates a factory for a type without registering it, for libraries you do not control. Supports `PostConstruct` |
 | `IInitializable` | interface | Initialization callback invoked after construction |
 
-## 🔌 Microsoft.Extensions.DependencyInjection integration
+## 🔌 Replacing the engine
 
-The MEDI bridge — `BuildGeneratedServiceProvider()` and `GeneratedServiceProviderFactory` — ships in the package itself; no separate integration package is needed.
+Two entry points swap the engine in: `BuildGeneratedServiceProvider()` on `IServiceCollection`, and `GeneratedServiceProviderFactory` for hosts that take an `IServiceProviderFactory`.
 
 ### ServiceCollection
 
@@ -351,17 +353,17 @@ Behavior always follows the actual registrations: a descriptor that no longer ma
 
 | ID | Severity | Description |
 |---|---|---|
-| BTRS0001 | ❌ Error | `[ComponentRegistration]` method is not a static partial extension method with the required signature |
-| BTRS0002 | ⚠️ Warning | Registration pattern is not a valid regular expression |
-| BTRS0003 | ⚠️ Warning | Assembly named on `[ComponentRegistration]` is not referenced by the project |
-| BTRS0004 | ⚠️ Warning | `[GenerateComponentFactory]` target is not a publicly accessible concrete class with a usable public constructor |
-| BTRS0005 | ❌ Error | Multiple public constructors share the same maximum parameter count |
-| BTRS0006 | ❌ Error | `PostConstruct` method is not a public parameterless instance method returning void |
-| BTRS0007 | ❌ Error | Conflicting `PostConstruct` specifications across lifetime attributes |
-| BTRS0008 | ❌ Error | Circular dependency between components |
-| BTRS0009 | ⚠️ Warning | Dependency cannot be resolved from the registrations visible at compile time |
-| BTRS0010 | ⚠️ Warning | Captive dependency: a singleton depends on a scoped service |
-| BTRS0011 | ⚠️ Warning | Closed generic with value type arguments has no generated factory and resolves through the runtime path, which fails on NativeAOT |
+| BTDI0001 | ❌ Error | `[ComponentRegistration]` method is not a static partial extension method with the required signature |
+| BTDI0002 | ⚠️ Warning | Registration pattern is not a valid regular expression |
+| BTDI0003 | ⚠️ Warning | Assembly named on `[ComponentRegistration]` is not referenced by the project |
+| BTDI0004 | ⚠️ Warning | `[GenerateComponentFactory]` target is not a publicly accessible concrete class with a usable public constructor |
+| BTDI0005 | ❌ Error | Multiple public constructors share the same maximum parameter count |
+| BTDI0006 | ❌ Error | `PostConstruct` method is not a public parameterless instance method returning void |
+| BTDI0007 | ❌ Error | Conflicting `PostConstruct` specifications across lifetime attributes |
+| BTDI0008 | ❌ Error | Circular dependency between components |
+| BTDI0009 | ⚠️ Warning | Dependency cannot be resolved from the registrations visible at compile time |
+| BTDI0010 | ⚠️ Warning | Captive dependency: a singleton depends on a scoped service |
+| BTDI0011 | ⚠️ Warning | Closed generic with value type arguments has no generated factory and resolves through the runtime path, which fails on NativeAOT |
 
 ## 📂 Samples
 
@@ -379,7 +381,7 @@ Resolution cost of the generated path against Microsoft.Extensions.DependencyInj
 * All three providers receive the identical `IServiceCollection`
 * The same validator checks every provider before measurement, so the scenarios resolve equivalent object graphs
 * Each method repeats its operation five times and `OperationsPerInvoke = 5` divides the result — **Mean is the cost of one operation**
-* Measured with the `BunnyTail.Resolver.Benchmark` project
+* Measured with the `BunnyTail.DependencyInjection.Benchmark` project
 
 | Scenario | Measured operation |
 |---|---|
@@ -459,7 +461,7 @@ Against Smart.Resolver — mixed:
 <details>
 <summary>Full BenchmarkDotNet output</summary>
 
-#### BunnyTail.Resolver
+#### BunnyTail.DependencyInjection
 
 | Method            | Mean      | Error     | StdDev    | Min       | Max       | P90       | Gen0   | Allocated |
 |------------------ |----------:|----------:|----------:|----------:|----------:|----------:|-------:|----------:|
@@ -511,7 +513,7 @@ Against Smart.Resolver — mixed:
 * Runtime targets .NET 10 or later (the generator itself is netstandard2.0)
 * Open generic definition registrations (`typeof(IRepository<>)`):
   * ✅ Closed forms appearing in code — as `typeof(IRepository<Foo>)`, constructor parameters or property types — get generated factories and are fully AOT safe, including value type arguments
-  * ⚠️ Closed forms known only at runtime take the runtime path, where value type arguments are not supported on NativeAOT (`BTRS0011` warns about compile-time visible cases)
+  * ⚠️ Closed forms known only at runtime take the runtime path, where value type arguments are not supported on NativeAOT (`BTDI0011` warns about compile-time visible cases)
 * Method injection is not supported
 * On trimmed applications, `[Inject]` properties are only guaranteed for types with compile-time visible registrations
 * Resolved `IEnumerable<T>` services are materialized `T[]` arrays (MEDI compatible). On NativeAOT, enumerating through the interface allocates the enumerator (32 B) and dispatches per element; casting the result to `T[]` enumerates allocation-free and roughly 3x faster on hot paths

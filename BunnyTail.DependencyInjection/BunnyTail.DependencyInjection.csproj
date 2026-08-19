@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <CodeAnalysisRuleSet>..\Analyzers.ruleset</CodeAnalysisRuleSet>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <PackageId>BunnyTail.DependencyInjection</PackageId>
+    <Description>Source generator based AOT-safe drop-in engine for Microsoft.Extensions.DependencyInjection. Same API, same semantics, reflection-free resolution.</Description>
+    <NoWarn>$(NoWarn);NU5118;NU5129</NoWarn>
+    <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);PackBuildOutputs</TargetsForTfmSpecificContentInPackage>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
+    <PackageReference Include="SourceGenerateHelper" Version="1.20.0" GeneratePathProperty="true" PrivateAssets="all" ExcludeAssets="compile;runtime" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BunnyTail.DependencyInjection.Generator\BunnyTail.DependencyInjection.Generator.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!-- ジェネレータと依存 DLL を analyzers/dotnet/cs へ、props を build へ同梱 (Generator2 定型) -->
+  <Target Name="PackBuildOutputs" DependsOnTargets="SatelliteDllsProjectOutputGroup;DebugSymbolsProjectOutputGroup">
+    <ItemGroup>
+      <TfmSpecificPackageFile Include="..\BunnyTail.DependencyInjection.props" PackagePath="build" />
+      <TfmSpecificPackageFile Include="..\BunnyTail.DependencyInjection.Generator\bin\$(Configuration)\netstandard2.0\BunnyTail.DependencyInjection.Generator.dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+      <TfmSpecificPackageFile Include="$(PKGSourceGenerateHelper)\lib\netstandard2.0\SourceGenerateHelper.dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+    </ItemGroup>
+  </Target>
+
+</Project>

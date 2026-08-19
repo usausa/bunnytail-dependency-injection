@@ -1,7 +1,7 @@
 namespace Example;
 
-using BunnyTail.Resolver;
-using BunnyTail.Resolver.Diagnostics;
+using BunnyTail.DependencyInjection;
+using BunnyTail.DependencyInjection.Diagnostics;
 
 using Example.Library1;
 

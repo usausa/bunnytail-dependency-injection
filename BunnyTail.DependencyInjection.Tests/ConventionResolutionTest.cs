@@ -1,0 +1,43 @@
+namespace BunnyTail.DependencyInjection.Tests;
+
+using BunnyTail.DependencyInjection;
+using BunnyTail.DependencyInjection.Tests.Components;
+
+using Microsoft.Extensions.DependencyInjection;
+
+using Xunit;
+
+// 命名規約ベース登録メソッド (生成コード) の機能検証
+// Functional verification of the generated convention based registration method.
+public sealed class ConventionResolutionTest
+{
+    private static GeneratedServiceProvider CreateProvider() =>
+        new ServiceCollection().AddConventionServices().BuildGeneratedServiceProvider();
+
+    [Fact]
+    public void SelfRegistrationWhenNoInterface()
+    {
+        using var provider = CreateProvider();
+
+        Assert.NotNull(provider.GetService<EchoService>());
+    }
+
+    [Fact]
+    public void InterfaceRegistrationWhenSingleInterface()
+    {
+        using var provider = CreateProvider();
+
+        Assert.IsType<BarService>(provider.GetRequiredService<IBarService>());
+        Assert.Null(provider.GetService<BarService>());   // 1 インタフェースはインタフェース登録のみ / a single interface registers the interface only
+    }
+
+    [Fact]
+    public void ForwardingRegistrationWhenMultipleInterfaces()
+    {
+        using var provider = CreateProvider();
+
+        var self = provider.GetRequiredService<MixedService>();
+        Assert.Same(self, provider.GetRequiredService<IMixed1>());
+        Assert.Same(self, provider.GetRequiredService<IMixed2>());
+    }
+}

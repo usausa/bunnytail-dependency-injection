@@ -1,8 +1,0 @@
-<Project>
-
-  <!--
-    BunnyTail.Resolver の MSBuild オプション用 (パッケージの build/ に同梱)。
-    CompilerVisibleProperty を追加する場合はここに定義する。
-  -->
-
-</Project>

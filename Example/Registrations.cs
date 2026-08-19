@@ -1,6 +1,6 @@
 namespace Example;
 
-using BunnyTail.Resolver;
+using BunnyTail.DependencyInjection;
 
 using Microsoft.Extensions.DependencyInjection;
 

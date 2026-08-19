@@ -2,7 +2,7 @@
 // ComponentModule マーカーを手書きすれば、参照側の AddAllGeneratedComponents の集約対象になる
 // Manual module declaration pattern. A library that does not reference the generator can still participate in
 // AddAllGeneratedComponents aggregation by hand-writing a module type with a registration method and the ComponentModule marker.
-[assembly: BunnyTail.Resolver.ComponentModule(typeof(Example.Library2.LibraryModule))]
+[assembly: BunnyTail.DependencyInjection.ComponentModule(typeof(Example.Library2.LibraryModule))]
 
 namespace Example.Library2;
 

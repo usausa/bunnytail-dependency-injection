@@ -4,6 +4,6 @@
 // Requests factory generation, without registration, for a type of a library you do not control.
 // Example.Library2 does not reference the generator and registers through its own AddReportedService(), so without
 // this single line ReportedService would resolve through the runtime path (ConstructorInvoker).
-[assembly: BunnyTail.Resolver.GenerateComponentFactory(
+[assembly: BunnyTail.DependencyInjection.GenerateComponentFactory(
     typeof(Example.Library2.ReportedService),
     PostConstruct = nameof(Example.Library2.ReportedService.Prepare))]

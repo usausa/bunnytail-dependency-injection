@@ -1,6 +1,6 @@
 namespace Example.WebApplication;
 
-using BunnyTail.Resolver;
+using BunnyTail.DependencyInjection;
 
 // アプリケーションサービス。属性で登録され、生成ファクトリ経由で解決される
 // Application services registered by attributes and resolved through generated factories.

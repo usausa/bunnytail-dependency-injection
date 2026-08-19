@@ -1,10 +1,10 @@
-// ASP.NET Core の DI コンテナを BunnyTail.Resolver へ差し替えるサンプル。
+// ASP.NET Core の DI コンテナを BunnyTail.DependencyInjection へ差し替えるサンプル。
 // 差し替えは UseServiceProviderFactory の 1 行のみで、フレームワークサービスも含めて MEDI 互換に動作する
-// Sample replacing the ASP.NET Core DI container with BunnyTail.Resolver. The swap is a single
+// Sample replacing the ASP.NET Core DI container with BunnyTail.DependencyInjection. The swap is a single
 // UseServiceProviderFactory line, and everything including framework services keeps working MEDI compatible.
-using BunnyTail.Resolver;
+using BunnyTail.DependencyInjection;
 #if DEBUG
-using BunnyTail.Resolver.Diagnostics;
+using BunnyTail.DependencyInjection.Diagnostics;
 #endif
 
 using Example.WebApplication;
@@ -27,7 +27,7 @@ var app = builder.Build();
 // [GenerateComponentFactory] の追加候補を見つけるための診断で、全登録を実現するためリリースでは行わない
 // Development only: lists which components resolve through the runtime path (reflection). This diagnostic finds
 // [GenerateComponentFactory] candidates and realizes every registration, so it is not done in release builds.
-if (app.Services is ResolverServiceProvider resolverProvider)
+if (app.Services is GeneratedServiceProvider resolverProvider)
 {
     var report = resolverProvider.CreateFactoryReport();
     var text = new System.Text.StringBuilder();
@@ -52,7 +52,7 @@ if (app.Services is ResolverServiceProvider resolverProvider)
 }
 #endif
 
-app.MapGet("/", static () => "BunnyTail.Resolver web sample");
+app.MapGet("/", static () => "BunnyTail.DependencyInjection web sample");
 
 // singleton + scoped + transient の解決。scoped はリクエストごとに変わり、singleton は積み上がる
 // Resolves singleton, scoped and transient services: the scoped id changes per request while the singleton accumulates.

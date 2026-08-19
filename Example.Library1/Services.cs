@@ -1,6 +1,6 @@
 namespace Example.Library1;
 
-using BunnyTail.Resolver;
+using BunnyTail.DependencyInjection;
 
 // ライブラリ側の属性コンポーネント。このアセンブリの GeneratedComponents (モジュール) が生成され、
 // アセンブリレベルの ComponentModule マーカーが埋め込まれる。参照するアプリ側は AddAllGeneratedComponents で一括登録できる
