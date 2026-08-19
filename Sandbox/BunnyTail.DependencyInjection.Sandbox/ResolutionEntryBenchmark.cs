@@ -12,7 +12,7 @@ using BenchmarkDotNet.Jobs;
 
 using BunnyTail.DependencyInjection.Sandbox.Infrastructure;
 
-// Configuration with disassembly, for JIT level investigation.
+// 逆アセンブル付き構成 (JIT レベル調査用)
 // Configuration with disassembly, for JIT-level investigation.
 public sealed class DisasmConfig : ManualConfig
 {
@@ -26,10 +26,10 @@ public sealed class DisasmConfig : ManualConfig
     }
 }
 
-// Comparison of resolution entry path shapes.
-// The current path is a table lookup, a virtual call on the accessor, a cache branch, a field read and a sentinel
-// unwrap, whereas Smart.Resolver settles for a table lookup and a constant field falling back to a delegate.
-// This checks how much the constant short circuit gains and whether the virtual call and the branch really disappear in the disassembly.
+// 解決エントリパスの形状比較。
+// 現状は「テーブル引き → accessor の仮想呼び出し → Cache 分岐 → フィールド読み → sentinel 解除」だが、
+// Smart.Resolver は「テーブル引き → Constant フィールド ?? デリゲート」で済ませている。
+// 定数短絡がどれだけ効くかと、逆アセンブルで仮想呼び出しと分岐が実際に消えるかを確認する
 // Comparison of resolution entry path shapes. The current shape is table lookup, virtual accessor call, cache branch,
 // field read and sentinel unwrap, whereas Smart.Resolver stops at a table lookup plus a Constant field with a delegate
 // fallback. This measures how much the constant short-circuit gains and confirms in the disassembly that the virtual
@@ -48,7 +48,7 @@ public class ResolutionEntryBenchmark
         Scoped
     }
 
-    // Accessor that mimics the current runtime.
+    // 現状のランタイムを模した accessor
     // Accessor modelled on the current runtime.
     public abstract class Accessor
     {
@@ -106,7 +106,7 @@ public class ResolutionEntryBenchmark
         protected override object Create(object scope) => instance;
     }
 
-    // Current shape: the node holds only the accessor.
+    // 現状形状: ノードは accessor だけを持つ
     // Current shape: the node holds only the accessor.
     public sealed class AccessorTable
     {
@@ -185,7 +185,7 @@ public class ResolutionEntryBenchmark
         }
     }
 
-    // Constant short circuit shape: the node holds the resolved instance directly.
+    // 定数短絡形状: ノードが解決済みインスタンスを直接持つ
     // Constant short-circuit shape: the node holds the resolved instance directly.
     public sealed class ConstantTable
     {
@@ -275,7 +275,7 @@ public class ResolutionEntryBenchmark
     private Type[] sequence = default!;
     private readonly object scope = new();
 
-    // Sink for the measured results. It is never read, but writing to it prevents JIT dead code elimination.
+    // 計測結果の格納先。読み出さないが、書き込むことで JIT のデッドコード削除を防ぐ
     // Sink for measured values: never read, but written so the JIT cannot eliminate the work.
     // ReSharper disable once NotAccessedField.Local
     private object? sink;
@@ -292,7 +292,7 @@ public class ResolutionEntryBenchmark
         accessorTable = new AccessorTable(pairs);
         constantTable = new ConstantTable(pairs, primeConstants: true);
 
-        // A singleton on the current shape fills its field on first resolution, so the hot read starts from the same state.
+        // 現状形状の Singleton は初回解決でフィールドが埋まるので、hot 読み出しの条件を揃える
         // The current shape fills its field on first resolution, so prime it to match the hot-read condition.
         foreach (var pair in pairs)
         {
@@ -307,7 +307,7 @@ public class ResolutionEntryBenchmark
         }
     }
 
-    // Current shape: table lookup, virtual call, cache branch, field read, sentinel unwrap.
+    // 現状形状: テーブル引き → 仮想呼び出し → Cache 分岐 → フィールド読み → sentinel 解除
     // Current shape: table lookup, virtual call, cache branch, field read, sentinel unwrap.
     [Benchmark(Baseline = true, OperationsPerInvoke = LookupCount)]
     public object? ViaAccessor()
@@ -324,7 +324,7 @@ public class ResolutionEntryBenchmark
         return last;
     }
 
-    // Constant short circuit shape: table lookup then a constant field read, with no virtual call.
+    // 定数短絡形状: テーブル引き → Constant フィールド読み (仮想呼び出しなし)
     // Constant short-circuit shape: table lookup then a Constant field read, with no virtual call.
     [Benchmark(OperationsPerInvoke = LookupCount)]
     public object? ViaConstant()

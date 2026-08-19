@@ -2,7 +2,7 @@ using BenchmarkDotNet.Running;
 
 using BunnyTail.DependencyInjection.Sandbox;
 
-// Equivalence of every candidate is always verified before measuring.
+// 測定前に必ず全候補の等価性を検証する
 // Equivalence of all candidates is verified before every measurement.
 Verify.RunAll();
 

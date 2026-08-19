@@ -2,7 +2,7 @@ namespace BunnyTail.DependencyInjection.Sandbox.Infrastructure;
 
 using System.Runtime.CompilerServices;
 
-// Composite (Type, key) key for keyed services, used for the Dictionary baseline.
+// keyed services の (Type, key) 複合キー。Dictionary 基準測定用
 // Composite (Type, key) for keyed services. Used by the Dictionary baseline.
 public readonly struct CompositeKey : IEquatable<CompositeKey>
 {
@@ -22,8 +22,8 @@ public readonly struct CompositeKey : IEquatable<CompositeKey>
     public override int GetHashCode() => (RuntimeHelpers.GetHashCode(Type) * 397) ^ Key.GetHashCode();
 }
 
-// Shipping shape: inline node list, a head Node per bucket linked through Next with a sentinel, plus a composite hash.
-// Same layout as FixedKeyedServiceTable in BunnyTail.DependencyInjection.
+// 出荷形状: ノードリスト直置き (バケット先頭 Node + Next 連結 + センチネル) + 複合ハッシュ。
+// BunnyTail.DependencyInjection の FixedKeyedServiceTable と同じレイアウト
 // Shipped shape: nodes stored directly in buckets (head node + Next chain + sentinel) with a composite hash.
 // Same layout as FixedKeyedServiceTable in BunnyTail.DependencyInjection.
 public sealed class NodeCompositeTable<TValue>
@@ -110,7 +110,7 @@ public sealed class NodeCompositeTable<TValue>
     }
 }
 
-// Control: small Entry[] array buckets plus a composite hash, the layout that lost to the node list on the non keyed side.
+// 対照: Entry[] 小配列バケット + 複合ハッシュ。非 keyed 側でノードリストに敗れたレイアウト
 // Control: Entry[] bucket arrays with a composite hash. The layout that lost to node lists on the non-keyed side.
 public sealed class BucketCompositeTable<TValue>
 {
@@ -181,7 +181,7 @@ public sealed class BucketCompositeTable<TValue>
     }
 }
 
-// Control: a two level structure of a Type table over key subtables, not adopted.
+// 対照: Type テーブル → key サブテーブルの二段構成 (不採用)
 // Control: two-stage Type table into per-key sub-tables (rejected).
 public sealed class TwoStageKeyedTable<TValue>
 {

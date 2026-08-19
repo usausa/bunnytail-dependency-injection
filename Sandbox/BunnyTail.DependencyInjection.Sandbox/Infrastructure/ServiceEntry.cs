@@ -1,6 +1,6 @@
 namespace BunnyTail.DependencyInjection.Sandbox.Infrastructure;
 
-// Minimal payload that mimics an entry of the service table.
+// サービステーブルのエントリを模した最小ペイロード
 // Minimal payload standing in for a service table entry.
 public sealed class ServiceEntry
 {

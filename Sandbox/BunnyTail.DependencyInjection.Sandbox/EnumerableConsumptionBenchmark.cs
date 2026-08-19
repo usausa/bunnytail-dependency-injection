@@ -2,9 +2,9 @@ namespace BunnyTail.DependencyInjection.Sandbox;
 
 using BenchmarkDotNet.Attributes;
 
-// Cost difference in how a resolved IEnumerable<T> is consumed. The DI specific point is that the container
-// materializes and returns a T[] for MEDI compatibility, yet enumerating it through the interface adds an
-// enumerator allocation and per element dispatch. Escape analysis can remove that on the JIT but not on NativeAOT, where the difference surfaces.
+// 解決した IEnumerable<T> を「どう消費するか」のコスト差。DI 固有の論点は、コンテナが T[] を実体化して返す
+// (MEDI 互換) のに、利用側がインタフェース越しに列挙すると enumerator 確保とディスパッチが乗る点にある。
+// JIT では escape analysis がこれを消すことがあるが、NativeAOT では消えないため差が表面化する
 // Cost difference of how a resolved IEnumerable<T> is consumed. The DI specific point is that the container
 // materializes and returns a T[] (MEDI compatible), yet enumerating through the interface adds an enumerator
 // allocation and interface dispatch. The JIT can erase that with escape analysis, NativeAOT cannot, so the gap shows.
@@ -25,11 +25,11 @@ public class EnumerableConsumptionBenchmark
             array[i] = new Element();
         }
 
-        // the resolution result is held as object while the runtime type is T[]
+        // 解決結果は object として保持する (実行時の型は T[]) / the resolution result is held as object while the runtime type is T[]
         resolved = array;
     }
 
-    // Enumerating through the interface, the straightforward way to write it.
+    // 利用側がインタフェース越しに列挙する形 (素直な書き方)
     // The straightforward shape where the consumer enumerates through the interface.
     [Benchmark(Baseline = true)]
     public int EnumerateInterface()
@@ -44,7 +44,7 @@ public class EnumerableConsumptionBenchmark
         return count;
     }
 
-    // Casting to T[] and enumerating as an array, without an enumerator allocation.
+    // T[] へキャストして配列として列挙する形 (enumerator 確保なし)
     // Casting to T[] and enumerating the array, without allocating an enumerator.
     [Benchmark]
     public int EnumerateArray()

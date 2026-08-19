@@ -4,9 +4,9 @@ using BenchmarkDotNet.Attributes;
 
 using BunnyTail.DependencyInjection.Sandbox.Infrastructure;
 
-// Comparison of (Type, key) lookup structures for keyed services.
-// Keyed services in MEDI have the DI specific shape of one service type with several keys, so a general purpose
-// Type keyed table such as the dotnet-performance TYP-01 family does not answer the question.
+// keyed services の (Type, key) lookup 構造の比較。
+// MEDI の keyed services は「同一サービス型 × 複数キー」という DI 固有の形状を持つため、
+// 汎用の Type キーテーブル (dotnet-performance TYP-01 系) では答えが出ない
 // Comparison of (Type, key) lookup structures for keyed services. Keyed services have a DI-specific shape
 // (one service type across multiple keys), which the general Type-key tables (dotnet-performance TYP-01) do not answer.
 [Config(typeof(BenchmarkConfig))]
@@ -176,7 +176,7 @@ public class KeyedLookupBenchmark
     }
 }
 
-// Shared generation so measurement and equivalence verification use the same input.
+// 測定と等価性検証で同じ入力を使うための共通生成
 // Shared fixture so measurement and equivalence verification use identical inputs.
 public static class KeyedFixture
 {
@@ -210,7 +210,7 @@ public static class KeyedFixture
         return sequence;
     }
 
-    // Misses are split evenly between a registered type with an unknown key and an unregistered type.
+    // miss は「登録型 + 未知キー」と「未登録型」の半々
     // Misses are split evenly between a registered type with an unknown key and an unregistered type.
     public static (Type Type, object Key)[] CreateMissSequence(int n, string[] keys, int count)
     {
