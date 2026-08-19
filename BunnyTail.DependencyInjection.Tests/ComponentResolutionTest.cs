@@ -8,8 +8,6 @@ using Microsoft.Extensions.DependencyInjection;
 
 using Xunit;
 
-// 属性コンポーネント (生成された AddGeneratedComponents + 生成ファクトリ) の機能検証
-// Functional verification of attribute components (generated AddGeneratedComponents + generated factories).
 public sealed class ComponentResolutionTest
 {
     private static GeneratedServiceProvider CreateProvider() =>
@@ -18,8 +16,6 @@ public sealed class ComponentResolutionTest
     [Fact]
     public void TypedResolutionMatchesTypeBasedResolution()
     {
-        // S-5: provider / scope の型付きインスタンスメソッドが Type ベース解決と同一の結果を返す
-        // S-5: the typed instance methods on the provider and scope return the same results as Type based resolution.
         using var provider = CreateProvider();
 
         Assert.Same(((IServiceProvider)provider).GetRequiredService(typeof(SingletonComponent)), provider.GetRequiredService<SingletonComponent>());
@@ -34,8 +30,6 @@ public sealed class ComponentResolutionTest
     [Fact]
     public void KeyedFactoryReceivesResolvedDependencies()
     {
-        // keyed deps 形: singleton 依存は deps スロット経由、[ServiceKey] は key 引数経由で注入される
-        // Keyed deps shape: the singleton dependency arrives through a deps slot and [ServiceKey] through the key argument.
         using var provider = CreateProvider();
 
         var first = provider.GetRequiredKeyedService<IKeyedWithDependency>("kd");
@@ -50,8 +44,6 @@ public sealed class ComponentResolutionTest
     [Fact]
     public void FactoryReportClassifiesResolutionPaths()
     {
-        // 開発時診断: 生成ファクトリ採用・実行時経路・生成対象外を分類する
-        // Development-time diagnostics classify generated adoption, the runtime path and non-applicable registrations.
         var services = new ServiceCollection().AddGeneratedComponents();
         services.Add(ServiceDescriptor.Describe(typeof(UntrackedProbe), typeof(UntrackedProbe), ServiceLifetime.Transient));
         services.AddSingleton<IUntrackedProbe>(static _ => new UntrackedProbe());
@@ -59,19 +51,14 @@ public sealed class ComponentResolutionTest
 
         var report = provider.CreateFactoryReport();
 
-        // 属性コンポーネント = 生成経路 / attribute component resolves through the generated path
         Assert.Equal(
             ServiceFactoryStatus.Generated,
             report.First(static x => x.ImplementationType == typeof(SingletonComponent)).Status);
 
-        // 生成器から見えない登録 = 実行時経路 ([GenerateComponentFactory] の候補)
-        // A registration invisible to the generator takes the runtime path (a [GenerateComponentFactory] candidate).
         Assert.Equal(
             ServiceFactoryStatus.RuntimeFallback,
             report.First(static x => x.ServiceType == typeof(UntrackedProbe)).Status);
 
-        // ファクトリ登録は構築自体がユーザーのデリゲート = 生成対象外
-        // A factory registration constructs through the user's delegate, so nothing can be generated.
         Assert.Equal(
             ServiceFactoryStatus.NotApplicable,
             report.First(static x => x.ServiceType == typeof(IUntrackedProbe)).Status);
@@ -86,7 +73,6 @@ public sealed class ComponentResolutionTest
 
         var text = provider.DescribeRuntimeFallbacks();
 
-        // そのまま貼り付けられる属性行として出力される / emitted as ready-to-paste attribute lines
         Assert.Contains("[assembly: global::BunnyTail.DependencyInjection.GenerateComponentFactory(typeof(global::", text, StringComparison.Ordinal);
         Assert.Contains(typeof(UntrackedProbe).FullName!.Replace('+', '.'), text, StringComparison.Ordinal);
     }
@@ -98,8 +84,6 @@ public sealed class ComponentResolutionTest
         services.Add(ServiceDescriptor.Describe(typeof(UntrackedProbe), typeof(UntrackedProbe), ServiceLifetime.Transient));
         using var provider = services.BuildGeneratedServiceProvider();
 
-        // 述語で絞り込める (ここでは transient を除外するので候補が消える)
-        // A predicate narrows the set; excluding transients here leaves no candidate.
         var all = provider.DescribeRuntimeFallbacks();
         var filtered = provider.DescribeRuntimeFallbacks(static x => x.Lifetime != ServiceLifetime.Transient);
 
@@ -114,10 +98,7 @@ public sealed class ComponentResolutionTest
         services.Add(ServiceDescriptor.Describe(typeof(UntrackedProbe), typeof(UntrackedProbe), ServiceLifetime.Transient));
         using var provider = services.BuildGeneratedServiceProvider();
 
-        // 書式を差し替えられる。型名は C# として正しい形で渡される
-        // The format can be replaced; the type name arrives already valid in C#.
-        var text = provider.DescribeRuntimeFallbacks(
-            formatter: static (entry, typeName) => $"{entry.Lifetime}: {typeName}");
+        var text = provider.DescribeRuntimeFallbacks(formatter: static (entry, typeName) => $"{entry.Lifetime}: {typeName}");
 
         Assert.Contains($"Transient: {typeof(UntrackedProbe).FullName!.Replace('+', '.')}", text, StringComparison.Ordinal);
         Assert.DoesNotContain("[assembly:", text, StringComparison.Ordinal);
@@ -171,8 +152,8 @@ public sealed class ComponentResolutionTest
         var byInterface = scope1.ServiceProvider.GetRequiredService<IScopedService>();
         var other = scope2.ServiceProvider.GetRequiredService<IScopedService>();
 
-        Assert.Same(byClass, byInterface);   // フォワーディング登録で同一インスタンス / same instance through the forwarding registration
-        Assert.NotSame(byInterface, other);  // スコープごとに別 / distinct per scope
+        Assert.Same(byClass, byInterface);
+        Assert.NotSame(byInterface, other);
     }
 
     [Fact]
@@ -183,7 +164,7 @@ public sealed class ComponentResolutionTest
         var service = provider.GetRequiredKeyedService<IKeyedService>("primary");
 
         Assert.IsType<PrimaryKeyedComponent>(service);
-        Assert.Null(provider.GetService<IKeyedService>());   // 非 keyed では解決されない / not resolvable without a key
+        Assert.Null(provider.GetService<IKeyedService>());
     }
 
     [Fact]
@@ -199,7 +180,9 @@ public sealed class ComponentResolutionTest
         Assert.True(singleton.Disposed);
     }
 
-    // ---- transient グラフのインライン展開 / inline expansion of transient graphs ----
+    //--------------------------------------------------------------------------------
+    // Transient inline expansion
+    //--------------------------------------------------------------------------------
 
     [Fact]
     public void TransientGraphDependenciesAreFreshPerUseSite()
@@ -208,8 +191,7 @@ public sealed class ComponentResolutionTest
 
         var root = provider.GetRequiredService<GraphRoot>();
 
-        // MEDI 互換: 同一 transient 依存も使用箇所ごとに新規生成 (インスタンス共有しない)
-        // MEDI compatible: the same transient dependency is created fresh at every use site (never shared).
+        // MEDI compatible
         Assert.NotSame(root.A.Leaf, root.B.Leaf);
 
         var other = provider.GetRequiredService<GraphRoot>();
@@ -233,15 +215,13 @@ public sealed class ComponentResolutionTest
         Assert.True(leaf.Disposed);
     }
 
-    // ---- singleton 依存の deps 配列渡し / singleton dependencies through the deps array ----
+    //--------------------------------------------------------------------------------
+    // Singleton dependency
+    //--------------------------------------------------------------------------------
 
     [Fact]
     public void DepsShapedFactoryFallsBackWhenSingletonLifetimeIsReplaced()
     {
-        // SingletonComponent を transient に差し替えると deps 前提 (singleton 解決) が崩れ、
-        // 互換経路へフォールバックして transient セマンティクスが守られること
-        // Replacing SingletonComponent as transient breaks the deps assumption (singleton resolution);
-        // the factory must fall back to the runtime path and honor transient semantics.
         var services = new ServiceCollection().AddGeneratedComponents();
         services.Add(ServiceDescriptor.Describe(typeof(SingletonComponent), typeof(SingletonComponent), ServiceLifetime.Transient));
         using var provider = services.BuildGeneratedServiceProvider();
@@ -255,8 +235,7 @@ public sealed class ComponentResolutionTest
     [Fact]
     public void DepsFillingIsLazy()
     {
-        // deps 充填は消費側の初回解決時。プロバイダ構築だけでは singleton を生成しない (MEDI の lazy と一致)
-        // Deps are filled on the consumer's first resolution; building the provider alone creates no singleton (matches MEDI laziness).
+        //--------------------------------------------------------------------------------
         var before = LazyProbeSingleton.Created;
         using var provider = CreateProvider();
         Assert.Equal(before, LazyProbeSingleton.Created);
@@ -266,7 +245,9 @@ public sealed class ComponentResolutionTest
         Assert.Same(consumer.Dependency, provider.GetRequiredService<LazyProbeSingleton>());
     }
 
-    // ---- 生成 enumerable ファクトリ / generated enumerable factories ----
+    //--------------------------------------------------------------------------------
+    // Enumerable
+    //--------------------------------------------------------------------------------
 
     public sealed class RuntimeMultiLeaf : IMultiLeaf;
 
@@ -289,8 +270,6 @@ public sealed class ComponentResolutionTest
     [Fact]
     public void GeneratedEnumerableFallsBackWhenElementIsAdded()
     {
-        // 実行時に要素を追加すると数の前提が崩れ、accessor 経由の実体化へフォールバックする
-        // Adding an element at runtime breaks the count assumption and falls back to accessor-based materialization.
         var services = new ServiceCollection().AddGeneratedComponents();
         services.Add(ServiceDescriptor.Describe(typeof(IMultiLeaf), typeof(RuntimeMultiLeaf), ServiceLifetime.Transient));
         using var provider = services.BuildGeneratedServiceProvider();
@@ -301,10 +280,10 @@ public sealed class ComponentResolutionTest
         Assert.IsType<RuntimeMultiLeaf>(all[2]);
     }
 
-    // ---- open generic の閉型生成 / closed factories from open generic registrations ----
+    //--------------------------------------------------------------------------------
+    // Open generic closed usage
+    //--------------------------------------------------------------------------------
 
-    // open generic 登録の検証用マーカー。型引数は登録形状のためだけに必要
-    // Marker for verifying open generic registration; the type parameter exists only to shape the registration.
     // ReSharper disable once UnusedTypeParameter
     public interface IGenericContainer<T>;
 
@@ -313,8 +292,6 @@ public sealed class ComponentResolutionTest
     [Fact]
     public void OpenGenericClosedUsageResolvesThroughGeneratedFactory()
     {
-        // このテスト内の typeof(IGenericContainer<string>) が閉型使用として収集され、生成ファクトリが出力される
-        // The typeof(IGenericContainer<string>) in this test doubles as the collected closed usage that produces a generated factory.
         IServiceCollection services = new ServiceCollection();
         services.AddTransient(typeof(IGenericContainer<>), typeof(GenericContainer<>));
         using var provider = services.BuildGeneratedServiceProvider();
@@ -322,8 +299,6 @@ public sealed class ComponentResolutionTest
         var closedType = typeof(IGenericContainer<string>);
         Assert.IsType<GenericContainer<string>>(provider.GetService(closedType));
 
-        // コンパイル時に見えない閉型は従来どおり互換経路で解決される
-        // Closed forms invisible at compile time keep resolving through the runtime path.
         var runtimeClosed = typeof(IGenericContainer<>).MakeGenericType(typeof(Guid));
         Assert.IsType<GenericContainer<Guid>>(provider.GetService(runtimeClosed));
     }
@@ -331,8 +306,6 @@ public sealed class ComponentResolutionTest
     [Fact]
     public void ValueTypeEnumerableUsesFallbackPath()
     {
-        // 値型要素は型付き配列ファクトリを使えないため Array.CreateInstance 経路で実体化される
-        // Value type elements cannot use the typed array factory and materialize through Array.CreateInstance.
         IServiceCollection services = new ServiceCollection();
         services.Add(ServiceDescriptor.Singleton(typeof(int), 1));
         services.Add(ServiceDescriptor.Singleton(typeof(int), 2));
@@ -341,7 +314,9 @@ public sealed class ComponentResolutionTest
         Assert.Equal([1, 2], provider.GetServices<int>());
     }
 
-    // ---- 初期化コールバック / initialization callbacks ----
+    //--------------------------------------------------------------------------------
+    // Initialization
+    //--------------------------------------------------------------------------------
 
     public sealed class RuntimeInitializable : IInitializable
     {
@@ -377,8 +352,6 @@ public sealed class ComponentResolutionTest
     [Fact]
     public void PostConstructIsInvokedOnReflectionPath()
     {
-        // ReflectionInitComponent は既定値付き引数のため生成ファクトリ不適格 → 互換経路で解決される
-        // ReflectionInitComponent has a default-valued parameter, so it resolves through the runtime path.
         using var provider = CreateProvider();
 
         Assert.True(provider.GetRequiredService<ReflectionInitComponent>().Initialized);
@@ -387,8 +360,6 @@ public sealed class ComponentResolutionTest
     [Fact]
     public void RuntimeRegisteredInitializableIsInvoked()
     {
-        // ServiceDescriptor 直接登録はジェネレータから見えない → 互換経路の IInitializable 呼び出しを検証
-        // Direct ServiceDescriptor registration is invisible to the generator, exercising IInitializable on the runtime path.
         IServiceCollection services = new ServiceCollection();
         services.Add(ServiceDescriptor.Describe(typeof(RuntimeInitializable), typeof(RuntimeInitializable), ServiceLifetime.Transient));
         using var provider = services.BuildGeneratedServiceProvider();
@@ -399,8 +370,6 @@ public sealed class ComponentResolutionTest
     [Fact]
     public void FactoryRegistrationIsNotInitialized()
     {
-        // ファクトリ登録はユーザー所有の生成なので初期化しない
-        // Factory registrations are user-owned construction and are never initialized.
         using var provider = new ServiceCollection()
             .AddTransient(static _ => new RuntimeInitializable())
             .BuildGeneratedServiceProvider();
@@ -408,7 +377,9 @@ public sealed class ComponentResolutionTest
         Assert.False(provider.GetRequiredService<RuntimeInitializable>().Initialized);
     }
 
-    // ---- Singleton の accessor フィールドキャッシュ / singleton accessor field cache ----
+    //--------------------------------------------------------------------------------
+    // Singleton cache
+    //--------------------------------------------------------------------------------
 
     public sealed class CountingSingleton
     {
@@ -430,8 +401,6 @@ public sealed class ComponentResolutionTest
             .BuildGeneratedServiceProvider();
 
         var results = new CountingSingleton[16];
-        // Parallel.For は using スコープを抜ける前に完走するため、捕捉した provider は破棄されていない
-        // Parallel.For completes before the using scope ends, so the captured provider is not disposed yet.
         // ReSharper disable once AccessToDisposedClosure
         Parallel.For(0, results.Length, i => results[i] = provider.GetRequiredService<CountingSingleton>());
 
@@ -442,10 +411,6 @@ public sealed class ComponentResolutionTest
     [Fact]
     public void InlinedGraphFallsBackWhenDependencyRegistrationIsReplaced()
     {
-        // ServiceDescriptor 直接登録はジェネレータから見えない実行時差し替え。インライン展開の前提が
-        // 崩れるため、生成ファクトリは採用されず差し替え後の型が解決されること
-        // Direct ServiceDescriptor registration is a runtime replacement invisible to the generator. It breaks
-        // the inline assumptions, so the generated factory must be rejected and the replaced type resolved.
         var services = new ServiceCollection().AddGeneratedComponents();
         services.Add(ServiceDescriptor.Describe(typeof(LeafDependency), typeof(DerivedLeafDependency), ServiceLifetime.Transient));
         using var provider = services.BuildGeneratedServiceProvider();

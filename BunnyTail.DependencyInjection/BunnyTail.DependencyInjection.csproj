@@ -22,7 +22,6 @@
     <ProjectReference Include="..\BunnyTail.DependencyInjection.Generator\BunnyTail.DependencyInjection.Generator.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" />
   </ItemGroup>
 
-  <!-- ジェネレータと依存 DLL を analyzers/dotnet/cs へ、props を build へ同梱 (Generator2 定型) -->
   <Target Name="PackBuildOutputs" DependsOnTargets="SatelliteDllsProjectOutputGroup;DebugSymbolsProjectOutputGroup">
     <ItemGroup>
       <TfmSpecificPackageFile Include="..\BunnyTail.DependencyInjection.props" PackagePath="build" />

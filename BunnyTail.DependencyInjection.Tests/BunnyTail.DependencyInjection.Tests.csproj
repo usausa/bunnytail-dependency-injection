@@ -8,15 +8,12 @@
     <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
   </PropertyGroup>
 
-  <!-- Microsoft.Testing.Platform で実行する (CI のカバレッジ収集用) -->
   <PropertyGroup>
     <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
     <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
     <TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
   </PropertyGroup>
 
-  <!-- 除外インタフェース指定の検証用。props の Import は NuGet 参照時の build/ 自動読み込みに相当する -->
-  <!-- For verifying the ignored interface option; importing props mirrors the automatic build/ import of a NuGet reference. -->
   <PropertyGroup>
     <DependencyInjectionIgnoreInterface>BunnyTail.DependencyInjection.Tests.Components.IIgnoredMarker</DependencyInjectionIgnoreInterface>
   </PropertyGroup>
@@ -33,7 +30,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\BunnyTail.DependencyInjection\BunnyTail.DependencyInjection.csproj" />
-    <!-- ジェネレータは 2 回参照: analyzer として (生成コードの適用) + 通常参照 (harness テスト用) -->
     <ProjectReference Include="..\BunnyTail.DependencyInjection.Generator\BunnyTail.DependencyInjection.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\BunnyTail.DependencyInjection.Generator\BunnyTail.DependencyInjection.Generator.csproj" />
   </ItemGroup>

@@ -39,8 +39,6 @@ public sealed class ConventionResolutionTest
         Assert.Same(self, provider.GetRequiredService<IMixed2>());
     }
 
-    // 同一クラスに複数の登録メソッドがある場合、それぞれの本体が生成される
-    // When one class holds several registration methods, every body is generated.
     [Fact]
     public void MultipleRegistrationMethodsOnSameClass()
     {
@@ -53,8 +51,6 @@ public sealed class ConventionResolutionTest
         Assert.NotNull(provider.GetService<SampleRepository>());
     }
 
-    // public 以外のアクセシビリティで宣言した登録メソッドも生成される
-    // Registration methods declared with a non-public accessibility are generated too.
     [Fact]
     public void NonPublicRegistrationMethodIsGenerated()
     {
@@ -65,8 +61,6 @@ public sealed class ConventionResolutionTest
         Assert.NotNull(provider.GetService<SampleGadget>());
     }
 
-    // DependencyInjectionIgnoreInterface で指定したインタフェースは登録されない (実装型の登録は残る)
-    // Interfaces named by DependencyInjectionIgnoreInterface are not registered; the implementation registration remains.
     [Fact]
     public void IgnoredInterfaceIsNotRegistered()
     {

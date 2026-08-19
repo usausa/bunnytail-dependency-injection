@@ -212,13 +212,16 @@ public sealed class BarService : IBarService;
 
 public sealed class MixedService : IMixed1, IMixed2;
 
-// 同一クラスの 2 つめの登録メソッド用 / for a second registration method on the same class
+// Second registration
+
 public sealed class SampleRepository;
 
-// private な登録メソッド用 / for a private registration method
+// Private registration
+
 public sealed class SampleGadget;
 
-// DependencyInjectionIgnoreInterface による除外対象 / excluded through DependencyInjectionIgnoreInterface
+// DependencyInjectionIgnoreAttribute
+
 public interface IIgnoredMarker;
 
 public sealed class IgnoredMarkerService : IIgnoredMarker;
