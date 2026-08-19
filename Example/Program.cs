@@ -7,8 +7,7 @@ using Example.Library1;
 
 using Microsoft.Extensions.DependencyInjection;
 
-// アプリ側の属性コンポーネント。ライブラリのコンポーネントをコンストラクタ注入で受け取る
-// Attribute component on the application side, receiving library components through constructor injection.
+// Attribute component on the application side, receiving library components through constructor injection
 [Singleton]
 internal sealed class AppService
 {
@@ -112,8 +111,7 @@ internal static class Program
             var messageEntry = report.First(static x => x.ImplementationType == typeof(Library2.MessageSource));
             Assert(messageEntry.Status == ServiceFactoryStatus.RuntimeFallback, "untracked library type falls back");
 
-            // 実行時経路の型は、貼り付け可能な属性行として書き出せる
-            // Runtime path types can be written out as ready-to-paste attribute lines.
+            // Runtime path types can be written out as ready-to-paste attribute lines
             var suggestion = provider.DescribeRuntimeFallbacks();
             Assert(suggestion.Contains("Example.Library2.MessageSource", StringComparison.Ordinal), "runtime fallback is suggested");
             Console.Write(suggestion);
@@ -126,7 +124,7 @@ internal static class Program
                 Assert(consumer.Box is ManualBox<int>, "manual open generic registration");
             }
 
-            // scoped はスコープ内共有・スコープ間分離 / scoped instances are shared inside a scope and distinct across scopes
+            // Scoped instances are shared within a scope and distinct across scopes
             using var scope1 = provider.CreateScope();
             using var scope2 = provider.CreateScope();
             var context1 = scope1.ServiceProvider.GetRequiredService<LibraryScopedContext>();

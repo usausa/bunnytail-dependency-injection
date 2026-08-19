@@ -6,8 +6,6 @@ using BunnyTail.DependencyInjection.Benchmark.Classes;
 
 using Microsoft.Extensions.DependencyInjection;
 
-// 各プロバイダ共通の測定シナリオ。派生クラスがプロバイダの構築だけを差し替える
-// Measurement scenarios shared by all providers. Derived classes only swap provider construction.
 [Config(typeof(BenchmarkConfig))]
 public abstract class ProviderBenchmarkBase
 {

@@ -2,10 +2,7 @@ namespace Example.Library1;
 
 using BunnyTail.DependencyInjection;
 
-// ライブラリ側の属性コンポーネント。このアセンブリの GeneratedComponents (モジュール) が生成され、
-// アセンブリレベルの ComponentModule マーカーが埋め込まれる。参照するアプリ側は AddAllGeneratedComponents で一括登録できる
-// Attribute components on the library side. The GeneratedComponents module of this assembly is generated with the
-// assembly level ComponentModule marker, so referencing applications can register everything through AddAllGeneratedComponents.
+// For AddAllGeneratedComponents to collect the generated factories,
 
 public interface IDataStore
 {
@@ -55,12 +52,7 @@ public sealed class LibraryScopedContext
     public Guid Id { get; } = Guid.NewGuid();
 }
 
-// ライブラリ側が提供する「普通の」登録用拡張メソッド。属性を使わず標準の Add* で登録するが、
-// このライブラリはジェネレータを参照しているため、呼び出しはライブラリ側で収集され
-// PlainLibraryService の生成ファクトリがこのアセンブリの ModuleInitializer で登録される
-// A conventional registration extension method provided by the library. It registers through the standard Add*
-// calls without attributes, but because this library references the generator, the calls are collected here and
-// the generated factory for PlainLibraryService is registered by this assembly's module initializer.
+// Library service registered through a conventional extension method
 public interface IPlainLibraryService
 {
     string Describe();

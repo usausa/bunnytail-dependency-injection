@@ -3,8 +3,6 @@ namespace BunnyTail.DependencyInjection;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 
-// コンストラクタ引数の既定値取得 (リフレクション表現の揺れを吸収する)
-// Default value extraction for constructor parameters, absorbing quirks of the reflection representation.
 internal static class ParameterDefaults
 {
     [UnconditionalSuppressMessage("Trimming", "IL2072", Justification = "値型の default 値の生成のみ (値型の既定コンストラクタはメタデータ不要)")]
@@ -21,10 +19,8 @@ internal static class ParameterDefaults
 
         if (value is null)
         {
-            if (parameterType.IsValueType && Nullable.GetUnderlyingType(parameterType) is null)
+            if (parameterType.IsValueType && (Nullable.GetUnderlyingType(parameterType) is null))
             {
-                // struct の default はリフレクションが null を返すことがある
-                // Reflection may report null for the default value of a struct.
                 defaultValue = Activator.CreateInstance(parameterType);
                 return true;
             }
@@ -33,9 +29,7 @@ internal static class ParameterDefaults
             return true;
         }
 
-        // enum の既定値は underlying 型で返ることがある
-        // Enum defaults may be reported as the underlying type.
-        if (parameterType.IsEnum && value.GetType() != parameterType)
+        if (parameterType.IsEnum && (value.GetType() != parameterType))
         {
             defaultValue = Enum.ToObject(parameterType, value);
             return true;

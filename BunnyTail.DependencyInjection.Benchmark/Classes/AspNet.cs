@@ -1,6 +1,5 @@
 namespace BunnyTail.DependencyInjection.Benchmark.Classes;
 
-// ASP.NET Core 風のスコープ利用シミュレーション用 (Controller → transient サービス → scoped サービス)
 // Simulates ASP.NET Core style scope usage (controller -> transient services -> scoped service).
 
 public interface IScopedService
