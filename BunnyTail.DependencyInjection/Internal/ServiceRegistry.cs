@@ -573,8 +573,8 @@ internal sealed class ServiceRegistry
         {
             if (GeneratedFactoryRegistry.TryGet(implType, out var generated) &&
                 ConstructorMatches(constructor, generated.ConstructorParameterTypes) &&
-                IsAllPlansAreServices(plans)
-                && InlinedDependenciesMatch(generated.InlinedDependencies))
+                IsAllPlansAreServices(plans) &&
+                InlinedDependenciesMatch(generated.InlinedDependencies))
             {
                 if (generated.DependencyFactory is null)
                 {

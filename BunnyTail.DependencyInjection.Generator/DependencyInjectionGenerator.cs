@@ -665,10 +665,10 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                 return null;
             }
 
-            if ((invocation.ArgumentList.Arguments.Count != 1)
-                || (invocation.ArgumentList.Arguments[0].Expression is not InvocationExpressionSyntax descriptorInvocation)
-                || (context.SemanticModel.GetSymbolInfo(descriptorInvocation).Symbol is not IMethodSymbol descriptorMethod)
-                || (descriptorMethod.ContainingType?.ToDisplayString() != ServiceDescriptorName))
+            if ((invocation.ArgumentList.Arguments.Count != 1) ||
+                (invocation.ArgumentList.Arguments[0].Expression is not InvocationExpressionSyntax descriptorInvocation) ||
+                (context.SemanticModel.GetSymbolInfo(descriptorInvocation).Symbol is not IMethodSymbol descriptorMethod) ||
+                (descriptorMethod.ContainingType?.ToDisplayString() != ServiceDescriptorName))
             {
                 return null;
             }
@@ -748,8 +748,8 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             var typeofTypes = new List<ITypeSymbol>();
             foreach (var argument in invocation.ArgumentList.Arguments)
             {
-                if ((argument.Expression is TypeOfExpressionSyntax typeOf)
-                    && (context.SemanticModel.GetTypeInfo(typeOf.Type).Type is { } typeSymbol))
+                if ((argument.Expression is TypeOfExpressionSyntax typeOf) &&
+                    (context.SemanticModel.GetTypeInfo(typeOf.Type).Type is { } typeSymbol))
                 {
                     typeofTypes.Add(typeSymbol);
                 }
@@ -790,10 +790,10 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         // closed generic は対象 (new Foo<int>() は生成可能)。open generic 定義と型パラメータを含む場合は対象外
         // Closed generics are eligible (new Foo<int>() can be generated); open generic definitions and types
         // containing type parameters are not.
-        if (implementationSymbol.IsUnboundGenericType
-            || implementationSymbol.IsAbstract
-            || (implementationSymbol.TypeKind != TypeKind.Class)
-            || ContainsTypeParameter(implementationSymbol))
+        if (implementationSymbol.IsUnboundGenericType ||
+            implementationSymbol.IsAbstract ||
+            (implementationSymbol.TypeKind != TypeKind.Class) ||
+            ContainsTypeParameter(implementationSymbol))
         {
             return null;
         }
@@ -878,18 +878,18 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         // typeof(IRepo<>) と typeof(Repo<>) の 2 引数形のみ対象
         // Only the two-argument form with unbound typeof expressions is collected.
         var arguments = invocation.ArgumentList.Arguments;
-        if (arguments.Count != 2
-            || arguments[0].Expression is not TypeOfExpressionSyntax serviceTypeOf
-            || arguments[1].Expression is not TypeOfExpressionSyntax implementationTypeOf)
+        if (arguments.Count != 2 ||
+            arguments[0].Expression is not TypeOfExpressionSyntax serviceTypeOf ||
+            arguments[1].Expression is not TypeOfExpressionSyntax implementationTypeOf)
         {
             return null;
         }
 
-        if (context.SemanticModel.GetTypeInfo(serviceTypeOf.Type).Type is not INamedTypeSymbol service
-            || context.SemanticModel.GetTypeInfo(implementationTypeOf.Type).Type is not INamedTypeSymbol implementation
-            || !service.IsUnboundGenericType
-            || !implementation.IsUnboundGenericType
-            || (service.Arity != implementation.Arity))
+        if (context.SemanticModel.GetTypeInfo(serviceTypeOf.Type).Type is not INamedTypeSymbol service ||
+            context.SemanticModel.GetTypeInfo(implementationTypeOf.Type).Type is not INamedTypeSymbol implementation ||
+            !service.IsUnboundGenericType ||
+            !implementation.IsUnboundGenericType ||
+            (service.Arity != implementation.Arity))
         {
             return null;
         }
@@ -980,9 +980,9 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
     private static ClosedGenericUsageModel? CreateUsageModel(ITypeSymbol? type, SyntaxNode locationNode)
     {
-        if (type is not INamedTypeSymbol closed
-            || !closed.IsGenericType
-            || closed.IsUnboundGenericType)
+        if (type is not INamedTypeSymbol closed ||
+            !closed.IsGenericType ||
+            closed.IsUnboundGenericType)
         {
             return null;
         }
@@ -1023,8 +1023,8 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         foreach (var attribute in context.Attributes)
         {
             var location = LocationInfo.CreateFrom(context.TargetNode);
-            if ((attribute.ConstructorArguments.Length != 1)
-                || (attribute.ConstructorArguments[0].Value is not INamedTypeSymbol type))
+            if ((attribute.ConstructorArguments.Length != 1) ||
+                (attribute.ConstructorArguments[0].Value is not INamedTypeSymbol type))
             {
                 continue;
             }
@@ -1039,12 +1039,12 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             }
 
             var displayName = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-            if (type.IsAbstract
-                || type.IsStatic
-                || (type.TypeKind != TypeKind.Class)
-                || type.IsUnboundGenericType
-                || ContainsTypeParameter(type)
-                || !compilation.IsSymbolAccessibleWithin(type, compilation.Assembly))
+            if (type.IsAbstract ||
+                type.IsStatic ||
+                (type.TypeKind != TypeKind.Class) ||
+                type.IsUnboundGenericType ||
+                ContainsTypeParameter(type) ||
+                !compilation.IsSymbolAccessibleWithin(type, compilation.Assembly))
             {
                 models.Add(Results.Error<FactoryModel>(new DiagnosticInfo(InvalidGenerateComponentFactoryTarget, location, displayName)));
                 continue;
@@ -1088,12 +1088,12 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             return Results.Error<MethodModel>(new DiagnosticInfo(InvalidMethodDefinition, LocationInfo.CreateFrom(syntax), context.TargetSymbol.Name));
         }
 
-        if (!symbol.IsStatic
-            || !symbol.IsPartialDefinition
-            || !symbol.IsExtensionMethod
-            || (symbol.Parameters.Length != 1)
-            || (symbol.Parameters[0].Type.ToDisplayString() != ServiceCollectionName)
-            || (symbol.ReturnType.ToDisplayString() != ServiceCollectionName))
+        if (!symbol.IsStatic ||
+            !symbol.IsPartialDefinition ||
+            !symbol.IsExtensionMethod ||
+            (symbol.Parameters.Length != 1) ||
+            (symbol.Parameters[0].Type.ToDisplayString() != ServiceCollectionName) ||
+            (symbol.ReturnType.ToDisplayString() != ServiceCollectionName))
         {
             return Results.Error<MethodModel>(new DiagnosticInfo(InvalidMethodDefinition, LocationInfo.CreateFrom(syntax), symbol.Name));
         }
@@ -1283,9 +1283,9 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                         continue;
                     }
 
-                    if ((pattern.Namespace is not null)
-                        && (candidate.Namespace != pattern.Namespace)
-                        && !candidate.Namespace.StartsWith(pattern.Namespace + ".", StringComparison.Ordinal))
+                    if ((pattern.Namespace is not null) &&
+                        (candidate.Namespace != pattern.Namespace) &&
+                        !candidate.Namespace.StartsWith(pattern.Namespace + ".", StringComparison.Ordinal))
                     {
                         continue;
                     }
@@ -1519,12 +1519,12 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             var elements = new List<FactoryModel>(list.Count);
             foreach (var (factory, lifetime) in list)
             {
-                if ((factory is null)
-                    || (lifetime != "Transient")
-                    || !factory.EligibleUnkeyed
-                    || (factory.InjectProperties.Count > 0)
-                    || factory.Disposable
-                    || factory.HasInitializer)
+                if ((factory is null) ||
+                    (lifetime != "Transient") ||
+                    !factory.EligibleUnkeyed ||
+                    (factory.InjectProperties.Count > 0) ||
+                    factory.Disposable ||
+                    factory.HasInitializer)
                 {
                     eligible = false;
                     break;
@@ -1824,9 +1824,9 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                         context.ReportDiagnostic(new DiagnosticInfo(CaptiveDependency, component.Location, Display(component.Factory.ImplementationType), Display(typeName)).ToDiagnostic());
                     }
                 }
-                else if (inCompilation
-                    && !typeName.StartsWith("global::System.", StringComparison.Ordinal)
-                    && !IsOpenGenericClosedForm(typeName, openGenericKeys))
+                else if (inCompilation &&
+                    !typeName.StartsWith("global::System.", StringComparison.Ordinal) &&
+                    !IsOpenGenericClosedForm(typeName, openGenericKeys))
                 {
                     // コンパイル対象アセンブリ内の型で、コンパイル時に見える登録に無いもののみ警告
                     // (実行時登録は見えないため Warning。open generic 登録の閉型は解決可能なので除外)
@@ -2047,10 +2047,10 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
             // Transient: リテラル new 展開の対象 (従来条件)
             // Transients are literal-new candidates (existing conditions).
-            if ((pair.Value.Lifetime == "Transient")
-                && (factory.InjectProperties.Count == 0)
-                && !factory.Disposable
-                && !factory.HasInitializer)
+            if ((pair.Value.Lifetime == "Transient") &&
+                (factory.InjectProperties.Count == 0) &&
+                !factory.Disposable &&
+                !factory.HasInitializer)
             {
                 targets[pair.Key] = factory;
             }
@@ -2170,8 +2170,8 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             IAssemblySymbol? assembly = null;
             foreach (var reference in compilation.References)
             {
-                if ((compilation.GetAssemblyOrModuleSymbol(reference) is IAssemblySymbol symbol)
-                    && string.Equals(symbol.Name, pair.Key, StringComparison.Ordinal))
+                if ((compilation.GetAssemblyOrModuleSymbol(reference) is IAssemblySymbol symbol) &&
+                    string.Equals(symbol.Name, pair.Key, StringComparison.Ordinal))
                 {
                     assembly = symbol;
                     break;
@@ -2231,9 +2231,9 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                 continue;
             }
 
-            if ((filterNamespace is not null)
-                && (namespaceName != filterNamespace)
-                && !namespaceName.StartsWith(filterNamespace + ".", StringComparison.Ordinal))
+            if ((filterNamespace is not null) &&
+                (namespaceName != filterNamespace) &&
+                !namespaceName.StartsWith(filterNamespace + ".", StringComparison.Ordinal))
             {
                 continue;
             }
@@ -2283,9 +2283,9 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
             foreach (var attribute in assembly.GetAttributes())
             {
-                if ((attribute.AttributeClass?.ToDisplayString() == "BunnyTail.DependencyInjection.ComponentModuleAttribute")
-                    && (attribute.ConstructorArguments.Length == 1)
-                    && (attribute.ConstructorArguments[0].Value is INamedTypeSymbol moduleType))
+                if ((attribute.AttributeClass?.ToDisplayString() == "BunnyTail.DependencyInjection.ComponentModuleAttribute") &&
+                    (attribute.ConstructorArguments.Length == 1) &&
+                    (attribute.ConstructorArguments[0].Value is INamedTypeSymbol moduleType))
                 {
                     modules.Add(moduleType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
                 }
