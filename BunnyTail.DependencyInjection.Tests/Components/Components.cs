@@ -98,7 +98,7 @@ public sealed class MultiLeafA : IMultiLeaf;
 [Transient(As = typeof(IMultiLeaf))]
 public sealed class MultiLeafB : IMultiLeaf;
 
-// Lazy deps
+// Lazy dependency filling
 
 [Singleton]
 public sealed class LazyProbeSingleton
@@ -172,7 +172,7 @@ public sealed class NodeWithDisposable(DisposableLeaf leaf)
     public DisposableLeaf Leaf { get; } = leaf;
 }
 
-// Keyed deps
+// Keyed dependency filling
 
 [Singleton]
 public sealed class KeyedProbeDependency;

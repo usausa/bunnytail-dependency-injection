@@ -2,6 +2,8 @@ namespace BunnyTail.DependencyInjection;
 
 using System.Runtime.CompilerServices;
 
+using BunnyTail.DependencyInjection.Internal;
+
 //--------------------------------------------------------------------------------
 // Type table
 //--------------------------------------------------------------------------------

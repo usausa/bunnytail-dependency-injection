@@ -3,6 +3,8 @@ namespace BunnyTail.DependencyInjection;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
+using BunnyTail.DependencyInjection.Internal;
+
 public sealed class DependencyAccessor
 {
     private readonly ServiceAccessor accessor;

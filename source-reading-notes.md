@@ -208,3 +208,126 @@ Three features need that second shape and would silently stop demonstrating anyt
 
 Adding a generator reference to that project would collect its `Add*` calls, generate factories for
 both types, and break the last two demos. Its lack of a reference is the point, not an omission.
+
+---
+
+## Findings that belong in the README
+
+### Optional constructor parameters leave the generated path
+
+A constructor with **any** parameter that has a default value is excluded from factory generation
+altogether — the generator clears both the unkeyed and the keyed eligibility flags for it. A generated
+factory resolves its dependencies the `GetRequiredService` way and has no place for the "not
+registered, so use the default" branch that MEDI's rules require, so the type is handed to the runtime
+path instead.
+
+The consequence for a user is a performance one, and it is currently undocumented: adding a single
+optional parameter to a constructor moves that type off the generated path permanently. Worth adding
+to the limitations list, phrased as a trade-off rather than a defect — the behaviour is exactly MEDI's,
+only the resolution path differs.
+
+Everything else about optional parameters keeps working: `ParameterDefaults` normalizes the awkward
+cases that reflection reports oddly (a value type default arrives as `null`, an enum default may
+arrive as its underlying integral type).
+
+### Exception message formatting is not uniform
+
+`TypeNameHelper` renders a type the way MEDI's messages do — `MyApp.IRepository<MyApp.Foo>` rather
+than the raw `FullName` form — and it is used in exactly one message, the circular dependency report,
+where an unreadable chain would defeat the message's purpose.
+
+The other messages ("No service for type ...", "Unable to resolve service for type ...") interpolate
+the type directly, so a generic type reads differently depending on which error you hit. The
+compatibility suite passes either way. Deciding whether to unify them is a small open question, not a
+bug.
+
+### Per-provider state, process-wide factory catalog
+
+Nothing about a built provider is process-global. Singletons live in the provider's root scope, and the
+accessors that hold them belong to that provider's registry, so **two providers built in the same
+process share no instances**. Rebuilding a provider per test is safe, and so is running several
+providers side by side.
+
+The generated factories are the opposite: `GeneratedComponentRegistry` is static, populated once from
+a `[ModuleInitializer]`, and read by every provider in the process. The split is deliberate — *what can
+be constructed* is immutable knowledge worth sharing, *what has been constructed* has a lifetime and
+must not be.
+
+One consequence worth stating for users: `BuildGeneratedServiceProvider()` returns the concrete
+`GeneratedServiceProvider`, not `IServiceProvider`, so the typed instance methods
+(`GetRequiredService<T>()` and friends) bind ahead of MEDI's extension methods and skip the
+`ISupportRequiredService` type test and the double interface dispatch. Assigning the result to an
+`IServiceProvider` variable gives that up.
+
+### What "both paths share one runtime core" actually means
+
+The claim is worth stating concretely, because it is the reason two construction paths can coexist
+without drifting apart. `ServiceAccessor` — the abstract base every service table entry derives from —
+owns lifetime management (transient / singleton / scoped), the cache location, and disposal tracking.
+Derived classes implement one method: *how to construct the instance*. The generated path and the
+runtime path are two such derived classes.
+
+So the only thing that can differ between the paths is construction. Lifetime, caching, disposal order
+and the timing of the initialization callback are decided by shared code, which is why a type moving
+between paths — because a registration changed, or an assumption was rejected — cannot change its
+observable behaviour.
+
+Two consequences worth documenting:
+
+* Singletons are held on the accessor, and accessors belong to a provider's registry, so a singleton
+  resolved for the first time from a child scope is still constructed **in the root scope context** —
+  the injected `IServiceProvider` points at the root, as MEDI requires. Otherwise a singleton would
+  capture a scope that later gets disposed.
+* Whether disposal needs tracking is settled from the implementation type when the accessor is built,
+  so resolution carries no runtime type check. Only user factories, whose implementation type is
+  unknown, keep tracking permanently on.
+
+### Instance registrations are never disposed by the container
+
+`AddSingleton<IFoo>(new Foo())` hands the container something the caller owns, so it is not tracked for
+disposal — the container disposes only what it constructed. This matches MEDI, and it pairs with the
+initialization rule already documented ("factory and instance registrations are user-owned and never
+touched"). Worth stating for disposal as well, since it is a common expectation mismatch.
+
+### The README explains the generator but not why resolution is fast
+
+"How it works" currently covers what the generator collects and emits, and how generated code stays
+correct. It says nothing about the runtime side, even though the benchmark table right below it is
+mostly measuring exactly that. A reader who wants to know *why* `Singleton` lands at ~1ns and `Scoped`
+at ~2.6ns has nowhere to look.
+
+Three mechanisms account for most of it, and each is short to state:
+
+* **An immutable service table.** Registrations realizable at build time are frozen into a table that
+  is never mutated, so resolution reads it lock-free — no synchronization on the hot path. Runtime
+  additions rebuild and swap the table instead of mutating it.
+* **The constant short-circuit.** Once a singleton has been resolved, the value is promoted into the
+  table node itself, so later resolutions are a table lookup plus one field read, with no virtual call
+  on the accessor at all.
+* **Slot-indexed scopes.** A scoped instance lives at a fixed array index assigned when the accessor is
+  built, so a scoped read is an array index rather than a hash lookup.
+
+Worth noting that the first two came out of measurement rather than intuition: the sandbox's
+`ResolutionEntryBenchmark` compared the accessor-virtual-call shape against the constant short-circuit
+(with disassembly) before the latter shipped, and `KeyedLookupBenchmark` did the same for the keyed
+table layout. That is a concrete illustration of what the sandbox project is for.
+
+### The assumption table in the README is missing one row
+
+"How generated code stays correct" lists four assumptions that are verified when an entry is realized.
+The adoption check enforces a fifth: **every constructor argument must be a service resolution, with no
+default-value fallback**. It is the runtime-side half of the generator rule noted above — a constructor
+with an optional parameter is excluded from generation, and the engine independently refuses to adopt a
+factory whose argument plan falls back to a default.
+
+Adding the row keeps the table honest and gives the optional-parameter limitation a place to point at.
+
+Two more things about that table worth stating in prose, because they explain *why* the mechanism is
+trustworthy rather than merely present:
+
+* Verification compares **delegate references**, not type names or registration shapes. The question
+  asked is "would resolving this dependency right now invoke exactly this delegate?", answered by
+  identity, so nothing is inferred and nothing is missed.
+* A failed assumption falls back **silently** — no diagnostic, no warning. That is the intended
+  behaviour, and it is what lets `Replace`, a lifetime change, a decorator or a factory registration
+  keep working unchanged. Worth saying out loud so the silence does not read as an oversight.

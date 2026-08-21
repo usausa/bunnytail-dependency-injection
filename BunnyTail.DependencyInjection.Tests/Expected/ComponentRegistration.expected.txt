@@ -31,11 +31,11 @@ public static class GeneratedComponents
             [typeof(global::BunnyTail.DependencyInjection.Tests.Components.SingletonComponent)],
             [],
             [new global::BunnyTail.DependencyInjection.DependencyPlan(typeof(global::BunnyTail.DependencyInjection.Tests.Components.SingletonComponent), typeof(global::BunnyTail.DependencyInjection.Tests.Components.SingletonComponent)), new global::BunnyTail.DependencyInjection.DependencyPlan(typeof(global::BunnyTail.DependencyInjection.Tests.Components.PropDependency), typeof(global::BunnyTail.DependencyInjection.Tests.Components.PropDependency))],
-            static (provider, deps) =>
+            static (provider, dependencies) =>
             {
                 var instance = new global::BunnyTail.DependencyInjection.Tests.Components.TransientComponent(
-                    global::System.Runtime.CompilerServices.Unsafe.As<global::BunnyTail.DependencyInjection.Tests.Components.SingletonComponent>(deps[0])!);
-                instance.Prop = global::System.Runtime.CompilerServices.Unsafe.As<global::BunnyTail.DependencyInjection.Tests.Components.PropDependency>(deps[1])!;
+                    global::System.Runtime.CompilerServices.Unsafe.As<global::BunnyTail.DependencyInjection.Tests.Components.SingletonComponent>(dependencies[0])!);
+                instance.Prop = global::System.Runtime.CompilerServices.Unsafe.As<global::BunnyTail.DependencyInjection.Tests.Components.PropDependency>(dependencies[1])!;
                 return instance;
             });
 
@@ -113,10 +113,10 @@ public static class GeneratedComponents
             [typeof(global::BunnyTail.DependencyInjection.Tests.Components.LazyProbeSingleton)],
             [],
             [new global::BunnyTail.DependencyInjection.DependencyPlan(typeof(global::BunnyTail.DependencyInjection.Tests.Components.LazyProbeSingleton), typeof(global::BunnyTail.DependencyInjection.Tests.Components.LazyProbeSingleton))],
-            static (provider, deps) =>
+            static (provider, dependencies) =>
             {
                 var instance = new global::BunnyTail.DependencyInjection.Tests.Components.LazyProbeConsumer(
-                    global::System.Runtime.CompilerServices.Unsafe.As<global::BunnyTail.DependencyInjection.Tests.Components.LazyProbeSingleton>(deps[0])!);
+                    global::System.Runtime.CompilerServices.Unsafe.As<global::BunnyTail.DependencyInjection.Tests.Components.LazyProbeSingleton>(dependencies[0])!);
                 return instance;
             });
 
@@ -145,10 +145,10 @@ public static class GeneratedComponents
             global::System.Type.EmptyTypes,
             [],
             [new global::BunnyTail.DependencyInjection.DependencyPlan(typeof(global::BunnyTail.DependencyInjection.Tests.Components.PropDependency), typeof(global::BunnyTail.DependencyInjection.Tests.Components.PropDependency))],
-            static (provider, deps) =>
+            static (provider, dependencies) =>
             {
                 var instance = new global::BunnyTail.DependencyInjection.Tests.Components.OrderedInitComponent();
-                instance.Prop = global::System.Runtime.CompilerServices.Unsafe.As<global::BunnyTail.DependencyInjection.Tests.Components.PropDependency>(deps[0])!;
+                instance.Prop = global::System.Runtime.CompilerServices.Unsafe.As<global::BunnyTail.DependencyInjection.Tests.Components.PropDependency>(dependencies[0])!;
                 ((global::BunnyTail.DependencyInjection.IInitializable)instance).Initialize();
                 return instance;
             });
@@ -158,11 +158,11 @@ public static class GeneratedComponents
             [typeof(global::BunnyTail.DependencyInjection.Tests.Components.DisposableLeaf)],
             [],
             [new global::BunnyTail.DependencyInjection.DependencyPlan(typeof(global::BunnyTail.DependencyInjection.Tests.Components.DisposableLeaf))],
-            static (provider, deps) =>
+            static (provider, dependencies) =>
             {
                 var scope = (global::BunnyTail.DependencyInjection.ServiceProviderScope)provider;
                 var instance = new global::BunnyTail.DependencyInjection.Tests.Components.NodeWithDisposable(
-                    global::System.Runtime.CompilerServices.Unsafe.As<global::BunnyTail.DependencyInjection.DependencyAccessor>(deps[0])!.GetValue<global::BunnyTail.DependencyInjection.Tests.Components.DisposableLeaf>(scope));
+                    global::System.Runtime.CompilerServices.Unsafe.As<global::BunnyTail.DependencyInjection.DependencyAccessor>(dependencies[0])!.GetValue<global::BunnyTail.DependencyInjection.Tests.Components.DisposableLeaf>(scope));
                 return instance;
             });
 
@@ -181,10 +181,10 @@ public static class GeneratedComponents
             [typeof(global::BunnyTail.DependencyInjection.Tests.Components.KeyedProbeDependency), typeof(string)],
             [],
             [new global::BunnyTail.DependencyInjection.DependencyPlan(typeof(global::BunnyTail.DependencyInjection.Tests.Components.KeyedProbeDependency), typeof(global::BunnyTail.DependencyInjection.Tests.Components.KeyedProbeDependency))],
-            static (provider, key, deps) =>
+            static (provider, key, dependencies) =>
             {
                 var instance = new global::BunnyTail.DependencyInjection.Tests.Components.KeyedWithDependency(
-                    global::System.Runtime.CompilerServices.Unsafe.As<global::BunnyTail.DependencyInjection.Tests.Components.KeyedProbeDependency>(deps[0])!,
+                    global::System.Runtime.CompilerServices.Unsafe.As<global::BunnyTail.DependencyInjection.Tests.Components.KeyedProbeDependency>(dependencies[0])!,
                     (string)key!);
                 return instance;
             });

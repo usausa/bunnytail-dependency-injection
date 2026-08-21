@@ -469,10 +469,10 @@ public sealed class GeneratorOutputTest
 
         Assert.Contains("[new global::BunnyTail.DependencyInjection.InlinedDependency(typeof(global::Demo.Branch), typeof(global::Demo.Branch))],", generated, StringComparison.Ordinal);
 
-        Assert.Contains("global::System.Runtime.CompilerServices.Unsafe.As<global::Demo.Shared>(deps[0])!", generated, StringComparison.Ordinal);
+        Assert.Contains("global::System.Runtime.CompilerServices.Unsafe.As<global::Demo.Shared>(dependencies[0])!", generated, StringComparison.Ordinal);
         Assert.Contains("[new global::BunnyTail.DependencyInjection.DependencyPlan(typeof(global::Demo.Shared), typeof(global::Demo.Shared)), new global::BunnyTail.DependencyInjection.DependencyPlan(typeof(global::Demo.DisposableLeaf))],", generated, StringComparison.Ordinal);
-        Assert.Contains("static (provider, deps) =>", generated, StringComparison.Ordinal);
-        Assert.Contains("global::System.Runtime.CompilerServices.Unsafe.As<global::BunnyTail.DependencyInjection.DependencyAccessor>(deps[1])!.GetValue<global::Demo.DisposableLeaf>(scope)", generated, StringComparison.Ordinal);
+        Assert.Contains("static (provider, dependencies) =>", generated, StringComparison.Ordinal);
+        Assert.Contains("global::System.Runtime.CompilerServices.Unsafe.As<global::BunnyTail.DependencyInjection.DependencyAccessor>(dependencies[1])!.GetValue<global::Demo.DisposableLeaf>(scope)", generated, StringComparison.Ordinal);
         Assert.Contains("new global::Demo.Mixed(", generated, StringComparison.Ordinal);
     }
 

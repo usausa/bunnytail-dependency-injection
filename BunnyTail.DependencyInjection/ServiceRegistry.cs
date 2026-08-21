@@ -5,6 +5,8 @@ using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 
+using BunnyTail.DependencyInjection.Internal;
+
 using Microsoft.Extensions.DependencyInjection;
 
 internal sealed class ServiceRegistry
@@ -37,6 +39,10 @@ internal sealed class ServiceRegistry
     private readonly bool disposedSentinel;
 
     internal static readonly ServiceRegistry DisposedSentinel = new();
+
+    //--------------------------------------------------------------------------------
+    // Build
+    //--------------------------------------------------------------------------------
 
     private ServiceRegistry()
     {
@@ -131,6 +137,10 @@ internal sealed class ServiceRegistry
 
     private int NextSlot() => Interlocked.Increment(ref slotCounter) - 1;
 
+    //--------------------------------------------------------------------------------
+    // Diagnostics
+    //--------------------------------------------------------------------------------
+
     internal List<Diagnostics.ServiceFactoryReportEntry> CreateFactoryReport()
     {
         var report = new List<Diagnostics.ServiceFactoryReportEntry>();
@@ -165,7 +175,7 @@ internal sealed class ServiceRegistry
 
             var status = accessor switch
             {
-                FactoryAccessor or DepsFactoryAccessor or KeyedFactoryAccessor or KeyedDepsFactoryAccessor => Diagnostics.ServiceFactoryStatus.Generated,
+                FactoryAccessor or DependencyFactoryAccessor or KeyedFactoryAccessor or KeyedDependencyFactoryAccessor => Diagnostics.ServiceFactoryStatus.Generated,
                 ConstructorAccessor => Diagnostics.ServiceFactoryStatus.RuntimeFallback,
                 null => Diagnostics.ServiceFactoryStatus.Unresolvable,
                 _ => Diagnostics.ServiceFactoryStatus.NotApplicable
@@ -453,6 +463,10 @@ internal sealed class ServiceRegistry
     [return: DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
     private static Type MakeClosedGenericType(Type definition, Type[] typeArguments) => definition.MakeGenericType(typeArguments);
 
+    //--------------------------------------------------------------------------------
+    // Constructor analysis
+    //--------------------------------------------------------------------------------
+
     private ServiceAccessor? CreateConstructorAccessor(
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type implementationType,
         Type serviceType,
@@ -592,6 +606,10 @@ internal sealed class ServiceRegistry
         return (null, typeof(IInitializable).IsAssignableFrom(implType));
     }
 
+    //--------------------------------------------------------------------------------
+    // Generated factory adoption
+    //--------------------------------------------------------------------------------
+
     private ServiceAccessor CreateFinalAccessor(Type implType, ConstructorInfo constructor, ParameterPlan[] plans, object? serviceKey, ResultCache cache, int slot)
     {
         var track = IsDisposableType(implType);
@@ -608,16 +626,16 @@ internal sealed class ServiceRegistry
                 && AllPlansAreServices(plans)
                 && InlinedDependenciesMatch(generated.InlinedDependencies))
             {
-                if (generated.DepsFactory is null)
+                if (generated.DependencyFactory is null)
                 {
                     return new FactoryAccessor(generated.Factory!, cache, slot, track);
                 }
 
-                // deps 形: スロット前提も成立する場合のみ採用し、検証済み accessor を保持する
-                // Deps shape: adopted only when the slot assumptions also hold; keeps the validated accessors.
+                // 依存配列形: スロット前提も成立する場合のみ採用し、検証済み accessor を保持する
+                // Dependency array shape: adopted only when the slot assumptions also hold; keeps the validated accessors.
                 if (TryResolveDependencies(generated.Dependencies, out var dependencyAccessors, out var dependencyHandles))
                 {
-                    return new DepsFactoryAccessor(generated.DepsFactory, dependencyAccessors, dependencyHandles, cache, slot, track);
+                    return new DependencyFactoryAccessor(generated.DependencyFactory, dependencyAccessors, dependencyHandles, cache, slot, track);
                 }
             }
         }
@@ -630,16 +648,16 @@ internal sealed class ServiceRegistry
                 && AllPlansAreServicesOrServiceKey(plans)
                 && InlinedDependenciesMatch(generatedKeyed.InlinedDependencies))
             {
-                if (generatedKeyed.KeyedDepsFactory is null)
+                if (generatedKeyed.KeyedDependencyFactory is null)
                 {
                     return new KeyedFactoryAccessor(generatedKeyed.Factory!, serviceKey, cache, slot, track);
                 }
 
-                // keyed deps 形: スロット前提も成立する場合のみ採用 (非 keyed と同じ検証)
-                // Keyed deps shape: adopted only when the slot assumptions also hold (same validation as non-keyed).
+                // keyed 依存配列形: スロット前提も成立する場合のみ採用 (非 keyed と同じ検証)
+                // Keyed dependency array shape: adopted only when the slot assumptions also hold (same validation as non-keyed).
                 if (TryResolveDependencies(generatedKeyed.Dependencies, out var keyedDependencyAccessors, out var keyedDependencyHandles))
                 {
-                    return new KeyedDepsFactoryAccessor(generatedKeyed.KeyedDepsFactory, serviceKey, keyedDependencyAccessors, keyedDependencyHandles, cache, slot, track);
+                    return new KeyedDependencyFactoryAccessor(generatedKeyed.KeyedDependencyFactory, serviceKey, keyedDependencyAccessors, keyedDependencyHandles, cache, slot, track);
                 }
             }
         }
@@ -707,13 +725,13 @@ internal sealed class ServiceRegistry
     }
     // ReSharper restore ParameterTypeCanBeEnumerable.Local
 
-    // deps スロット前提の検証。インスタンススロットは「前提どおりの実装型の生成ファクトリによる singleton 解決」を
+    // 依存スロット前提の検証。インスタンススロットは「前提どおりの実装型の生成ファクトリによる singleton 解決」を
     // 要求する。アクセサスロットは解決可能なことだけを要求する (accessor 呼び出しはレジストリ解決と意味論同一のため、
-    // lifetime や実装の前提は不要)。成立時は検証済み accessor と、アクセサスロット用の生成済みハンドルを deps 充填用に返す
-    // Validation of the deps slot assumptions. Instance slots require a singleton resolution through the assumed
+    // lifetime や実装の前提は不要)。成立時は検証済み accessor と、アクセサスロット用の生成済みハンドルを依存配列の充填用に返す
+    // Validation of the dependency slot assumptions. Instance slots require a singleton resolution through the assumed
     // implementation's generated factory. Accessor slots only require resolvability (calling the accessor is
     // semantically identical to a registry resolution, so no lifetime or implementation assumption is needed).
-    // On success the validated accessors and the pre-created handles for accessor slots are returned for filling deps.
+    // On success the validated accessors and the pre-created handles for accessor slots are returned for filling the dependency array.
     private bool TryResolveDependencies(DependencyPlan[] dependencies, out ServiceAccessor[] accessors, out DependencyAccessor?[] handles)
     {
         accessors = dependencies.Length == 0 ? [] : new ServiceAccessor[dependencies.Length];
@@ -752,7 +770,7 @@ internal sealed class ServiceRegistry
         return accessor switch
         {
             FactoryAccessor factory when factory.Cache == requiredCache => ReferenceEquals(factory.Factory, entry.Factory),
-            DepsFactoryAccessor deps when deps.Cache == requiredCache => ReferenceEquals(deps.Factory, entry.DepsFactory),
+            DependencyFactoryAccessor withDependencies when withDependencies.Cache == requiredCache => ReferenceEquals(withDependencies.Factory, entry.DependencyFactory),
             _ => false
         };
     }
@@ -778,6 +796,10 @@ internal sealed class ServiceRegistry
     }
 
     private static readonly PropertyInjection[] EmptyPropertyInjections = [];
+
+    //--------------------------------------------------------------------------------
+    // Injection plans
+    //--------------------------------------------------------------------------------
 
     // [Inject] プロパティは生成経路 (Source Generator) では静的に参照されるため保持される。
     // 「トリミング環境 + 実行時のみ判明する登録 + [Inject] プロパティ」の組合せのみ制約 (ドキュメント化済み)

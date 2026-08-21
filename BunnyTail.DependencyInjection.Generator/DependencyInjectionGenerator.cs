@@ -1905,8 +1905,8 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     {
         private readonly Dictionary<string, FactoryModel> targets;
 
-        // 一意な direct Singleton 登録 (サービス型 → 実装型)。deps 配列渡しの対象
-        // Unambiguous direct singleton registrations (service type -> implementation type), eligible for the deps array.
+        // 一意な direct Singleton 登録 (サービス型 → 実装型)。依存配列渡しの対象
+        // Unambiguous direct singleton registrations (service type -> implementation type), eligible for the dependency array.
         private readonly Dictionary<string, string> singletonTargets;
 
         public InlineTargetMap(Dictionary<string, FactoryModel> targets, Dictionary<string, string> singletonTargets)
@@ -2035,8 +2035,8 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                 continue;
             }
 
-            // Singleton: deps 配列渡しの対象 (disposal/初期化/[Inject] は実装側の accessor が担うため制限なし)
-            // Singletons are deps-array candidates (disposal/initialization/[Inject] are handled by the dependency's own accessor).
+            // Singleton: 依存配列渡しの対象 (disposal/初期化/[Inject] は実装側の accessor が担うため制限なし)
+            // Singletons are dependency-array candidates (disposal/initialization/[Inject] are handled by the dependency's own accessor).
             if (pair.Value.Lifetime == "Singleton")
             {
                 singletonTargets[pair.Key] = pair.Value.Impl;
@@ -2429,7 +2429,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     // MEDI 拡張メソッド経由 (ISupportRequiredService 型テスト + 二重ディスパッチ) より約 0.8ns/件 短い
     // Dependency resolutions are emitted as direct calls on the sealed ServiceProviderScope,
     // about 0.8 ns per dependency shorter than the MEDI extension methods (type test + double dispatch).
-    private static void EmitDependencyResolution(SourceBuilder builder, string typeName, int kind, string? keyLiteral, bool isValueType, Dictionary<string, (int Slot, bool Accessor)>? depsIndex)
+    private static void EmitDependencyResolution(SourceBuilder builder, string typeName, int kind, string? keyLiteral, bool isValueType, Dictionary<string, (int Slot, bool Accessor)>? dependencyIndex)
     {
         switch (kind)
         {
@@ -2443,10 +2443,10 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                 builder.Append("scope.GetRequiredKeyedService<").Append(typeName).Append(">(key)");
                 break;
             default:
-                if ((depsIndex is not null) && depsIndex.TryGetValue(typeName, out var depSlot))
+                if ((dependencyIndex is not null) && dependencyIndex.TryGetValue(typeName, out var dependencySlot))
                 {
-                    var slotLiteral = depSlot.Slot.ToString(System.Globalization.CultureInfo.InvariantCulture);
-                    if (depSlot.Accessor)
+                    var slotLiteral = dependencySlot.Slot.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    if (dependencySlot.Accessor)
                     {
                         // アクセサスロット: 実現済み accessor の直接呼び出し (scoped / 不適格 transient など)。
                         // テーブル probe と GetRequiredService ラッパを飛ばす
@@ -2454,22 +2454,22 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                         // skipping the table probe and the GetRequiredService wrapper.
                         if (isValueType)
                         {
-                            builder.Append('(').Append(typeName).Append(")global::System.Runtime.CompilerServices.Unsafe.As<global::BunnyTail.DependencyInjection.DependencyAccessor>(deps[").Append(slotLiteral).Append("])!.GetValue(scope)");
+                            builder.Append('(').Append(typeName).Append(")global::System.Runtime.CompilerServices.Unsafe.As<global::BunnyTail.DependencyInjection.DependencyAccessor>(dependencies[").Append(slotLiteral).Append("])!.GetValue(scope)");
                         }
                         else
                         {
-                            builder.Append("global::System.Runtime.CompilerServices.Unsafe.As<global::BunnyTail.DependencyInjection.DependencyAccessor>(deps[").Append(slotLiteral).Append("])!.GetValue<").Append(typeName).Append(">(scope)");
+                            builder.Append("global::System.Runtime.CompilerServices.Unsafe.As<global::BunnyTail.DependencyInjection.DependencyAccessor>(dependencies[").Append(slotLiteral).Append("])!.GetValue<").Append(typeName).Append(">(scope)");
                         }
                     }
                     else if (isValueType)
                     {
-                        // インスタンススロット: 解決済み deps スロットの読み出しのみ。前提検証済みのため参照型は Unsafe.As
-                        // Instance slot: just a resolved deps slot read. Assumptions are validated, so reference types use Unsafe.As.
-                        builder.Append('(').Append(typeName).Append(")deps[").Append(slotLiteral).Append("]!");
+                        // インスタンススロット: 解決済み 依存スロットの読み出しのみ。前提検証済みのため参照型は Unsafe.As
+                        // Instance slot: just a resolved dependency slot read. Assumptions are validated, so reference types use Unsafe.As.
+                        builder.Append('(').Append(typeName).Append(")dependencies[").Append(slotLiteral).Append("]!");
                     }
                     else
                     {
-                        builder.Append("global::System.Runtime.CompilerServices.Unsafe.As<").Append(typeName).Append(">(deps[").Append(slotLiteral).Append("])!");
+                        builder.Append("global::System.Runtime.CompilerServices.Unsafe.As<").Append(typeName).Append(">(dependencies[").Append(slotLiteral).Append("])!");
                     }
                 }
                 else
@@ -2485,7 +2485,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     // インスタンススロットだけが scope 不要で、アクセサスロットは GetValue(scope) を呼ぶ
     // Whether the emitted body contains any resolution that uses the scope (decides if the scope local is needed).
     // Only instance slots avoid the scope; accessor slots call GetValue(scope).
-    private static bool NeedsScope(int kind, string typeName, InlineNode? node, Dictionary<string, (int Slot, bool Accessor)>? depsIndex)
+    private static bool NeedsScope(int kind, string typeName, InlineNode? node, Dictionary<string, (int Slot, bool Accessor)>? dependencyIndex)
     {
         if (node is null)
         {
@@ -2499,18 +2499,18 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                 return true;
             }
 
-            if ((depsIndex is null) || !depsIndex.TryGetValue(typeName, out var depSlot))
+            if ((dependencyIndex is null) || !dependencyIndex.TryGetValue(typeName, out var dependencySlot))
             {
                 return true;
             }
 
-            return depSlot.Accessor;
+            return dependencySlot.Accessor;
         }
 
         // ReSharper disable once LoopCanBeConvertedToQuery
         for (var i = 0; i < node.Factory.Parameters.Count; i++)
         {
-            if (NeedsScope(node.Factory.Parameters[i].Kind, node.Factory.Parameters[i].TypeName, node.Parameters[i], depsIndex))
+            if (NeedsScope(node.Factory.Parameters[i].Kind, node.Factory.Parameters[i].TypeName, node.Parameters[i], dependencyIndex))
             {
                 return true;
             }
@@ -2519,21 +2519,21 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         return false;
     }
 
-    // 出力される式に現れる非インライン依存へ deps スロットを割り当てる (ネストしたインライン展開の内側も含む)。
+    // 出力される式に現れる非インライン依存へ 依存スロットを割り当てる (ネストしたインライン展開の内側も含む)。
     // 一意な direct Singleton はインスタンススロット、それ以外の Service 依存はアクセサスロット
     // (解決可能なことだけを前提とするため、実装型の仮定は持たない)
-    // Assigns deps slots to the non-inlined dependencies appearing in the emitted body, including inside nested
+    // Assigns dependency slots to the non-inlined dependencies appearing in the emitted body, including inside nested
     // inline expansions. Unambiguous direct singletons become instance slots; every other service dependency becomes
     // an accessor slot (which only assumes resolvability, so it carries no implementation assumption).
-    private static void CollectDependencySlots(int kind, string typeName, InlineNode? node, InlineTargetMap map, Dictionary<string, (int Slot, bool Accessor)> depsIndex, List<(string Service, string? Implementation)> depsList)
+    private static void CollectDependencySlots(int kind, string typeName, InlineNode? node, InlineTargetMap map, Dictionary<string, (int Slot, bool Accessor)> dependencyIndex, List<(string Service, string? Implementation)> dependencyList)
     {
         if (node is null)
         {
-            if ((kind == DependencyKinds.Service) && !depsIndex.ContainsKey(typeName))
+            if ((kind == DependencyKinds.Service) && !dependencyIndex.ContainsKey(typeName))
             {
                 var implementation = map.GetSingletonTarget(typeName);
-                depsIndex[typeName] = (depsIndex.Count, implementation is null);
-                depsList.Add((typeName, implementation));
+                dependencyIndex[typeName] = (dependencyIndex.Count, implementation is null);
+                dependencyList.Add((typeName, implementation));
             }
 
             return;
@@ -2541,7 +2541,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
         for (var i = 0; i < node.Factory.Parameters.Count; i++)
         {
-            CollectDependencySlots(node.Factory.Parameters[i].Kind, node.Factory.Parameters[i].TypeName, node.Parameters[i], map, depsIndex, depsList);
+            CollectDependencySlots(node.Factory.Parameters[i].Kind, node.Factory.Parameters[i].TypeName, node.Parameters[i], map, dependencyIndex, dependencyList);
         }
     }
 
@@ -2583,21 +2583,21 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             }
         }
 
-        // deps スロット割り当て (unkeyed / keyed 共通。keyed 種別の依存はスロット対象外のまま key / scope 経由)
-        // Deps slot assignment (shared by unkeyed and keyed factories; keyed-kind dependencies stay on the key / scope path).
-        var depsIndex = new Dictionary<string, (int Slot, bool Accessor)>(StringComparer.Ordinal);
-        var depsList = new List<(string Service, string? Implementation)>();
+        // 依存スロット割り当て (unkeyed / keyed 共通。keyed 種別の依存はスロット対象外のまま key / scope 経由)
+        // Dependency slot assignment (shared by unkeyed and keyed factories; keyed-kind dependencies stay on the key / scope path).
+        var dependencyIndex = new Dictionary<string, (int Slot, bool Accessor)>(StringComparer.Ordinal);
+        var dependencyList = new List<(string Service, string? Implementation)>();
         for (var i = 0; i < factory.Parameters.Count; i++)
         {
-            CollectDependencySlots(factory.Parameters[i].Kind, factory.Parameters[i].TypeName, parameterNodes[i], inlineMap, depsIndex, depsList);
+            CollectDependencySlots(factory.Parameters[i].Kind, factory.Parameters[i].TypeName, parameterNodes[i], inlineMap, dependencyIndex, dependencyList);
         }
 
         for (var i = 0; i < factory.InjectProperties.Count; i++)
         {
-            CollectDependencySlots(factory.InjectProperties[i].Kind, factory.InjectProperties[i].TypeName, propertyNodes[i], inlineMap, depsIndex, depsList);
+            CollectDependencySlots(factory.InjectProperties[i].Kind, factory.InjectProperties[i].TypeName, propertyNodes[i], inlineMap, dependencyIndex, dependencyList);
         }
 
-        var emitDepsIndex = depsList.Count > 0 ? depsIndex : null;
+        var emitDependencyIndex = dependencyList.Count > 0 ? dependencyIndex : null;
 
         builder.AppendLine(keyed
             ? "global::BunnyTail.DependencyInjection.GeneratedComponentRegistry.RegisterKeyed("
@@ -2625,7 +2625,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             builder.Append("],").NewLine();
         }
 
-        if ((assumptions.Count > 0) || (depsList.Count > 0))
+        if ((assumptions.Count > 0) || (dependencyList.Count > 0))
         {
             builder.Indent().Append('[');
             for (var i = 0; i < assumptions.Count; i++)
@@ -2641,17 +2641,17 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             builder.Append("],").NewLine();
         }
 
-        if (depsList.Count > 0)
+        if (dependencyList.Count > 0)
         {
             builder.Indent().Append('[');
-            for (var i = 0; i < depsList.Count; i++)
+            for (var i = 0; i < dependencyList.Count; i++)
             {
                 if (i > 0)
                 {
                     builder.Append(", ");
                 }
 
-                var (service, implementation) = depsList[i];
+                var (service, implementation) = dependencyList[i];
                 if (implementation is null)
                 {
                     builder.Append("new global::BunnyTail.DependencyInjection.DependencyPlan(typeof(").Append(service).Append("))");
@@ -2666,8 +2666,8 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         }
 
         var lambdaHeader = keyed
-            ? (depsList.Count > 0 ? "static (provider, key, deps) => " : "static (provider, key) => ")
-            : (depsList.Count > 0 ? "static (provider, deps) => " : "static provider => ");
+            ? (dependencyList.Count > 0 ? "static (provider, key, dependencies) => " : "static (provider, key) => ")
+            : (dependencyList.Count > 0 ? "static (provider, dependencies) => " : "static provider => ");
 
         if ((factory.Parameters.Count == 0) && (factory.InjectProperties.Count == 0) && !factory.HasInitializer)
         {
@@ -2678,12 +2678,12 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             var needsScope = false;
             for (var i = 0; i < factory.Parameters.Count; i++)
             {
-                needsScope = needsScope || NeedsScope(factory.Parameters[i].Kind, factory.Parameters[i].TypeName, parameterNodes[i], emitDepsIndex);
+                needsScope = needsScope || NeedsScope(factory.Parameters[i].Kind, factory.Parameters[i].TypeName, parameterNodes[i], emitDependencyIndex);
             }
 
             for (var i = 0; i < factory.InjectProperties.Count; i++)
             {
-                needsScope = needsScope || NeedsScope(factory.InjectProperties[i].Kind, factory.InjectProperties[i].TypeName, propertyNodes[i], emitDepsIndex);
+                needsScope = needsScope || NeedsScope(factory.InjectProperties[i].Kind, factory.InjectProperties[i].TypeName, propertyNodes[i], emitDependencyIndex);
             }
 
             builder.Indent().Append(lambdaHeader.TrimEnd()).NewLine();
@@ -2706,7 +2706,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                 {
                     var parameter = factory.Parameters[i];
                     builder.Indent();
-                    EmitArgument(builder, parameterNodes[i], parameter.TypeName, parameter.Kind, parameter.KeyLiteral, parameter.IsValueType, emitDepsIndex);
+                    EmitArgument(builder, parameterNodes[i], parameter.TypeName, parameter.Kind, parameter.KeyLiteral, parameter.IsValueType, emitDependencyIndex);
                     builder.Append(i < factory.Parameters.Count - 1 ? "," : ");").NewLine();
                 }
 
@@ -2717,7 +2717,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             {
                 var property = factory.InjectProperties[i];
                 builder.Indent().Append("instance.").Append(property.Name).Append(" = ");
-                EmitArgument(builder, propertyNodes[i], property.TypeName, property.Kind, property.KeyLiteral, property.IsValueType, emitDepsIndex);
+                EmitArgument(builder, propertyNodes[i], property.TypeName, property.Kind, property.KeyLiteral, property.IsValueType, emitDependencyIndex);
                 builder.Append(';').NewLine();
             }
 
@@ -2814,15 +2814,15 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
     // インライン展開ノードがあればリテラル new を、なければ従来の解決式を出力する
     // Emits a literal new when an inline node exists, otherwise the ordinary resolution expression.
-    private static void EmitArgument(SourceBuilder builder, InlineNode? node, string typeName, int kind, string? keyLiteral, bool isValueType, Dictionary<string, (int Slot, bool Accessor)>? depsIndex)
+    private static void EmitArgument(SourceBuilder builder, InlineNode? node, string typeName, int kind, string? keyLiteral, bool isValueType, Dictionary<string, (int Slot, bool Accessor)>? dependencyIndex)
     {
         if (node is null)
         {
-            EmitDependencyResolution(builder, typeName, kind, keyLiteral, isValueType, depsIndex);
+            EmitDependencyResolution(builder, typeName, kind, keyLiteral, isValueType, dependencyIndex);
         }
         else
         {
-            EmitInlineNew(builder, node, depsIndex);
+            EmitInlineNew(builder, node, dependencyIndex);
         }
     }
 
@@ -2830,7 +2830,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     // (MEDI 互換: transient は都度新規生成。インスタンスを共有してはならない)
     // Literal new expansion of transient dependencies. The same dependency gets a fresh new at every use site
     // (MEDI compatible: transients are created per use and must never be shared).
-    private static void EmitInlineNew(SourceBuilder builder, InlineNode node, Dictionary<string, (int Slot, bool Accessor)>? depsIndex)
+    private static void EmitInlineNew(SourceBuilder builder, InlineNode node, Dictionary<string, (int Slot, bool Accessor)>? dependencyIndex)
     {
         builder.Append("new ").Append(node.Factory.ImplementationType).Append('(');
         for (var i = 0; i < node.Factory.Parameters.Count; i++)
@@ -2841,7 +2841,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             }
 
             var parameter = node.Factory.Parameters[i];
-            EmitArgument(builder, node.Parameters[i], parameter.TypeName, parameter.Kind, parameter.KeyLiteral, parameter.IsValueType, depsIndex);
+            EmitArgument(builder, node.Parameters[i], parameter.TypeName, parameter.Kind, parameter.KeyLiteral, parameter.IsValueType, dependencyIndex);
         }
 
         builder.Append(')');

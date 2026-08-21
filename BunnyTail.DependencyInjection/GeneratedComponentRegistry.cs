@@ -25,10 +25,10 @@ public sealed class InlinedDependency
     }
 }
 
-// deps 配列 1 スロットの前提。インスタンススロット (ImplementationType あり) は「前提どおりの実装の生成ファクトリに
+// 依存配列 1 スロットの前提。インスタンススロット (ImplementationType あり) は「前提どおりの実装の生成ファクトリに
 // よる singleton 解決」を要求し、解決済みインスタンスを保持する。アクセサスロット (ImplementationType なし) は
 // 解決可能であることだけを要求し、実現済み accessor を保持する (scoped / inline 不適格 transient など任意の lifetime)
-// Assumption for one slot of the deps array. Instance slots (with ImplementationType) require a singleton
+// Assumption for one slot of the dependency array. Instance slots (with ImplementationType) require a singleton
 // resolution through the assumed implementation's generated factory and hold the resolved instance. Accessor
 // slots (without ImplementationType) only require resolvability and hold the realized accessor
 // (any lifetime: scoped, non-inlinable transients and so on).
@@ -75,15 +75,15 @@ public static class GeneratedComponentRegistry
 
         public readonly InlinedDependency[] InlinedDependencies;
 
-        // deps 配列の前提。スロット順に対応する (DepsFactory 形のみ)
-        // Deps array assumptions, in slot order (deps-shaped factories only).
+        // 依存配列の前提。スロット順に対応する (DependencyFactory 形のみ)
+        // Dependency array assumptions, in slot order (dependency-array-shaped factories only).
         public readonly DependencyPlan[] Dependencies;
 
         public readonly Func<IServiceProvider, object>? Factory;
 
         // 依存を解決済み配列で受け取る形 (Factory と排他)
         // Shape receiving resolved dependencies as an array (mutually exclusive with Factory).
-        public readonly Func<IServiceProvider, object?[], object>? DepsFactory;
+        public readonly Func<IServiceProvider, object?[], object>? DependencyFactory;
 #pragma warning restore SA1401
 
         public Entry(Type[] constructorParameterTypes, InlinedDependency[] inlinedDependencies, Func<IServiceProvider, object> factory)
@@ -94,12 +94,12 @@ public static class GeneratedComponentRegistry
             Factory = factory;
         }
 
-        public Entry(Type[] constructorParameterTypes, InlinedDependency[] inlinedDependencies, DependencyPlan[] dependencies, Func<IServiceProvider, object?[], object> depsFactory)
+        public Entry(Type[] constructorParameterTypes, InlinedDependency[] inlinedDependencies, DependencyPlan[] dependencies, Func<IServiceProvider, object?[], object> dependencyFactory)
         {
             ConstructorParameterTypes = constructorParameterTypes;
             InlinedDependencies = inlinedDependencies;
             Dependencies = dependencies;
-            DepsFactory = depsFactory;
+            DependencyFactory = dependencyFactory;
         }
     }
 
@@ -110,15 +110,15 @@ public static class GeneratedComponentRegistry
 
         public readonly InlinedDependency[] InlinedDependencies;
 
-        // deps 配列の前提。スロット順に対応する (KeyedDepsFactory 形のみ)
-        // Deps array assumptions, in slot order (keyed deps-shaped factories only).
+        // 依存配列の前提。スロット順に対応する (KeyedDependencyFactory 形のみ)
+        // Dependency array assumptions, in slot order (keyed dependency-array-shaped factories only).
         public readonly DependencyPlan[] Dependencies;
 
         public readonly Func<IServiceProvider, object?, object>? Factory;
 
         // 依存を解決済み配列で受け取る形 (Factory と排他)
         // Shape receiving resolved dependencies as an array (mutually exclusive with Factory).
-        public readonly Func<IServiceProvider, object?, object?[], object>? KeyedDepsFactory;
+        public readonly Func<IServiceProvider, object?, object?[], object>? KeyedDependencyFactory;
 #pragma warning restore SA1401
 
         public KeyedEntry(Type[] constructorParameterTypes, InlinedDependency[] inlinedDependencies, Func<IServiceProvider, object?, object> factory)
@@ -129,12 +129,12 @@ public static class GeneratedComponentRegistry
             Factory = factory;
         }
 
-        public KeyedEntry(Type[] constructorParameterTypes, InlinedDependency[] inlinedDependencies, DependencyPlan[] dependencies, Func<IServiceProvider, object?, object?[], object> keyedDepsFactory)
+        public KeyedEntry(Type[] constructorParameterTypes, InlinedDependency[] inlinedDependencies, DependencyPlan[] dependencies, Func<IServiceProvider, object?, object?[], object> keyedDependencyFactory)
         {
             ConstructorParameterTypes = constructorParameterTypes;
             InlinedDependencies = inlinedDependencies;
             Dependencies = dependencies;
-            KeyedDepsFactory = keyedDepsFactory;
+            KeyedDependencyFactory = keyedDependencyFactory;
         }
     }
 
@@ -183,8 +183,8 @@ public static class GeneratedComponentRegistry
         Map[implementationType] = new Entry(constructorParameterTypes, inlinedDependencies, factory);
     }
 
-    // 依存を deps 配列で受け取る形。dependencies がスロット順の前提になる
-    // Deps-shaped registration receiving resolved dependencies; dependencies define the slot order assumptions.
+    // 依存を 依存配列で受け取る形。dependencies がスロット順の前提になる
+    // Dependency-array-shaped registration receiving resolved dependencies; dependencies define the slot order assumptions.
     public static void Register(Type implementationType, Type[] constructorParameterTypes, InlinedDependency[] inlinedDependencies, DependencyPlan[] dependencies, Func<IServiceProvider, object?[], object> factory)
     {
         ArgumentNullException.ThrowIfNull(implementationType);
@@ -207,8 +207,8 @@ public static class GeneratedComponentRegistry
         KeyedMap[implementationType] = new KeyedEntry(constructorParameterTypes, inlinedDependencies, factory);
     }
 
-    // 依存を deps 配列で受け取る keyed 形。dependencies がスロット順の前提になる
-    // Keyed deps-shaped registration receiving resolved dependencies; dependencies define the slot order assumptions.
+    // 依存を 依存配列で受け取る keyed 形。dependencies がスロット順の前提になる
+    // Keyed dependency-array-shaped registration receiving resolved dependencies; dependencies define the slot order assumptions.
     public static void RegisterKeyed(Type implementationType, Type[] constructorParameterTypes, InlinedDependency[] inlinedDependencies, DependencyPlan[] dependencies, Func<IServiceProvider, object?, object?[], object> factory)
     {
         ArgumentNullException.ThrowIfNull(implementationType);

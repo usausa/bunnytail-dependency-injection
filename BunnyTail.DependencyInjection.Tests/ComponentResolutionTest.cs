@@ -273,7 +273,7 @@ public sealed class ComponentResolutionTest
     //--------------------------------------------------------------------------------
 
     [Fact]
-    public void DepsShapedFactoryFallsBackWhenSingletonLifetimeIsReplaced()
+    public void DependencyArrayFactoryFallsBackWhenSingletonLifetimeIsReplaced()
     {
         // Arrange
         var services = new ServiceCollection().AddGeneratedComponents();
@@ -290,7 +290,7 @@ public sealed class ComponentResolutionTest
     }
 
     [Fact]
-    public void DepsFillingIsLazy()
+    public void DependencyFillingIsLazy()
     {
         // Arrange
         var before = LazyProbeSingleton.Created;

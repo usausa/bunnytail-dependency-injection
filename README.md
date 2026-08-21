@@ -347,15 +347,15 @@ GeneratedComponentRegistry.Register(
     [typeof(Repository), typeof(Logger)],
     [new InlinedDependency(typeof(Repository), typeof(Repository))],
     [new DependencyPlan(typeof(Logger), typeof(Logger))],
-    static (provider, deps) => new Service(
+    static (provider, dependencies) => new Service(
         new Repository(),                                   // transient dependency inlined as a literal new
-        Unsafe.As<Logger>(deps[0])!));                      // singleton dependency read from a resolved slot
+        Unsafe.As<Logger>(dependencies[0])!));                      // singleton dependency read from a resolved slot
 ```
 
 Three shapes come out of this, chosen per dependency lifetime:
 
 * 🧩 **Inline expansion** — a transient dependency becomes a literal `new` inside the parent factory, collapsing a whole transient graph into one allocation site
-* 📌 **Instance slots** — an unambiguous singleton dependency is resolved once, then read straight from the deps array
+* 📌 **Instance slots** — an unambiguous singleton dependency is resolved once, then read straight from the dependency array
 * 🎯 **Accessor slots** — scoped and non-inlinable dependencies get a validated accessor handle, skipping the service table lookup on every resolution
 
 Two more cases are handled at compile time:
@@ -371,7 +371,7 @@ Generated factories are assumptions about registrations, and registrations are o
 |---|---|
 | The constructor MEDI selects is the one the factory was generated for | Parameter type comparison |
 | Every inlined transient dependency still resolves to that implementation's generated factory as a transient | Delegate reference comparison per dependency |
-| Every deps slot still matches its planned lifetime and implementation | Same comparison, per slot |
+| Every dependency slot still matches its planned lifetime and implementation | Same comparison, per slot |
 | An enumerable still has the same elements in the same order | Ordered per-element comparison |
 
 So `Replace`, a lifetime change, a factory registration and a decorator all keep working — they simply take the runtime path.
