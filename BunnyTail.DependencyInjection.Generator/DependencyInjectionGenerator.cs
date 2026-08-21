@@ -518,9 +518,11 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             }
         }
 
+        // ReSharper disable UseCollectionExpression
 #pragma warning disable IDE0028
         return filtered.Count == interfaces.Count ? interfaces : new([.. filtered]);
 #pragma warning restore IDE0028
+        // ReSharper restore UseCollectionExpression
     }
 
     private static bool IsIgnoredInterface(string fullyQualifiedName, EquatableArray<string> ignoreInterfaces)

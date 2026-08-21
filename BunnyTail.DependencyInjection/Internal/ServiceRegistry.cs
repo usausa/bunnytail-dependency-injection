@@ -41,7 +41,7 @@ internal sealed class ServiceRegistry
     internal static readonly ServiceRegistry DisposedSentinel = new();
 
     //--------------------------------------------------------------------------------
-    // Build
+    // Constructor
     //--------------------------------------------------------------------------------
 
     private ServiceRegistry()
@@ -135,6 +135,10 @@ internal sealed class ServiceRegistry
         keyedTableEntries = keyedEntries;
     }
 
+    //--------------------------------------------------------------------------------
+    // Helper
+    //--------------------------------------------------------------------------------
+
     private int NextSlot() => Interlocked.Increment(ref slotCounter) - 1;
 
     //--------------------------------------------------------------------------------
@@ -146,17 +150,10 @@ internal sealed class ServiceRegistry
         var report = new List<Diagnostics.ServiceFactoryReportEntry>();
         foreach (var pair in exactMap)
         {
-            // 実際に解決されるのは同一 (サービス型, キー) の最後の登録 (MEDI の last-wins)
-            // The registration actually resolved is the last one for the same (service type, key) pair (MEDI last-wins).
             var descriptor = pair.Value[^1];
             var key = descriptor.IsKeyedService ? descriptor.ServiceKey : null;
             var implementationType = descriptor.IsKeyedService ? descriptor.KeyedImplementationType : descriptor.ImplementationType;
 
-            // コンテナが型を構築しない登録 (ファクトリ・インスタンス・open generic 定義) は生成対象外。
-            // 実装型を持つ登録だけが分類対象なので、生成ファクトリとユーザーデリゲートが混同されることはない
-            // Registrations where the container does not construct the type (factories, instances, open generic
-            // definitions) have nothing to generate. Only registrations carrying an implementation type are
-            // classified, so generated factories are never confused with user delegates.
             if ((implementationType is null) || implementationType.IsGenericTypeDefinition || descriptor.ServiceType.IsGenericTypeDefinition)
             {
                 report.Add(new Diagnostics.ServiceFactoryReportEntry(descriptor.ServiceType, implementationType, key, descriptor.Lifetime, Diagnostics.ServiceFactoryStatus.NotApplicable));
@@ -187,7 +184,7 @@ internal sealed class ServiceRegistry
     }
 
     //--------------------------------------------------------------------------------
-    // Entry realization (エントリ実現)
+    // Entry
     //--------------------------------------------------------------------------------
 
     // ホット経路は主テーブル (イミュータブル、同期なし) を引くだけ。realization は低速パスへ分離してあり、

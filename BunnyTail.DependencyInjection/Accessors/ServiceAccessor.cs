@@ -23,10 +23,6 @@ internal abstract class ServiceAccessor
 
     public virtual object? GetValue(ServiceProviderScope scope)
     {
-        // hot path 最短化: Transient は直接生成、Singleton はフィールド 1 読み、Scoped はスロット 1 読み。
-        // 初回生成は NoInlining の cold path へ分離 (JIT-04)
-        // Shortest hot path: transient creates directly, singleton is one field read, scoped is one slot read.
-        // First-time creation is split into NoInlining cold paths (JIT-04).
         if (Cache == ResultCache.None)
         {
             var value = Create(scope);
