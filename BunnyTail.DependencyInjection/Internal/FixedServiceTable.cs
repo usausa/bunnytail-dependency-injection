@@ -1,8 +1,8 @@
-namespace BunnyTail.DependencyInjection;
+namespace BunnyTail.DependencyInjection.Internal;
 
 using System.Runtime.CompilerServices;
 
-using BunnyTail.DependencyInjection.Internal;
+using BunnyTail.DependencyInjection.Accessors;
 
 //--------------------------------------------------------------------------------
 // Type table

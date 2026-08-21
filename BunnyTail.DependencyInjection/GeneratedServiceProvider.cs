@@ -2,6 +2,8 @@ namespace BunnyTail.DependencyInjection;
 
 using System.Runtime.CompilerServices;
 
+using BunnyTail.DependencyInjection.Internal;
+
 using Microsoft.Extensions.DependencyInjection;
 
 // ReSharper disable RedundantExtendsListEntry

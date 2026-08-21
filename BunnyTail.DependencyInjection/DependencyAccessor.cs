@@ -3,7 +3,7 @@ namespace BunnyTail.DependencyInjection;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
-using BunnyTail.DependencyInjection.Internal;
+using BunnyTail.DependencyInjection.Accessors;
 
 public sealed class DependencyAccessor
 {

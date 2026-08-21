@@ -1,4 +1,4 @@
-namespace BunnyTail.DependencyInjection.Internal;
+namespace BunnyTail.DependencyInjection.Accessors;
 
 internal sealed class FactoryAccessor : ServiceAccessor
 {

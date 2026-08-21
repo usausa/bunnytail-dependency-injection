@@ -1,11 +1,11 @@
-namespace BunnyTail.DependencyInjection;
+namespace BunnyTail.DependencyInjection.Internal;
 
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 
-using BunnyTail.DependencyInjection.Internal;
+using BunnyTail.DependencyInjection.Accessors;
 
 using Microsoft.Extensions.DependencyInjection;
 

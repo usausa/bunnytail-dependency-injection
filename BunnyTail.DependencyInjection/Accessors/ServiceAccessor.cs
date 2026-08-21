@@ -1,4 +1,4 @@
-namespace BunnyTail.DependencyInjection.Internal;
+namespace BunnyTail.DependencyInjection.Accessors;
 
 using System.Runtime.CompilerServices;
 

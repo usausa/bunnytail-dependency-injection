@@ -1,4 +1,4 @@
-namespace BunnyTail.DependencyInjection;
+namespace BunnyTail.DependencyInjection.Internal;
 
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;

@@ -1,12 +1,10 @@
-namespace BunnyTail.DependencyInjection.Internal;
+namespace BunnyTail.DependencyInjection.Accessors;
 
 using System.Runtime.CompilerServices;
 
-internal sealed class KeyedDependencyFactoryAccessor : ServiceAccessor
+internal sealed class DependencyFactoryAccessor : ServiceAccessor
 {
-    private readonly Func<IServiceProvider, object?, object?[], object> factory;
-
-    private readonly object? key;
+    public Func<IServiceProvider, object?[], object> Factory { get; }
 
     private readonly ServiceAccessor[] dependencyAccessors;
 
@@ -14,11 +12,10 @@ internal sealed class KeyedDependencyFactoryAccessor : ServiceAccessor
 
     private object?[]? resolved;
 
-    public KeyedDependencyFactoryAccessor(Func<IServiceProvider, object?, object?[], object> factory, object? key, ServiceAccessor[] dependencyAccessors, DependencyAccessor?[] dependencyHandles, ResultCache cache, int slot, bool trackDisposable)
+    public DependencyFactoryAccessor(Func<IServiceProvider, object?[], object> factory, ServiceAccessor[] dependencyAccessors, DependencyAccessor?[] dependencyHandles, ResultCache cache, int slot, bool trackDisposable)
         : base(cache, slot, trackDisposable)
     {
-        this.factory = factory;
-        this.key = key;
+        Factory = factory;
         this.dependencyAccessors = dependencyAccessors;
         this.dependencyHandles = dependencyHandles;
     }
@@ -26,7 +23,7 @@ internal sealed class KeyedDependencyFactoryAccessor : ServiceAccessor
     protected override object Create(ServiceProviderScope scope)
     {
         var dependencies = resolved ?? FillDependencies(scope);
-        return factory(scope, key, dependencies);
+        return Factory(scope, dependencies);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
