@@ -33,8 +33,6 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     private const string ServiceDescriptorName = "Microsoft.Extensions.DependencyInjection.ServiceDescriptor";
     private const string ServiceDescriptorCollectionName = "System.Collections.Generic.ICollection<Microsoft.Extensions.DependencyInjection.ServiceDescriptor>";
 
-    // 自動登録の対象から外すインタフェース (カンマ区切り)。IDisposable / IAsyncDisposable / IInitializable は常に除外
-    // Interfaces excluded from automatic registration (comma separated). IDisposable / IAsyncDisposable / IInitializable are always excluded.
     private const string IgnoreInterfaceProperty = "build_property.DependencyInjectionIgnoreInterface";
 
     // ------------------------------------------------------------
@@ -43,19 +41,15 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        // 除外インタフェース指定 (MSBuild プロパティ)
-        // Ignored interface specification (MSBuild property)
         var ignoreInterfacesProvider = context.AnalyzerConfigOptionsProvider
             .Select(static (provider, _) => SelectIgnoreInterfaces(provider));
 
-        // [Singleton] / [Scoped] / [Transient] の属性コンポーネント
-        // Attribute components: [Singleton] / [Scoped] / [Transient]
+        // Attribute: [Singleton] / [Scoped] / [Transient]
         var singletonProvider = CreateComponentProvider(context, SingletonAttributeName, "Singleton");
         var scopedProvider = CreateComponentProvider(context, ScopedAttributeName, "Scoped");
         var transientProvider = CreateComponentProvider(context, TransientAttributeName, "Transient");
 
-        // Add* / TryAdd* の呼び出し
-        // Add* / TryAdd* invocations
+        // Add* / TryAdd*
         var collectedProvider = context.SyntaxProvider
             .CreateSyntaxProvider(
                 static (node, _) => IsAddInvocationSyntax(node),
@@ -63,16 +57,14 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             .Where(static x => x is not null)
             .Select(static (x, _) => x!);
 
-        // [ComponentRegistration] 付きの partial メソッド
-        // Partial methods carrying [ComponentRegistration]
+        // [ComponentRegistration]
         var methodProvider = context.SyntaxProvider
             .ForAttributeWithMetadataName(
                 ComponentRegistrationAttributeName,
                 static (node, _) => node is MethodDeclarationSyntax,
                 static (ctx, _) => CreateMethodModel(ctx));
 
-        // 規約マッチの候補クラス (アセンブリ内の具象クラス)
-        // Convention match candidates: concrete classes in this assembly
+        // Convention match: In this assembly
         var candidateProvider = context.SyntaxProvider
             .CreateSyntaxProvider(
                 static (node, _) => IsCandidateClassSyntax(node),
@@ -80,8 +72,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             .Where(static x => x is not null)
             .Select(static (x, _) => x!);
 
-        // open generic 定義の登録 (typeof オーバーロード)
-        // Open generic definition registrations through the typeof overload
+        // Open generic definition
         var openGenericProvider = context.SyntaxProvider
             .CreateSyntaxProvider(
                 static (node, _) => IsAddInvocationSyntax(node),
@@ -89,8 +80,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             .Where(static x => x is not null)
             .Select(static (x, _) => x!);
 
-        // [GenerateComponentFactory] の対象型 (登録は行わずファクトリだけを生成する)
-        // Targets of [GenerateComponentFactory], which generate the factory only, without any registration
+        // [GenerateComponentFactory]
         var generateComponentFactoryProvider = context.SyntaxProvider
             .ForAttributeWithMetadataName(
                 GenerateComponentFactoryAttributeName,
@@ -98,8 +88,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                 static (ctx, _) => CreateGenerateComponentFactoryModels(ctx))
             .SelectMany(static (models, _) => models);
 
-        // typeof(IRepo<Foo>) に現れる閉型の使用
-        // Closed generic usages appearing as typeof(IRepo<Foo>)
+        // Closed generic
         var closedUsageProvider = context.SyntaxProvider
             .CreateSyntaxProvider(
                 static (node, _) => node is TypeOfExpressionSyntax { Type: GenericNameSyntax },
@@ -107,8 +96,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             .Where(static x => x is not null)
             .Select(static (x, _) => x!);
 
-        // コンストラクタ引数・プロパティ型に現れる閉型の使用 (依存駆動の発見)
-        // Closed generic usages appearing as constructor parameter or property types (dependency driven discovery)
+        // Closed generic usages
         var dependencyUsageProvider = context.SyntaxProvider
             .CreateSyntaxProvider(
                 static (node, _) => IsGenericDependencySyntax(node),
@@ -116,31 +104,22 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             .Where(static x => x is not null)
             .Select(static (x, _) => x!);
 
-        // Compilation 依存の値は狭い Select で切り出し、値等価な形にしてから最終 Combine に載せる。
-        // Compilation 自体を Combine すると毎編集で Execute (出力構築) がフル再実行されるため
-        // Compilation dependent values are extracted through narrow Selects into value-equatable shapes before
-        // the final combine. Combining the Compilation itself would rerun Execute on every edit.
-
-        // 自アセンブリ名 (生成コードの名前空間に使う)
-        // This assembly name, used for the generated namespace
+        // This assembly name
         var assemblyNameProvider = context.CompilationProvider
             .Select(static (compilation, _) => compilation.AssemblyName ?? "Generated");
 
-        // 参照アセンブリの [ComponentModule] マーカー
-        // The [ComponentModule] markers of referenced assemblies
+        // [ComponentModule] referenced assemblies
         var referencedModulesProvider = context.CompilationProvider
             .Select(static (compilation, _) => CollectReferencedModules(compilation));
 
-        // open generic 登録と閉型使用を突き合わせた閉型ファクトリ
-        // Closed generic factories, matched from the open generic registrations against the closed usages
+        // Closed generic factories
         var closedFactoriesProvider = openGenericProvider.Collect()
             .Combine(closedUsageProvider.Collect())
             .Combine(dependencyUsageProvider.Collect())
             .Combine(context.CompilationProvider)
             .Select(static (source, _) => DiscoverClosedGenericFactories(source.Left.Left.Left, source.Left.Left.Right, source.Left.Right, source.Right));
 
-        // Assembly 指定つき規約パターンの外部走査結果
-        // External scan results for assembly-scoped convention patterns
+        // External scan
         var externalCandidatesProvider = methodProvider.Collect()
             .Select(static (methods, _) => CollectExternalRequests(methods))
             .Combine(context.CompilationProvider)
@@ -159,21 +138,20 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             .Combine(referencedModulesProvider)
             .Combine(ignoreInterfacesProvider);
 
-        context.RegisterSourceOutput(source, static (context, source) =>
-            Execute(
-                context,
-                source.Left.Left.Left.Left.Left.Left.Left.Left.Left.Left.Left,
-                source.Left.Left.Left.Left.Left.Left.Left.Left.Left.Left.Right,
-                source.Left.Left.Left.Left.Left.Left.Left.Left.Left.Right,
-                source.Left.Left.Left.Left.Left.Left.Left.Left.Right,
-                source.Left.Left.Left.Left.Left.Left.Left.Right,
-                source.Left.Left.Left.Left.Left.Left.Right,
-                source.Left.Left.Left.Left.Left.Right,
-                source.Left.Left.Left.Left.Right,
-                source.Left.Left.Left.Right,
-                source.Left.Left.Right,
-                source.Left.Right,
-                source.Right));
+        context.RegisterSourceOutput(source, static (context, source) => Execute(
+            context,
+            source.Left.Left.Left.Left.Left.Left.Left.Left.Left.Left.Left,
+            source.Left.Left.Left.Left.Left.Left.Left.Left.Left.Left.Right,
+            source.Left.Left.Left.Left.Left.Left.Left.Left.Left.Right,
+            source.Left.Left.Left.Left.Left.Left.Left.Left.Right,
+            source.Left.Left.Left.Left.Left.Left.Left.Right,
+            source.Left.Left.Left.Left.Left.Left.Right,
+            source.Left.Left.Left.Left.Left.Right,
+            source.Left.Left.Left.Left.Right,
+            source.Left.Left.Left.Right,
+            source.Left.Left.Right,
+            source.Left.Right,
+            source.Right));
     }
 
     private static IncrementalValuesProvider<ComponentModel> CreateComponentProvider(IncrementalGeneratorInitializationContext context, string attributeName, string lifetime) =>
@@ -188,6 +166,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     // Parser : shared factory analysis (共通ファクトリ解析)
     // ------------------------------------------------------------
 
+    // TODO
     private static FactoryModel CreateFactoryModel(INamedTypeSymbol symbol, IAssemblySymbol compilationAssembly)
     {
         var implementationType = symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
@@ -331,6 +310,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             new EquatableArray<PropertyModel>([.. injectProperties]));
     }
 
+    // TODO
     private static bool HasValidPostConstructMethod(INamedTypeSymbol symbol, string name)
     {
         for (var type = symbol; type is not null; type = type.BaseType)
@@ -355,6 +335,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         return false;
     }
 
+    // TODO
     private static (string TypeName, int Kind, string? KeyLiteral, bool InCompilation, bool IsValueType) CreateDependencyModel(ITypeSymbol type, ImmutableArray<AttributeData> attributes, IAssemblySymbol compilationAssembly)
     {
         var typeName = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
@@ -390,6 +371,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         return (typeName, DependencyKinds.Service, null, inCompilation, isValueType);
     }
 
+    // TODO
     private static EquatableArray<string> CollectInterfaces(INamedTypeSymbol symbol)
     {
         var interfaces = symbol.AllInterfaces
@@ -400,6 +382,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         return [with(interfaces)];
     }
 
+    // TODO
     private static EquatableArray<string> SelectIgnoreInterfaces(AnalyzerConfigOptionsProvider provider)
     {
         if (!provider.GlobalOptions.TryGetValue(IgnoreInterfaceProperty, out var value) || String.IsNullOrWhiteSpace(value))
@@ -416,6 +399,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
     // 除外指定は名前空間つきの名前 (global:: なし) で比較する。ジェネリックは型引数まで含めた形が対象
     // Exclusions are compared by namespace qualified name without global::; generics match the form including type arguments.
+    // TODO
     private static EquatableArray<string> FilterIgnoredInterfaces(EquatableArray<string> interfaces, EquatableArray<string> ignoreInterfaces)
     {
         if ((ignoreInterfaces.Count == 0) || (interfaces.Count == 0))
@@ -439,6 +423,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         // ReSharper restore UseCollectionExpression
     }
 
+    // TODO
     private static bool IsIgnoredInterface(string fullyQualifiedName, EquatableArray<string> ignoreInterfaces)
     {
         var displayName = fullyQualifiedName.Replace("global::", string.Empty);
@@ -453,6 +438,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         return false;
     }
 
+    // TODO
     private static bool HasAttribute(ImmutableArray<AttributeData> attributes, string attributeName)
     {
         foreach (var attribute in attributes)
@@ -466,6 +452,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         return false;
     }
 
+    // TODO
     private static bool ContainsTypeParameter(ITypeSymbol type)
     {
         if (type is ITypeParameterSymbol)
@@ -491,6 +478,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     // Parser : attribute components (属性コンポーネント)
     // ------------------------------------------------------------
 
+    // TODO
     private static ImmutableArray<ComponentModel> CreateComponentModels(GeneratorAttributeSyntaxContext context, string lifetime)
     {
         if (context.TargetSymbol is not INamedTypeSymbol symbol)
@@ -546,6 +534,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     // Parser : Add* invocation collection (Add* 呼び出し収集)
     // ------------------------------------------------------------
 
+    // TODO
     private static bool IsAddInvocationSyntax(SyntaxNode node)
     {
         if (node is not InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax member })
@@ -557,6 +546,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         return name.StartsWith("Add", StringComparison.Ordinal) || name.StartsWith("TryAdd", StringComparison.Ordinal);
     }
 
+    // TODO
     private static CollectedModel? CreateCollectedModel(GeneratorSyntaxContext context)
     {
         var invocation = (InvocationExpressionSyntax)context.Node;
@@ -681,6 +671,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         return CreateCollectedModelCore(context, invocation, serviceArgument, implementationArgument, lifetime, keyed ? CollectedKinds.Keyed : CollectedKinds.Direct);
     }
 
+    // TODO
     private static bool HasFactoryOrInstanceParameter(IMethodSymbol method)
     {
         foreach (var parameter in method.Parameters)
@@ -694,6 +685,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         return false;
     }
 
+    // TODO
     private static CollectedModel? CreateCollectedModelCore(GeneratorSyntaxContext context, InvocationExpressionSyntax invocation, ITypeSymbol serviceArgument, ITypeSymbol implementationArgument, string lifetime, int kind)
     {
         if (implementationArgument is not INamedTypeSymbol implementationSymbol)
@@ -735,6 +727,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
     // 定義キー: "global::Ns.Name`arity"。unbound と constructed の両方から同じキーを作る
     // Definition key "global::Ns.Name`arity", produced identically from unbound and constructed symbols.
+    // TODO
     private static string DefinitionKey(INamedTypeSymbol symbol)
     {
         var display = symbol.ConstructedFrom.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
@@ -745,6 +738,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
     // GetTypeByMetadataName で解決できるメタデータ名 (ネスト型は '+' 区切り)。型引数付き・配列などは対象外
     // Metadata name resolvable by GetTypeByMetadataName (nested types joined by '+'). Generic instantiations and arrays are excluded.
+    // TODO
     private static string? TryGetMetadataName(ITypeSymbol type)
     {
         if (type is not INamedTypeSymbol { Arity: 0, IsAnonymousType: false } named || type.TypeKind == TypeKind.TypeParameter)
@@ -763,6 +757,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         return (ns is null) || ns.IsGlobalNamespace ? nested : ns.ToDisplayString() + "." + nested;
     }
 
+    // TODO
     private static OpenGenericModel? CreateOpenGenericModel(GeneratorSyntaxContext context)
     {
         var invocation = (InvocationExpressionSyntax)context.Node;
@@ -830,6 +825,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
     // open generic 定義自体のメタデータ名 ("Ns.Repo`1")
     // Metadata name of the open generic definition itself ("Ns.Repo`1").
+    // TODO
     private static string? TryGetMetadataNameForDefinition(INamedTypeSymbol definition)
     {
         var parts = new List<string> { definition.MetadataName };
@@ -848,6 +844,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         return (ns is null) || ns.IsGlobalNamespace ? nested : ns.ToDisplayString() + "." + nested;
     }
 
+    // TODO
     private static ClosedGenericUsageModel? CreateClosedGenericUsageModel(GeneratorSyntaxContext context)
     {
         var typeOf = (TypeOfExpressionSyntax)context.Node;
@@ -856,6 +853,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
     // コンストラクタ引数・プロパティの型構文に generic 名が含まれるか (軽量な構文プリフィルタ)
     // Whether the parameter or property type syntax contains a generic name (a lightweight syntax pre-filter).
+    // TODO
     private static bool IsGenericDependencySyntax(SyntaxNode node)
     {
         var type = node switch
@@ -867,6 +865,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         return ContainsGenericName(type);
     }
 
+    // TODO
     private static bool ContainsGenericName(TypeSyntax? type) => type switch
     {
         GenericNameSyntax => true,
@@ -876,6 +875,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         _ => false
     };
 
+    // TODO
     private static ClosedGenericUsageModel? CreateDependencyUsageModel(GeneratorSyntaxContext context)
     {
         var type = context.Node switch
@@ -892,6 +892,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         return CreateUsageModel(context.SemanticModel.GetTypeInfo(type).Type, context.Node);
     }
 
+    // TODO
     private static ClosedGenericUsageModel? CreateUsageModel(ITypeSymbol? type, SyntaxNode locationNode)
     {
         if (type is not INamedTypeSymbol closed ||
@@ -930,6 +931,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     // public にアクセスできる具象クラス (使用可能な public コンストラクタつき) だけを受け付ける
     // Builds factory models from [GenerateComponentFactory] targets. The generated code news the type up directly, so only
     // publicly accessible concrete classes with a usable public constructor are accepted.
+    // TODO
     private static ImmutableArray<Result<FactoryModel>> CreateGenerateComponentFactoryModels(GeneratorAttributeSyntaxContext context)
     {
         var compilation = context.SemanticModel.Compilation;
@@ -994,6 +996,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     // Parser : convention registration method (規約登録メソッド)
     // ------------------------------------------------------------
 
+    // TODO
     private static Result<MethodModel> CreateMethodModel(GeneratorAttributeSyntaxContext context)
     {
         var syntax = (MethodDeclarationSyntax)context.TargetNode;
@@ -1058,6 +1061,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     // Parser : convention candidates (規約マッチ候補)
     // ------------------------------------------------------------
 
+    // TODO
     private static bool IsCandidateClassSyntax(SyntaxNode node)
     {
         if (node is not ClassDeclarationSyntax syntax)
@@ -1076,6 +1080,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         return true;
     }
 
+    // TODO
     private static CandidateModel? CreateCandidateModel(GeneratorSyntaxContext context)
     {
         var syntax = (ClassDeclarationSyntax)context.Node;
@@ -1110,6 +1115,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     // Generator
     // ------------------------------------------------------------
 
+    // TODO
     private static void Execute(
         SourceProductionContext context,
         ImmutableArray<ComponentModel> singletons,
@@ -1340,6 +1346,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     // (Add<S, I> style) transients eligible for inline expansion (no disposable/[Inject]/initializer). Order follows
     // the emission order (equivalent to RegisterComponents); runtime composition differences fall back via EnumerableElementsMatch.
     // ReSharper disable ParameterTypeCanBeEnumerable.Local
+    // TODO
     private static List<(string ElementServiceType, List<FactoryModel> Elements)> BuildEnumerableModels(
         ComponentModel[] components,
         CollectedModel[] collected,
@@ -1457,6 +1464,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     }
     // ReSharper restore ParameterTypeCanBeEnumerable.Local
 
+    // TODO
     private static ClosedGenericScanResult DiscoverClosedGenericFactories(
         ImmutableArray<OpenGenericModel> openGenerics,
         ImmutableArray<ClosedGenericUsageModel> closedUsages,
@@ -1571,6 +1579,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
     // 表示名 "global::Ns.IRepo<Foo, Bar>" が open generic 登録の閉型かを定義キーで判定する
     // Determines from the definition keys whether a display name like "global::Ns.IRepo<Foo, Bar>" is a closed form of an open generic registration.
+    // TODO
     private static bool IsOpenGenericClosedForm(string typeName, HashSet<string> openGenericKeys)
     {
         if (openGenericKeys.Count == 0)
@@ -1607,6 +1616,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     }
 
     // ReSharper disable ParameterTypeCanBeEnumerable.Local
+    // TODO
     private static void ReportAnalysisDiagnostics(
         SourceProductionContext context,
         ComponentModel[] components,
@@ -1817,6 +1827,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     // IDisposable/IAsyncDisposable. Everything else keeps emitting provider.GetRequiredService<T>().
     // Final consistency against runtime registrations is validated by ServiceRegistry.InlinedDependenciesMatch,
     // falling back to the runtime path on mismatch.
+    // TODO
     private sealed class InlineTargetMap
     {
         private readonly Dictionary<string, FactoryModel> targets;
@@ -1843,6 +1854,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     private sealed record InlineNode(string ServiceType, FactoryModel Factory, InlineNode?[] Parameters);
 
     // ReSharper disable ParameterTypeCanBeEnumerable.Local
+    // TODO
     private static InlineTargetMap BuildInlineTargetMap(
         ComponentModel[] components,
         CollectedModel[] collected,
@@ -1974,6 +1986,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     }
     // ReSharper restore ParameterTypeCanBeEnumerable.Local
 
+    // TODO
     private static InlineNode? TryCreateInlineNode(string serviceTypeName, InlineTargetMap map, List<string> stack)
     {
         var factory = map.GetTarget(serviceTypeName);
@@ -2003,6 +2016,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     // Assembly 指定つき規約パターンの要求抽出。メソッド属性のみが入力なので、属性が変わらない限り値は安定
     // Extraction of assembly-scoped convention requests. Only method attributes feed this, so the value stays stable
     // unless the attributes change.
+    // TODO
     private static EquatableArray<ExternalRequest> CollectExternalRequests(ImmutableArray<Result<MethodModel>> methods)
     {
         var requests = new List<ExternalRequest>();
@@ -2048,6 +2062,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     // Candidate scan of external assemblies. Only requested assemblies are walked, and names and namespaces are
     // filtered before FactoryModel construction (symbol analysis touches matched types only). Invalid regexes are
     // ignored here; BTDI0002 in Execute reports them.
+    // TODO
     private static ExternalScanResult CollectExternalCandidates(EquatableArray<ExternalRequest> requests, Compilation compilation)
     {
         if (requests.Count == 0)
@@ -2108,6 +2123,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         ]));
     }
 
+    // TODO
     private static void CollectNamespaceCandidates(INamespaceSymbol ns, string assemblyName, List<(Regex Regex, string? Namespace)> filters, Compilation compilation, List<CandidateModel> candidates)
     {
         foreach (var member in ns.GetMembers())
@@ -2123,6 +2139,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         }
     }
 
+    // TODO
     private static void CollectTypeCandidates(INamedTypeSymbol type, string assemblyName, List<(Regex Regex, string? Namespace)> filters, Compilation compilation, List<CandidateModel> candidates)
     {
         // 入れ子型も対象 (ローカル候補の構文述語と揃える) / nested types included, matching the local candidate predicate
@@ -2178,6 +2195,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     // for AddGeneratedComponents). Only assembly attributes are inspected, never the types inside the references, so the
     // incremental cost is one attribute list per reference. SDK projects flow references transitively into the
     // compilation, so indirectly referenced modules are enumerated flat as well.
+    // TODO
     private static EquatableArray<string> CollectReferencedModules(Compilation compilation)
     {
         var modules = new List<string>();
@@ -2210,6 +2228,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         return [with([.. modules])];
     }
 
+    // TODO
     private static void EmitGeneratedComponents(SourceProductionContext context, string assemblyName, ComponentModel[] components, List<FactoryModel> unkeyedFactories, List<FactoryModel> keyedFactories, List<(string ElementServiceType, List<FactoryModel> Elements)> enumerableModels, InlineTargetMap inlineMap, EquatableArray<string> referencedModules, List<(string ImplementationType, string PostConstruct)> generatedInitializers)
     {
         var builder = new SourceBuilder();
@@ -2345,6 +2364,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     // MEDI 拡張メソッド経由 (ISupportRequiredService 型テスト + 二重ディスパッチ) より約 0.8ns/件 短い
     // Dependency resolutions are emitted as direct calls on the sealed ServiceProviderScope,
     // about 0.8 ns per dependency shorter than the MEDI extension methods (type test + double dispatch).
+    // TODO
     private static void EmitDependencyResolution(SourceBuilder builder, string typeName, int kind, string? keyLiteral, bool isValueType, Dictionary<string, (int Slot, bool Accessor)>? dependencyIndex)
     {
         switch (kind)
@@ -2401,6 +2421,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     // インスタンススロットだけが scope 不要で、アクセサスロットは GetValue(scope) を呼ぶ
     // Whether the emitted body contains any resolution that uses the scope (decides if the scope local is needed).
     // Only instance slots avoid the scope; accessor slots call GetValue(scope).
+    // TODO
     private static bool NeedsScope(int kind, string typeName, InlineNode? node, Dictionary<string, (int Slot, bool Accessor)>? dependencyIndex)
     {
         if (node is null)
@@ -2441,6 +2462,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     // Assigns dependency slots to the non-inlined dependencies appearing in the emitted body, including inside nested
     // inline expansions. Unambiguous direct singletons become instance slots; every other service dependency becomes
     // an accessor slot (which only assumes resolvability, so it carries no implementation assumption).
+    // TODO
     private static void CollectDependencySlots(int kind, string typeName, InlineNode? node, InlineTargetMap map, Dictionary<string, (int Slot, bool Accessor)> dependencyIndex, List<(string Service, string? Implementation)> dependencyList)
     {
         if (node is null)
@@ -2461,6 +2483,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         }
     }
 
+    // TODO
     private static void EmitFactoryRegistration(SourceBuilder builder, FactoryModel factory, bool keyed, InlineTargetMap inlineMap)
     {
         // インライン展開の決定。前提 (InlinedDependency) として登録するのはトップレベルの展開のみ。
@@ -2664,6 +2687,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
     // 生成 enumerable ファクトリ: 全要素 transient の実体化を配列リテラルへ畳む
     // Generated enumerable factory folding the all-transient materialization into an array literal.
+    // TODO
     private static void EmitEnumerableRegistration(SourceBuilder builder, string elementServiceType, List<FactoryModel> elements, InlineTargetMap inlineMap)
     {
         var stack = new List<string>();
@@ -2730,6 +2754,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
     // インライン展開ノードがあればリテラル new を、なければ従来の解決式を出力する
     // Emits a literal new when an inline node exists, otherwise the ordinary resolution expression.
+    // TODO
     private static void EmitArgument(SourceBuilder builder, InlineNode? node, string typeName, int kind, string? keyLiteral, bool isValueType, Dictionary<string, (int Slot, bool Accessor)>? dependencyIndex)
     {
         if (node is null)
@@ -2746,6 +2771,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     // (MEDI 互換: transient は都度新規生成。インスタンスを共有してはならない)
     // Literal new expansion of transient dependencies. The same dependency gets a fresh new at every use site
     // (MEDI compatible: transients are created per use and must never be shared).
+    // TODO
     private static void EmitInlineNew(SourceBuilder builder, InlineNode node, Dictionary<string, (int Slot, bool Accessor)>? dependencyIndex)
     {
         builder.Append("new ").Append(node.Factory.ImplementationType).Append('(');
@@ -2763,6 +2789,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         builder.Append(')');
     }
 
+    // TODO
     private static void EmitComponentRegistration(SourceBuilder builder, ComponentModel component)
     {
         var implementationType = component.Factory.ImplementationType;
@@ -2794,6 +2821,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         }
     }
 
+    // TODO
     private static void EmitConventionClass(
         SourceProductionContext context,
         string? classNamespace,
@@ -2835,6 +2863,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         context.AddSource(hintName, builder);
     }
 
+    // TODO
     private static void EmitConventionMethod(SourceBuilder builder, MethodModel method, List<(CandidateModel Candidate, string Lifetime)> matches)
     {
         builder.Indent().Append(method.MethodAccessibility.ToText()).Append(" static partial global::Microsoft.Extensions.DependencyInjection.IServiceCollection ").Append(method.MethodName).Append("(this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)").NewLine();
