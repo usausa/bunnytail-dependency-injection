@@ -331,3 +331,36 @@ trustworthy rather than merely present:
 * A failed assumption falls back **silently** — no diagnostic, no warning. That is the intended
   behaviour, and it is what lets `Replace`, a lifetime change, a decorator or a factory registration
   keep working unchanged. Worth saying out loud so the silence does not read as an oversight.
+
+### How the factory report classifies a registration
+
+The status table in the README says what each status means. What it does not say is where the answer
+comes from, and that is what makes the report trustworthy: **the status is read off the accessor the
+engine actually built**, not inferred from the shape of the registration.
+
+| Accessor built | Status |
+|---|---|
+| `FactoryAccessor` / `DependencyFactoryAccessor` / `KeyedFactoryAccessor` / `KeyedDependencyFactoryAccessor` | `Generated` |
+| `ConstructorAccessor` | `RuntimeFallback` |
+| nothing could be built | `Unresolvable` |
+| anything else | `NotApplicable` |
+
+So `Generated` means the generated factory passed every assumption check and was adopted for real — not
+that a factory merely exists for the type. A type whose assumptions were rejected reports
+`RuntimeFallback` even though its factory is sitting in the registry unused. That is exactly the
+distinction you want when hunting for `[GenerateComponentFactory]` candidates.
+
+Registrations that carry no implementation type (factory, instance and open generic definition
+registrations) are classified `NotApplicable` **without being realized at all** — there is nothing to
+generate for them, so they are short-circuited before the accessor is built. A useful side effect is
+that a user-supplied delegate can never be mistaken for a generated factory.
+
+Two properties worth documenting because they surprise people:
+
+* **One row per `(service type, key)` pair, describing the last registration.** Single resolution takes
+  the last registration under MEDI's last-wins rule, so that is the one classified. Register the same
+  service three times and the report still shows one row.
+* **Every classified registration is realized.** No instances are created, but accessors are built for
+  the whole set, which is why this is a development-time tool and not something to leave in a release
+  path. The README already warns about this; the reason is that the report has to build the accessor to
+  be able to look at it.

@@ -11,31 +11,37 @@ using Microsoft.Extensions.DependencyInjection;
 
 internal sealed class ServiceRegistry
 {
-    [ThreadStatic]
-    private static List<ServiceIdentifier>? realizationStack;
-
+    // Registrations
     private readonly ServiceDescriptor[] descriptors;
 
     private readonly Dictionary<ServiceIdentifier, List<ServiceDescriptor>> exactMap;
 
     private readonly HashSet<Type> keyedServiceTypes;
 
+    // Realized entries
     private readonly ConcurrentDictionary<ServiceIdentifier, ServiceAccessor?> entries = new();
 
     private readonly ConcurrentDictionary<AccessorCacheKey, ServiceAccessor> descriptorAccessors = new();
 
-    private readonly Lock tableSync = new();
-
+    // Lookup tables
     private FixedTypeServiceTable typeTable;
 
     private FixedKeyedServiceTable keyedTable;
 
+    // Promotion
     private readonly List<KeyValuePair<Type, ServiceAccessor>>? typeTableEntries;
 
     private readonly List<(Type Type, object Key, ServiceAccessor Accessor)>? keyedTableEntries;
 
+    private readonly Lock tableSync = new();
+
+    // Realization state
+    [ThreadStatic]
+    private static List<ServiceIdentifier>? realizationStack;
+
     private int slotCounter;
 
+    // Disposed sentinel
     private readonly bool disposedSentinel;
 
     internal static readonly ServiceRegistry DisposedSentinel = new();
