@@ -46,7 +46,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     private static readonly DiagnosticDescriptor InvalidMethodDefinition = new(
         "BTDI0001",
         "Invalid registration method",
-        "Method '{0}' must be a static partial extension method with an IServiceCollection parameter and return type",
+        "Method must be a static partial extension method with an IServiceCollection parameter and return type. method=[{0}].",
         "BunnyTail.DependencyInjection",
         DiagnosticSeverity.Error,
         true);
@@ -54,7 +54,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     private static readonly DiagnosticDescriptor InvalidPattern = new(
         "BTDI0002",
         "Invalid registration pattern",
-        "Pattern '{0}' is not a valid regular expression",
+        "Invalid regex pattern. pattern=[{0}].",
         "BunnyTail.DependencyInjection",
         DiagnosticSeverity.Warning,
         true);
@@ -62,7 +62,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     private static readonly DiagnosticDescriptor AssemblyNotFound = new(
         "BTDI0003",
         "Referenced assembly not found",
-        "The assembly '{0}' specified on [ComponentRegistration] is not referenced by this project",
+        "Assembly specified on [ComponentRegistration] is not referenced by this project. assembly=[{0}].",
         "BunnyTail.DependencyInjection",
         DiagnosticSeverity.Warning,
         true);
@@ -70,7 +70,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     private static readonly DiagnosticDescriptor InvalidGenerateComponentFactoryTarget = new(
         "BTDI0004",
         "Invalid GenerateComponentFactory target",
-        "The type '{0}' specified on [GenerateComponentFactory] must be a publicly accessible concrete class with a usable public constructor",
+        "Type must be a publicly accessible concrete class with a usable public constructor. type=[{0}].",
         "BunnyTail.DependencyInjection",
         DiagnosticSeverity.Warning,
         true);
@@ -79,7 +79,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     private static readonly DiagnosticDescriptor AmbiguousConstructor = new(
         "BTDI0005",
         "Ambiguous constructor",
-        "Type '{0}' has multiple public constructors with the same maximum parameter count",
+        "Type has multiple public constructors with the same maximum parameter count. type=[{0}].",
         "BunnyTail.DependencyInjection",
         DiagnosticSeverity.Error,
         true);
@@ -87,7 +87,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     private static readonly DiagnosticDescriptor InvalidPostConstruct = new(
         "BTDI0006",
         "Invalid PostConstruct method",
-        "The PostConstruct method '{0}' on type '{1}' must be a public parameterless instance method returning void",
+        "PostConstruct method must be a public parameterless instance method returning void. type=[{1}] method=[{0}].",
         "BunnyTail.DependencyInjection",
         DiagnosticSeverity.Error,
         true);
@@ -95,7 +95,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     private static readonly DiagnosticDescriptor ConflictingPostConstruct = new(
         "BTDI0007",
         "Conflicting PostConstruct specifications",
-        "Type '{0}' has conflicting PostConstruct specifications across its lifetime attributes",
+        "Type has conflicting PostConstruct specifications across its lifetime attributes. type=[{0}].",
         "BunnyTail.DependencyInjection",
         DiagnosticSeverity.Error,
         true);
@@ -104,7 +104,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     private static readonly DiagnosticDescriptor CircularDependency = new(
         "BTDI0008",
         "Circular dependency",
-        "A circular dependency was detected: {0}",
+        "Circular dependency detected. chain=[{0}].",
         "BunnyTail.DependencyInjection",
         DiagnosticSeverity.Error,
         true);
@@ -112,7 +112,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     private static readonly DiagnosticDescriptor UnresolvedDependency = new(
         "BTDI0009",
         "Unresolved dependency",
-        "Unable to resolve dependency '{0}' required by '{1}' from the registrations visible at compile time",
+        "Dependency cannot be resolved from the registrations visible at compile time. type=[{1}] dependency=[{0}].",
         "BunnyTail.DependencyInjection",
         DiagnosticSeverity.Warning,
         true);
@@ -120,7 +120,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     private static readonly DiagnosticDescriptor CaptiveDependency = new(
         "BTDI0010",
         "Captive dependency",
-        "Singleton component '{0}' depends on scoped service '{1}'",
+        "Singleton component depends on scoped service. type=[{0}] dependency=[{1}].",
         "BunnyTail.DependencyInjection",
         DiagnosticSeverity.Warning,
         true);
@@ -129,7 +129,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     private static readonly DiagnosticDescriptor ValueTypeRuntimeGeneric = new(
         "BTDI0011",
         "Closed generic with value type arguments on the runtime path",
-        "The closed generic type '{0}' has value type arguments but no generated factory, so it resolves through the runtime path, which is not supported on NativeAOT",
+        "Closed generic with value type arguments has no generated factory and resolves through the runtime path, which is not supported on NativeAOT. type=[{0}].",
         "BunnyTail.DependencyInjection",
         DiagnosticSeverity.Warning,
         true);
@@ -2367,7 +2367,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         foreach (var (implementationType, postConstruct) in generatedInitializers)
         {
             builder.NewLine();
-            builder.Indent().Append("global::BunnyTail.DependencyInjection.GeneratedComponentRegistry.RegisterInitializer(typeof(")
+            builder.Indent().Append("global::BunnyTail.DependencyInjection.Internal.GeneratedFactoryRegistry.RegisterInitializer(typeof(")
                 .Append(implementationType)
                 .Append("), \"")
                 .Append(postConstruct)
@@ -2456,11 +2456,11 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                         // skipping the table probe and the GetRequiredService wrapper.
                         if (isValueType)
                         {
-                            builder.Append('(').Append(typeName).Append(")global::System.Runtime.CompilerServices.Unsafe.As<global::BunnyTail.DependencyInjection.DependencyAccessor>(dependencies[").Append(slotLiteral).Append("])!.GetValue(scope)");
+                            builder.Append('(').Append(typeName).Append(")global::System.Runtime.CompilerServices.Unsafe.As<global::BunnyTail.DependencyInjection.Internal.DependencyAccessor>(dependencies[").Append(slotLiteral).Append("])!.GetValue(scope)");
                         }
                         else
                         {
-                            builder.Append("global::System.Runtime.CompilerServices.Unsafe.As<global::BunnyTail.DependencyInjection.DependencyAccessor>(dependencies[").Append(slotLiteral).Append("])!.GetValue<").Append(typeName).Append(">(scope)");
+                            builder.Append("global::System.Runtime.CompilerServices.Unsafe.As<global::BunnyTail.DependencyInjection.Internal.DependencyAccessor>(dependencies[").Append(slotLiteral).Append("])!.GetValue<").Append(typeName).Append(">(scope)");
                         }
                     }
                     else if (isValueType)
@@ -2602,8 +2602,8 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         var emitDependencyIndex = dependencyList.Count > 0 ? dependencyIndex : null;
 
         builder.AppendLine(keyed
-            ? "global::BunnyTail.DependencyInjection.GeneratedComponentRegistry.RegisterKeyed("
-            : "global::BunnyTail.DependencyInjection.GeneratedComponentRegistry.Register(");
+            ? "global::BunnyTail.DependencyInjection.Internal.GeneratedFactoryRegistry.RegisterKeyed("
+            : "global::BunnyTail.DependencyInjection.Internal.GeneratedFactoryRegistry.Register(");
         builder.IndentLevel++;
         builder.Indent().Append("typeof(").Append(factory.ImplementationType).Append("),").NewLine();
 
@@ -2637,7 +2637,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                     builder.Append(", ");
                 }
 
-                builder.Append("new global::BunnyTail.DependencyInjection.InlinedDependency(typeof(").Append(assumptions[i].ServiceType).Append("), typeof(").Append(assumptions[i].Factory.ImplementationType).Append("))");
+                builder.Append("new global::BunnyTail.DependencyInjection.Internal.InlinedDependency(typeof(").Append(assumptions[i].ServiceType).Append("), typeof(").Append(assumptions[i].Factory.ImplementationType).Append("))");
             }
 
             builder.Append("],").NewLine();
@@ -2656,11 +2656,11 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                 var (service, implementation) = dependencyList[i];
                 if (implementation is null)
                 {
-                    builder.Append("new global::BunnyTail.DependencyInjection.DependencyPlan(typeof(").Append(service).Append("))");
+                    builder.Append("new global::BunnyTail.DependencyInjection.Internal.DependencyPlan(typeof(").Append(service).Append("))");
                 }
                 else
                 {
-                    builder.Append("new global::BunnyTail.DependencyInjection.DependencyPlan(typeof(").Append(service).Append("), typeof(").Append(implementation).Append("))");
+                    builder.Append("new global::BunnyTail.DependencyInjection.Internal.DependencyPlan(typeof(").Append(service).Append("), typeof(").Append(implementation).Append("))");
                 }
             }
 
@@ -2772,7 +2772,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             nodes[i] = new InlineNode(element.ImplementationType, element, children);
         }
 
-        builder.AppendLine("global::BunnyTail.DependencyInjection.GeneratedComponentRegistry.RegisterEnumerable(");
+        builder.AppendLine("global::BunnyTail.DependencyInjection.Internal.GeneratedFactoryRegistry.RegisterEnumerable(");
         builder.IndentLevel++;
         builder.Indent().Append("typeof(").Append(elementServiceType).Append("),").NewLine();
 

@@ -95,7 +95,7 @@ public sealed class GeneratorOutputTest
         Assert.Contains("typeof(global::Demo.DependentComponent),", generated, StringComparison.Ordinal);
 
         Assert.Contains("new global::Demo.CollectedComponent())", generated, StringComparison.Ordinal);
-        Assert.Contains("new global::BunnyTail.DependencyInjection.InlinedDependency(typeof(global::Demo.CollectedComponent), typeof(global::Demo.CollectedComponent))", generated, StringComparison.Ordinal);
+        Assert.Contains("new global::BunnyTail.DependencyInjection.Internal.InlinedDependency(typeof(global::Demo.CollectedComponent), typeof(global::Demo.CollectedComponent))", generated, StringComparison.Ordinal);
 
         Assert.DoesNotContain("AddGeneratedComponents", generated, StringComparison.Ordinal);
     }
@@ -467,12 +467,12 @@ public sealed class GeneratorOutputTest
         Assert.Contains("new global::Demo.Branch(new global::Demo.Leaf()),", generated, StringComparison.Ordinal);
         Assert.Contains("new global::Demo.Branch(new global::Demo.Leaf()));", generated, StringComparison.Ordinal);
 
-        Assert.Contains("[new global::BunnyTail.DependencyInjection.InlinedDependency(typeof(global::Demo.Branch), typeof(global::Demo.Branch))],", generated, StringComparison.Ordinal);
+        Assert.Contains("[new global::BunnyTail.DependencyInjection.Internal.InlinedDependency(typeof(global::Demo.Branch), typeof(global::Demo.Branch))],", generated, StringComparison.Ordinal);
 
         Assert.Contains("global::System.Runtime.CompilerServices.Unsafe.As<global::Demo.Shared>(dependencies[0])!", generated, StringComparison.Ordinal);
-        Assert.Contains("[new global::BunnyTail.DependencyInjection.DependencyPlan(typeof(global::Demo.Shared), typeof(global::Demo.Shared)), new global::BunnyTail.DependencyInjection.DependencyPlan(typeof(global::Demo.DisposableLeaf))],", generated, StringComparison.Ordinal);
+        Assert.Contains("[new global::BunnyTail.DependencyInjection.Internal.DependencyPlan(typeof(global::Demo.Shared), typeof(global::Demo.Shared)), new global::BunnyTail.DependencyInjection.Internal.DependencyPlan(typeof(global::Demo.DisposableLeaf))],", generated, StringComparison.Ordinal);
         Assert.Contains("static (provider, dependencies) =>", generated, StringComparison.Ordinal);
-        Assert.Contains("global::System.Runtime.CompilerServices.Unsafe.As<global::BunnyTail.DependencyInjection.DependencyAccessor>(dependencies[1])!.GetValue<global::Demo.DisposableLeaf>(scope)", generated, StringComparison.Ordinal);
+        Assert.Contains("global::System.Runtime.CompilerServices.Unsafe.As<global::BunnyTail.DependencyInjection.Internal.DependencyAccessor>(dependencies[1])!.GetValue<global::Demo.DisposableLeaf>(scope)", generated, StringComparison.Ordinal);
         Assert.Contains("new global::Demo.Mixed(", generated, StringComparison.Ordinal);
     }
 

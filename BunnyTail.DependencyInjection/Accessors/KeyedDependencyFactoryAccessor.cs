@@ -2,6 +2,8 @@ namespace BunnyTail.DependencyInjection.Accessors;
 
 using System.Runtime.CompilerServices;
 
+using BunnyTail.DependencyInjection.Internal;
+
 internal sealed class KeyedDependencyFactoryAccessor : ServiceAccessor
 {
     private readonly Func<IServiceProvider, object?, object?[], object> factory;

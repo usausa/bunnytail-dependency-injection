@@ -1,50 +1,11 @@
-namespace BunnyTail.DependencyInjection;
+namespace BunnyTail.DependencyInjection.Internal;
 
 using System.Collections.Concurrent;
+using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
-//--------------------------------------------------------------------------------
-// Generated component
-//--------------------------------------------------------------------------------
-
-public sealed class InlinedDependency
-{
-    public Type ServiceType { get; }
-
-    public Type ImplementationType { get; }
-
-    public InlinedDependency(Type serviceType, Type implementationType)
-    {
-        ServiceType = serviceType;
-        ImplementationType = implementationType;
-    }
-}
-
-public sealed class DependencyPlan
-{
-    public Type ServiceType { get; }
-
-    public Type? ImplementationType { get; }
-
-    public bool UseAccessor => ImplementationType is null;
-
-    public DependencyPlan(Type serviceType)
-    {
-        ServiceType = serviceType;
-    }
-
-    public DependencyPlan(Type serviceType, Type implementationType)
-    {
-        ServiceType = serviceType;
-        ImplementationType = implementationType;
-    }
-}
-
-//--------------------------------------------------------------------------------
-// Generated component registry
-//--------------------------------------------------------------------------------
-
-public static class GeneratedComponentRegistry
+[EditorBrowsable(EditorBrowsableState.Never)]
+public static class GeneratedFactoryRegistry
 {
     //--------------------------------------------------------------------------------
     // Entry

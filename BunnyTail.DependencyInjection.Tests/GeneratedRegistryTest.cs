@@ -1,6 +1,7 @@
 namespace BunnyTail.DependencyInjection.Tests;
 
 using BunnyTail.DependencyInjection;
+using BunnyTail.DependencyInjection.Internal;
 
 using Microsoft.Extensions.DependencyInjection;
 
@@ -38,30 +39,30 @@ public sealed class GeneratedRegistryTest
     static GeneratedRegistryTest()
     {
         // Matching assumption: HookComponent has a parameterless constructor
-        GeneratedComponentRegistry.Register(
+        GeneratedFactoryRegistry.Register(
             typeof(HookComponent),
             Type.EmptyTypes,
             static _ => new HookComponent { CreatedByGeneratedFactory = true });
 
         // Mismatching assumption: MismatchComponent's real constructor is (HookComponent) but registered as parameterless
-        GeneratedComponentRegistry.Register(
+        GeneratedFactoryRegistry.Register(
             typeof(MismatchComponent),
             Type.EmptyTypes,
             static _ => throw new InvalidOperationException("The generated factory was used unexpectedly"));
 
         // Keyed generated factory
-        GeneratedComponentRegistry.RegisterKeyed(
+        GeneratedFactoryRegistry.RegisterKeyed(
             typeof(KeyedHookComponent),
             Type.EmptyTypes,
             static (_, key) => new KeyedHookComponent { ReceivedKey = key });
 
         // Inline assumption: registered assuming InlineDependencyComponent resolves as a transient through its generated factory
-        GeneratedComponentRegistry.Register(
+        GeneratedFactoryRegistry.Register(
             typeof(InlineDependencyComponent),
             Type.EmptyTypes,
             static _ => new InlineDependencyComponent());
 
-        GeneratedComponentRegistry.Register(
+        GeneratedFactoryRegistry.Register(
             typeof(InlineRootComponent),
             Type.EmptyTypes,
             [new InlinedDependency(typeof(InlineDependencyComponent), typeof(InlineDependencyComponent))],

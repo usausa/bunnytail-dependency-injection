@@ -342,7 +342,7 @@ Every collected implementation type gets a factory registered from a `[ModuleIni
 
 ```csharp
 // Emitted for [Transient] Service(Repository repository, Logger logger) with a singleton Logger
-GeneratedComponentRegistry.Register(
+GeneratedFactoryRegistry.Register(
     typeof(Service),
     [typeof(Repository), typeof(Logger)],
     [new InlinedDependency(typeof(Repository), typeof(Repository))],

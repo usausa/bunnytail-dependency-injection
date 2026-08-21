@@ -542,7 +542,7 @@ internal sealed class ServiceRegistry
             }
         }
 
-        if (GeneratedComponentRegistry.TryGetInitializer(implType, out var registered))
+        if (GeneratedFactoryRegistry.TryGetInitializer(implType, out var registered))
         {
             name = registered;
         }
@@ -552,7 +552,7 @@ internal sealed class ServiceRegistry
             var method = implType.GetMethod(name, BindingFlags.Public | BindingFlags.Instance, Type.EmptyTypes);
             if (method is null || method.ReturnType != typeof(void) || method.IsGenericMethodDefinition)
             {
-                throw new InvalidOperationException($"The PostConstruct method '{name}' on type '{implType}' must be a public parameterless instance method returning void.");
+                throw new InvalidOperationException($"PostConstruct method must be a public parameterless instance method returning void. type=[{implType}] method=[{name}]");
             }
 
             return (method, false);
@@ -571,7 +571,7 @@ internal sealed class ServiceRegistry
 
         if (serviceKey is null)
         {
-            if (GeneratedComponentRegistry.TryGet(implType, out var generated) &&
+            if (GeneratedFactoryRegistry.TryGet(implType, out var generated) &&
                 ConstructorMatches(constructor, generated.ConstructorParameterTypes) &&
                 IsAllPlansAreServices(plans)
                 && InlinedDependenciesMatch(generated.InlinedDependencies))
@@ -591,7 +591,7 @@ internal sealed class ServiceRegistry
         }
         else
         {
-            if (GeneratedComponentRegistry.TryGetKeyed(implType, out var generatedKeyed) &&
+            if (GeneratedFactoryRegistry.TryGetKeyed(implType, out var generatedKeyed) &&
                 ConstructorMatches(constructor, generatedKeyed.ConstructorParameterTypes) &&
                 IsAllPlansAreServicesOrServiceKey(plans) &&
                 InlinedDependenciesMatch(generatedKeyed.InlinedDependencies))
@@ -654,7 +654,7 @@ internal sealed class ServiceRegistry
         foreach (var dependency in dependencies)
         {
             var accessor = GetEntry(new ServiceIdentifier(dependency.ServiceType, null));
-            if (!GeneratedComponentRegistry.TryGet(dependency.ImplementationType, out var entry) ||
+            if (!GeneratedFactoryRegistry.TryGet(dependency.ImplementationType, out var entry) ||
                 !UsesGeneratedFactory(accessor, entry, ResultCache.None))
             {
                 return false;
@@ -684,7 +684,7 @@ internal sealed class ServiceRegistry
                 continue;
             }
 
-            if (!GeneratedComponentRegistry.TryGet(dependencies[i].ImplementationType!, out var entry) ||
+            if (!GeneratedFactoryRegistry.TryGet(dependencies[i].ImplementationType!, out var entry) ||
                 !UsesGeneratedFactory(accessor, entry, ResultCache.Root))
             {
                 return false;
@@ -696,7 +696,7 @@ internal sealed class ServiceRegistry
         return true;
     }
 
-    private static bool UsesGeneratedFactory(ServiceAccessor? accessor, GeneratedComponentRegistry.Entry entry, ResultCache requiredCache)
+    private static bool UsesGeneratedFactory(ServiceAccessor? accessor, GeneratedFactoryRegistry.Entry entry, ResultCache requiredCache)
     {
         return accessor switch
         {
@@ -745,7 +745,7 @@ internal sealed class ServiceRegistry
 
             if (property.SetMethod is null || !property.SetMethod.IsPublic)
             {
-                throw new InvalidOperationException($"The property '{property.Name}' marked with [Inject] on type '{implType}' must have a public setter.");
+                throw new InvalidOperationException($"[Inject] property must have a public setter. type=[{implType}] property=[{property.Name}]");
             }
 
             object? key = null;
@@ -898,7 +898,7 @@ internal sealed class ServiceRegistry
 
         if (key is null &&
             cache == ResultCache.None &&
-            GeneratedComponentRegistry.TryGetEnumerable(elementType, out var generatedEnumerable) &&
+            GeneratedFactoryRegistry.TryGetEnumerable(elementType, out var generatedEnumerable) &&
             IsEnumerableElementsMatch(items, generatedEnumerable.ElementImplementationTypes))
         {
             // Factory
@@ -918,7 +918,7 @@ internal sealed class ServiceRegistry
 
         for (var i = 0; i < expected.Length; i++)
         {
-            if (!GeneratedComponentRegistry.TryGet(expected[i], out var entry) || !UsesGeneratedFactory(items[i], entry, ResultCache.None))
+            if (!GeneratedFactoryRegistry.TryGet(expected[i], out var entry) || !UsesGeneratedFactory(items[i], entry, ResultCache.None))
             {
                 return false;
             }

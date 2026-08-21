@@ -1,10 +1,12 @@
-namespace BunnyTail.DependencyInjection;
+namespace BunnyTail.DependencyInjection.Internal;
 
+using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 using BunnyTail.DependencyInjection.Accessors;
 
+[EditorBrowsable(EditorBrowsableState.Never)]
 public sealed class DependencyAccessor
 {
     private readonly ServiceAccessor accessor;

@@ -16,21 +16,21 @@ public static class GeneratedComponents
     [ModuleInitializer]
     internal static void InitializeGeneratedFactories()
     {
-        global::BunnyTail.DependencyInjection.GeneratedComponentRegistry.Register(
+        global::BunnyTail.DependencyInjection.Internal.GeneratedFactoryRegistry.Register(
             typeof(global::BunnyTail.DependencyInjection.Tests.Components.PropDependency),
             global::System.Type.EmptyTypes,
             static provider => new global::BunnyTail.DependencyInjection.Tests.Components.PropDependency());
 
-        global::BunnyTail.DependencyInjection.GeneratedComponentRegistry.Register(
+        global::BunnyTail.DependencyInjection.Internal.GeneratedFactoryRegistry.Register(
             typeof(global::BunnyTail.DependencyInjection.Tests.Components.SingletonComponent),
             global::System.Type.EmptyTypes,
             static provider => new global::BunnyTail.DependencyInjection.Tests.Components.SingletonComponent());
 
-        global::BunnyTail.DependencyInjection.GeneratedComponentRegistry.Register(
+        global::BunnyTail.DependencyInjection.Internal.GeneratedFactoryRegistry.Register(
             typeof(global::BunnyTail.DependencyInjection.Tests.Components.TransientComponent),
             [typeof(global::BunnyTail.DependencyInjection.Tests.Components.SingletonComponent)],
             [],
-            [new global::BunnyTail.DependencyInjection.DependencyPlan(typeof(global::BunnyTail.DependencyInjection.Tests.Components.SingletonComponent), typeof(global::BunnyTail.DependencyInjection.Tests.Components.SingletonComponent)), new global::BunnyTail.DependencyInjection.DependencyPlan(typeof(global::BunnyTail.DependencyInjection.Tests.Components.PropDependency), typeof(global::BunnyTail.DependencyInjection.Tests.Components.PropDependency))],
+            [new global::BunnyTail.DependencyInjection.Internal.DependencyPlan(typeof(global::BunnyTail.DependencyInjection.Tests.Components.SingletonComponent), typeof(global::BunnyTail.DependencyInjection.Tests.Components.SingletonComponent)), new global::BunnyTail.DependencyInjection.Internal.DependencyPlan(typeof(global::BunnyTail.DependencyInjection.Tests.Components.PropDependency), typeof(global::BunnyTail.DependencyInjection.Tests.Components.PropDependency))],
             static (provider, dependencies) =>
             {
                 var instance = new global::BunnyTail.DependencyInjection.Tests.Components.TransientComponent(
@@ -39,25 +39,25 @@ public static class GeneratedComponents
                 return instance;
             });
 
-        global::BunnyTail.DependencyInjection.GeneratedComponentRegistry.Register(
+        global::BunnyTail.DependencyInjection.Internal.GeneratedFactoryRegistry.Register(
             typeof(global::BunnyTail.DependencyInjection.Tests.Components.ScopedComponent),
             global::System.Type.EmptyTypes,
             static provider => new global::BunnyTail.DependencyInjection.Tests.Components.ScopedComponent());
 
-        global::BunnyTail.DependencyInjection.GeneratedComponentRegistry.Register(
+        global::BunnyTail.DependencyInjection.Internal.GeneratedFactoryRegistry.Register(
             typeof(global::BunnyTail.DependencyInjection.Tests.Components.DisposableSingleton),
             global::System.Type.EmptyTypes,
             static provider => new global::BunnyTail.DependencyInjection.Tests.Components.DisposableSingleton());
 
-        global::BunnyTail.DependencyInjection.GeneratedComponentRegistry.Register(
+        global::BunnyTail.DependencyInjection.Internal.GeneratedFactoryRegistry.Register(
             typeof(global::BunnyTail.DependencyInjection.Tests.Components.LeafDependency),
             global::System.Type.EmptyTypes,
             static provider => new global::BunnyTail.DependencyInjection.Tests.Components.LeafDependency());
 
-        global::BunnyTail.DependencyInjection.GeneratedComponentRegistry.Register(
+        global::BunnyTail.DependencyInjection.Internal.GeneratedFactoryRegistry.Register(
             typeof(global::BunnyTail.DependencyInjection.Tests.Components.BranchA),
             [typeof(global::BunnyTail.DependencyInjection.Tests.Components.LeafDependency)],
-            [new global::BunnyTail.DependencyInjection.InlinedDependency(typeof(global::BunnyTail.DependencyInjection.Tests.Components.LeafDependency), typeof(global::BunnyTail.DependencyInjection.Tests.Components.LeafDependency))],
+            [new global::BunnyTail.DependencyInjection.Internal.InlinedDependency(typeof(global::BunnyTail.DependencyInjection.Tests.Components.LeafDependency), typeof(global::BunnyTail.DependencyInjection.Tests.Components.LeafDependency))],
             static provider =>
             {
                 var instance = new global::BunnyTail.DependencyInjection.Tests.Components.BranchA(
@@ -65,10 +65,10 @@ public static class GeneratedComponents
                 return instance;
             });
 
-        global::BunnyTail.DependencyInjection.GeneratedComponentRegistry.Register(
+        global::BunnyTail.DependencyInjection.Internal.GeneratedFactoryRegistry.Register(
             typeof(global::BunnyTail.DependencyInjection.Tests.Components.BranchB),
             [typeof(global::BunnyTail.DependencyInjection.Tests.Components.LeafDependency)],
-            [new global::BunnyTail.DependencyInjection.InlinedDependency(typeof(global::BunnyTail.DependencyInjection.Tests.Components.LeafDependency), typeof(global::BunnyTail.DependencyInjection.Tests.Components.LeafDependency))],
+            [new global::BunnyTail.DependencyInjection.Internal.InlinedDependency(typeof(global::BunnyTail.DependencyInjection.Tests.Components.LeafDependency), typeof(global::BunnyTail.DependencyInjection.Tests.Components.LeafDependency))],
             static provider =>
             {
                 var instance = new global::BunnyTail.DependencyInjection.Tests.Components.BranchB(
@@ -76,10 +76,10 @@ public static class GeneratedComponents
                 return instance;
             });
 
-        global::BunnyTail.DependencyInjection.GeneratedComponentRegistry.Register(
+        global::BunnyTail.DependencyInjection.Internal.GeneratedFactoryRegistry.Register(
             typeof(global::BunnyTail.DependencyInjection.Tests.Components.GraphRoot),
             [typeof(global::BunnyTail.DependencyInjection.Tests.Components.BranchA), typeof(global::BunnyTail.DependencyInjection.Tests.Components.BranchB)],
-            [new global::BunnyTail.DependencyInjection.InlinedDependency(typeof(global::BunnyTail.DependencyInjection.Tests.Components.BranchA), typeof(global::BunnyTail.DependencyInjection.Tests.Components.BranchA)), new global::BunnyTail.DependencyInjection.InlinedDependency(typeof(global::BunnyTail.DependencyInjection.Tests.Components.BranchB), typeof(global::BunnyTail.DependencyInjection.Tests.Components.BranchB))],
+            [new global::BunnyTail.DependencyInjection.Internal.InlinedDependency(typeof(global::BunnyTail.DependencyInjection.Tests.Components.BranchA), typeof(global::BunnyTail.DependencyInjection.Tests.Components.BranchA)), new global::BunnyTail.DependencyInjection.Internal.InlinedDependency(typeof(global::BunnyTail.DependencyInjection.Tests.Components.BranchB), typeof(global::BunnyTail.DependencyInjection.Tests.Components.BranchB))],
             static provider =>
             {
                 var instance = new global::BunnyTail.DependencyInjection.Tests.Components.GraphRoot(
@@ -88,31 +88,31 @@ public static class GeneratedComponents
                 return instance;
             });
 
-        global::BunnyTail.DependencyInjection.GeneratedComponentRegistry.Register(
+        global::BunnyTail.DependencyInjection.Internal.GeneratedFactoryRegistry.Register(
             typeof(global::BunnyTail.DependencyInjection.Tests.Components.DisposableLeaf),
             global::System.Type.EmptyTypes,
             static provider => new global::BunnyTail.DependencyInjection.Tests.Components.DisposableLeaf());
 
-        global::BunnyTail.DependencyInjection.GeneratedComponentRegistry.Register(
+        global::BunnyTail.DependencyInjection.Internal.GeneratedFactoryRegistry.Register(
             typeof(global::BunnyTail.DependencyInjection.Tests.Components.MultiLeafA),
             global::System.Type.EmptyTypes,
             static provider => new global::BunnyTail.DependencyInjection.Tests.Components.MultiLeafA());
 
-        global::BunnyTail.DependencyInjection.GeneratedComponentRegistry.Register(
+        global::BunnyTail.DependencyInjection.Internal.GeneratedFactoryRegistry.Register(
             typeof(global::BunnyTail.DependencyInjection.Tests.Components.MultiLeafB),
             global::System.Type.EmptyTypes,
             static provider => new global::BunnyTail.DependencyInjection.Tests.Components.MultiLeafB());
 
-        global::BunnyTail.DependencyInjection.GeneratedComponentRegistry.Register(
+        global::BunnyTail.DependencyInjection.Internal.GeneratedFactoryRegistry.Register(
             typeof(global::BunnyTail.DependencyInjection.Tests.Components.LazyProbeSingleton),
             global::System.Type.EmptyTypes,
             static provider => new global::BunnyTail.DependencyInjection.Tests.Components.LazyProbeSingleton());
 
-        global::BunnyTail.DependencyInjection.GeneratedComponentRegistry.Register(
+        global::BunnyTail.DependencyInjection.Internal.GeneratedFactoryRegistry.Register(
             typeof(global::BunnyTail.DependencyInjection.Tests.Components.LazyProbeConsumer),
             [typeof(global::BunnyTail.DependencyInjection.Tests.Components.LazyProbeSingleton)],
             [],
-            [new global::BunnyTail.DependencyInjection.DependencyPlan(typeof(global::BunnyTail.DependencyInjection.Tests.Components.LazyProbeSingleton), typeof(global::BunnyTail.DependencyInjection.Tests.Components.LazyProbeSingleton))],
+            [new global::BunnyTail.DependencyInjection.Internal.DependencyPlan(typeof(global::BunnyTail.DependencyInjection.Tests.Components.LazyProbeSingleton), typeof(global::BunnyTail.DependencyInjection.Tests.Components.LazyProbeSingleton))],
             static (provider, dependencies) =>
             {
                 var instance = new global::BunnyTail.DependencyInjection.Tests.Components.LazyProbeConsumer(
@@ -120,7 +120,7 @@ public static class GeneratedComponents
                 return instance;
             });
 
-        global::BunnyTail.DependencyInjection.GeneratedComponentRegistry.Register(
+        global::BunnyTail.DependencyInjection.Internal.GeneratedFactoryRegistry.Register(
             typeof(global::BunnyTail.DependencyInjection.Tests.Components.PostConstructComponent),
             global::System.Type.EmptyTypes,
             static provider =>
@@ -130,7 +130,7 @@ public static class GeneratedComponents
                 return instance;
             });
 
-        global::BunnyTail.DependencyInjection.GeneratedComponentRegistry.Register(
+        global::BunnyTail.DependencyInjection.Internal.GeneratedFactoryRegistry.Register(
             typeof(global::BunnyTail.DependencyInjection.Tests.Components.InitializableComponent),
             global::System.Type.EmptyTypes,
             static provider =>
@@ -140,11 +140,11 @@ public static class GeneratedComponents
                 return instance;
             });
 
-        global::BunnyTail.DependencyInjection.GeneratedComponentRegistry.Register(
+        global::BunnyTail.DependencyInjection.Internal.GeneratedFactoryRegistry.Register(
             typeof(global::BunnyTail.DependencyInjection.Tests.Components.OrderedInitComponent),
             global::System.Type.EmptyTypes,
             [],
-            [new global::BunnyTail.DependencyInjection.DependencyPlan(typeof(global::BunnyTail.DependencyInjection.Tests.Components.PropDependency), typeof(global::BunnyTail.DependencyInjection.Tests.Components.PropDependency))],
+            [new global::BunnyTail.DependencyInjection.Internal.DependencyPlan(typeof(global::BunnyTail.DependencyInjection.Tests.Components.PropDependency), typeof(global::BunnyTail.DependencyInjection.Tests.Components.PropDependency))],
             static (provider, dependencies) =>
             {
                 var instance = new global::BunnyTail.DependencyInjection.Tests.Components.OrderedInitComponent();
@@ -153,34 +153,34 @@ public static class GeneratedComponents
                 return instance;
             });
 
-        global::BunnyTail.DependencyInjection.GeneratedComponentRegistry.Register(
+        global::BunnyTail.DependencyInjection.Internal.GeneratedFactoryRegistry.Register(
             typeof(global::BunnyTail.DependencyInjection.Tests.Components.NodeWithDisposable),
             [typeof(global::BunnyTail.DependencyInjection.Tests.Components.DisposableLeaf)],
             [],
-            [new global::BunnyTail.DependencyInjection.DependencyPlan(typeof(global::BunnyTail.DependencyInjection.Tests.Components.DisposableLeaf))],
+            [new global::BunnyTail.DependencyInjection.Internal.DependencyPlan(typeof(global::BunnyTail.DependencyInjection.Tests.Components.DisposableLeaf))],
             static (provider, dependencies) =>
             {
                 var scope = (global::BunnyTail.DependencyInjection.ServiceProviderScope)provider;
                 var instance = new global::BunnyTail.DependencyInjection.Tests.Components.NodeWithDisposable(
-                    global::System.Runtime.CompilerServices.Unsafe.As<global::BunnyTail.DependencyInjection.DependencyAccessor>(dependencies[0])!.GetValue<global::BunnyTail.DependencyInjection.Tests.Components.DisposableLeaf>(scope));
+                    global::System.Runtime.CompilerServices.Unsafe.As<global::BunnyTail.DependencyInjection.Internal.DependencyAccessor>(dependencies[0])!.GetValue<global::BunnyTail.DependencyInjection.Tests.Components.DisposableLeaf>(scope));
                 return instance;
             });
 
-        global::BunnyTail.DependencyInjection.GeneratedComponentRegistry.Register(
+        global::BunnyTail.DependencyInjection.Internal.GeneratedFactoryRegistry.Register(
             typeof(global::BunnyTail.DependencyInjection.Tests.Components.KeyedProbeDependency),
             global::System.Type.EmptyTypes,
             static provider => new global::BunnyTail.DependencyInjection.Tests.Components.KeyedProbeDependency());
 
-        global::BunnyTail.DependencyInjection.GeneratedComponentRegistry.RegisterKeyed(
+        global::BunnyTail.DependencyInjection.Internal.GeneratedFactoryRegistry.RegisterKeyed(
             typeof(global::BunnyTail.DependencyInjection.Tests.Components.PrimaryKeyedComponent),
             global::System.Type.EmptyTypes,
             static (provider, key) => new global::BunnyTail.DependencyInjection.Tests.Components.PrimaryKeyedComponent());
 
-        global::BunnyTail.DependencyInjection.GeneratedComponentRegistry.RegisterKeyed(
+        global::BunnyTail.DependencyInjection.Internal.GeneratedFactoryRegistry.RegisterKeyed(
             typeof(global::BunnyTail.DependencyInjection.Tests.Components.KeyedWithDependency),
             [typeof(global::BunnyTail.DependencyInjection.Tests.Components.KeyedProbeDependency), typeof(string)],
             [],
-            [new global::BunnyTail.DependencyInjection.DependencyPlan(typeof(global::BunnyTail.DependencyInjection.Tests.Components.KeyedProbeDependency), typeof(global::BunnyTail.DependencyInjection.Tests.Components.KeyedProbeDependency))],
+            [new global::BunnyTail.DependencyInjection.Internal.DependencyPlan(typeof(global::BunnyTail.DependencyInjection.Tests.Components.KeyedProbeDependency), typeof(global::BunnyTail.DependencyInjection.Tests.Components.KeyedProbeDependency))],
             static (provider, key, dependencies) =>
             {
                 var instance = new global::BunnyTail.DependencyInjection.Tests.Components.KeyedWithDependency(
@@ -189,7 +189,7 @@ public static class GeneratedComponents
                 return instance;
             });
 
-        global::BunnyTail.DependencyInjection.GeneratedComponentRegistry.RegisterEnumerable(
+        global::BunnyTail.DependencyInjection.Internal.GeneratedFactoryRegistry.RegisterEnumerable(
             typeof(global::BunnyTail.DependencyInjection.Tests.Components.IMultiLeaf),
             [typeof(global::BunnyTail.DependencyInjection.Tests.Components.MultiLeafA), typeof(global::BunnyTail.DependencyInjection.Tests.Components.MultiLeafB)],
             static provider =>
