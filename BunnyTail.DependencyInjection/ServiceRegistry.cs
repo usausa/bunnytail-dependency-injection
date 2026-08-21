@@ -7,43 +7,35 @@ using System.Runtime.CompilerServices;
 
 using Microsoft.Extensions.DependencyInjection;
 
-// ServiceDescriptor 集合から解決グラフ (accessor 群) をビルドするレジストリ。
-// エントリ実現は初回解決時 (MEDI の callsite 構築と同タイミング)。実現済みエントリはイミュータブル
-// Registry that builds the resolution graph (accessors) from the ServiceDescriptor set.
-// Entries are realized on first resolution (same timing as MEDI callsite construction) and are immutable once realized.
 internal sealed class ServiceRegistry
 {
     [ThreadStatic]
     private static List<ServiceIdentifier>? realizationStack;
 
-    private readonly ServiceDescriptor[] descriptors;                                          // 登録順 / registration order (used to build IEnumerable)
-    private readonly Dictionary<ServiceIdentifier, List<ServiceDescriptor>> exactMap;          // (ServiceType, key) → 登録順リスト / list in registration order
-    private readonly HashSet<Type> keyedServiceTypes;                                          // AnyKey クエリ判定用 / for AnyKey query checks
+    private readonly ServiceDescriptor[] descriptors;
+
+    private readonly Dictionary<ServiceIdentifier, List<ServiceDescriptor>> exactMap;
+
+    private readonly HashSet<Type> keyedServiceTypes;
+
     private readonly ConcurrentDictionary<ServiceIdentifier, ServiceAccessor?> entries = new();
+
     private readonly ConcurrentDictionary<AccessorCacheKey, ServiceAccessor> descriptorAccessors = new();
 
-    // 主テーブル (FixedServiceTable 参照)。ビルド時に実現できたエントリを収め、実行時に実現した
-    // 派生エントリ (IEnumerable / closed generic / AnyKey 派生など) は COW 再構築で昇格する。
-    // テーブル自体は常にイミュータブルで、resolve 経路に同期はない。
-    // 実現できなかった登録 (null エントリ) は overlay (entries) 側に残る
-    // Main table (see FixedServiceTable). Holds entries realized at build time; derived entries realized
-    // at runtime (IEnumerable / closed generics / AnyKey derivations) are promoted by COW rebuild. The table itself
-    // is always immutable and the resolve path has no synchronization. Registrations that could not be realized
-    // (null entries) stay on the overlay (entries) side.
     private readonly Lock tableSync = new();
+
     private FixedTypeServiceTable typeTable;
+
     private FixedKeyedServiceTable keyedTable;
-    private readonly List<KeyValuePair<Type, ServiceAccessor>>? typeTableEntries;              // 昇格用スナップショット (tableSync 下でのみ変更) / promotion snapshot (mutated only under tableSync)
+
+    private readonly List<KeyValuePair<Type, ServiceAccessor>>? typeTableEntries;
+
     private readonly List<(Type Type, object Key, ServiceAccessor Accessor)>? keyedTableEntries;
 
     private int slotCounter;
 
     private readonly bool disposedSentinel;
 
-    // dispose 済み scope 用の番兵。テーブルが空なので全解決がミスして GetEntrySlow へ落ち、そこで throw する。
-    // これによりホット経路から disposed フラグの分岐が消える (S-10)
-    // Sentinel for disposed scopes. The tables are empty, so every resolution misses into GetEntrySlow, which throws.
-    // This removes the disposed-flag branch from the hot path (S-10).
     internal static readonly ServiceRegistry DisposedSentinel = new();
 
     private ServiceRegistry()
@@ -58,8 +50,6 @@ internal sealed class ServiceRegistry
 
     public ServiceRegistry(IEnumerable<ServiceDescriptor> source, GeneratedServiceProvider provider)
     {
-        // ウォームアップ中は空テーブルを置く。null 許容にすると解決のホット経路に null チェックが乗るため
-        // Empty tables during warmup: making the fields nullable would put a null check on the hot resolution path.
         typeTable = new FixedTypeServiceTable([]);
         keyedTable = new FixedKeyedServiceTable([]);
 
@@ -84,18 +74,13 @@ internal sealed class ServiceRegistry
             }
         }
 
-        // built-in サービス (ユーザー登録より優先: MEDI 互換)
-        // Built-in services (take precedence over user registrations: MEDI compatible).
+        // Built-in
         entries[new ServiceIdentifier(typeof(IServiceProvider), null)] = new ServiceProviderAccessor();
         entries[new ServiceIdentifier(typeof(IServiceScopeFactory), null)] = new ConstantAccessor(provider);
         entries[new ServiceIdentifier(typeof(IServiceProviderIsService), null)] = new ConstantAccessor(provider);
         entries[new ServiceIdentifier(typeof(IServiceProviderIsKeyedService), null)] = new ConstantAccessor(provider);
 
-        // ビルド時ウォームアップ: 実現可能な exact 登録を主テーブルへ固める。実現に失敗する登録
-        // (未解決依存・循環など) はここでは無視し、初回 resolve 時に例外を投げ直す (MEDI 互換: ビルドは失敗させない)
-        // Build-time warmup: realizable exact registrations are frozen into the main table. Registrations that fail
-        // to realize (unresolved dependencies, cycles, ...) are ignored here and rethrow on first resolve
-        // (MEDI compatible: building never fails).
+        // Warmup
         var typeEntries = new List<KeyValuePair<Type, ServiceAccessor>>
         {
             new(typeof(IServiceProvider), entries[new ServiceIdentifier(typeof(IServiceProvider), null)]!),
@@ -106,9 +91,9 @@ internal sealed class ServiceRegistry
         var keyedEntries = new List<(Type, object, ServiceAccessor)>();
         foreach (var id in exactMap.Keys)
         {
-            if (id.ServiceType.IsGenericTypeDefinition
-                || ReferenceEquals(id.Key, KeyedService.AnyKey)
-                || (id.Key is null && typeEntries.Exists(x => ReferenceEquals(x.Key, id.ServiceType))))
+            if (id.ServiceType.IsGenericTypeDefinition ||
+                ReferenceEquals(id.Key, KeyedService.AnyKey) ||
+                (id.Key is null && typeEntries.Exists(x => ReferenceEquals(x.Key, id.ServiceType))))
             {
                 continue;
             }
@@ -146,10 +131,6 @@ internal sealed class ServiceRegistry
 
     private int NextSlot() => Interlocked.Increment(ref slotCounter) - 1;
 
-    // 開発時診断 (Diagnostics.ServiceFactoryReportExtensions)。各登録を実現して、生成ファクトリが採用されたかを分類する。
-    // 実現は accessor の構築までで、インスタンスは生成しない
-    // Development-time diagnostics (Diagnostics.ServiceFactoryReportExtensions): realizes every registration and classifies whether a
-    // generated factory was adopted. Realization builds accessors only and never creates instances.
     internal List<Diagnostics.ServiceFactoryReportEntry> CreateFactoryReport()
     {
         var report = new List<Diagnostics.ServiceFactoryReportEntry>();
