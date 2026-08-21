@@ -38,118 +38,24 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     private const string IgnoreInterfaceProperty = "build_property.DependencyInjectionIgnoreInterface";
 
     // ------------------------------------------------------------
-    // Diagnostics
-    // ------------------------------------------------------------
-
-#pragma warning disable RS2008
-    // 指定の解析 (BTDI0001-0004) / directive parsing
-    private static readonly DiagnosticDescriptor InvalidMethodDefinition = new(
-        "BTDI0001",
-        "Invalid registration method",
-        "Method must be a static partial extension method with an IServiceCollection parameter and return type. method=[{0}].",
-        "BunnyTail.DependencyInjection",
-        DiagnosticSeverity.Error,
-        true);
-
-    private static readonly DiagnosticDescriptor InvalidPattern = new(
-        "BTDI0002",
-        "Invalid registration pattern",
-        "Invalid regex pattern. pattern=[{0}].",
-        "BunnyTail.DependencyInjection",
-        DiagnosticSeverity.Warning,
-        true);
-
-    private static readonly DiagnosticDescriptor AssemblyNotFound = new(
-        "BTDI0003",
-        "Referenced assembly not found",
-        "Assembly specified on [ComponentRegistration] is not referenced by this project. assembly=[{0}].",
-        "BunnyTail.DependencyInjection",
-        DiagnosticSeverity.Warning,
-        true);
-
-    private static readonly DiagnosticDescriptor InvalidGenerateComponentFactoryTarget = new(
-        "BTDI0004",
-        "Invalid GenerateComponentFactory target",
-        "Type must be a publicly accessible concrete class with a usable public constructor. type=[{0}].",
-        "BunnyTail.DependencyInjection",
-        DiagnosticSeverity.Warning,
-        true);
-
-    // 型の解析 (BTDI0005-0007) / per-type analysis
-    private static readonly DiagnosticDescriptor AmbiguousConstructor = new(
-        "BTDI0005",
-        "Ambiguous constructor",
-        "Type has multiple public constructors with the same maximum parameter count. type=[{0}].",
-        "BunnyTail.DependencyInjection",
-        DiagnosticSeverity.Error,
-        true);
-
-    private static readonly DiagnosticDescriptor InvalidPostConstruct = new(
-        "BTDI0006",
-        "Invalid PostConstruct method",
-        "PostConstruct method must be a public parameterless instance method returning void. type=[{1}] method=[{0}].",
-        "BunnyTail.DependencyInjection",
-        DiagnosticSeverity.Error,
-        true);
-
-    private static readonly DiagnosticDescriptor ConflictingPostConstruct = new(
-        "BTDI0007",
-        "Conflicting PostConstruct specifications",
-        "Type has conflicting PostConstruct specifications across its lifetime attributes. type=[{0}].",
-        "BunnyTail.DependencyInjection",
-        DiagnosticSeverity.Error,
-        true);
-
-    // 依存グラフの解析 (BTDI0008-0010) / dependency graph analysis
-    private static readonly DiagnosticDescriptor CircularDependency = new(
-        "BTDI0008",
-        "Circular dependency",
-        "Circular dependency detected. chain=[{0}].",
-        "BunnyTail.DependencyInjection",
-        DiagnosticSeverity.Error,
-        true);
-
-    private static readonly DiagnosticDescriptor UnresolvedDependency = new(
-        "BTDI0009",
-        "Unresolved dependency",
-        "Dependency cannot be resolved from the registrations visible at compile time. type=[{1}] dependency=[{0}].",
-        "BunnyTail.DependencyInjection",
-        DiagnosticSeverity.Warning,
-        true);
-
-    private static readonly DiagnosticDescriptor CaptiveDependency = new(
-        "BTDI0010",
-        "Captive dependency",
-        "Singleton component depends on scoped service. type=[{0}] dependency=[{1}].",
-        "BunnyTail.DependencyInjection",
-        DiagnosticSeverity.Warning,
-        true);
-
-    // 生成の限界 (BTDI0011) / generation limit
-    private static readonly DiagnosticDescriptor ValueTypeRuntimeGeneric = new(
-        "BTDI0011",
-        "Closed generic with value type arguments on the runtime path",
-        "Closed generic with value type arguments has no generated factory and resolves through the runtime path, which is not supported on NativeAOT. type=[{0}].",
-        "BunnyTail.DependencyInjection",
-        DiagnosticSeverity.Warning,
-        true);
-#pragma warning restore RS2008
-
-    // ------------------------------------------------------------
     // Initialize
     // ------------------------------------------------------------
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        // 除外インタフェース指定 (値等価なので、指定が変わらない限り下流は再実行されない)
-        // Ignored interface specification (value-equatable, so downstream reruns only when the specification changes).
+        // 除外インタフェース指定 (MSBuild プロパティ)
+        // Ignored interface specification (MSBuild property)
         var ignoreInterfacesProvider = context.AnalyzerConfigOptionsProvider
             .Select(static (provider, _) => SelectIgnoreInterfaces(provider));
 
+        // [Singleton] / [Scoped] / [Transient] の属性コンポーネント
+        // Attribute components: [Singleton] / [Scoped] / [Transient]
         var singletonProvider = CreateComponentProvider(context, SingletonAttributeName, "Singleton");
         var scopedProvider = CreateComponentProvider(context, ScopedAttributeName, "Scoped");
         var transientProvider = CreateComponentProvider(context, TransientAttributeName, "Transient");
 
+        // Add* / TryAdd* の呼び出し
+        // Add* / TryAdd* invocations
         var collectedProvider = context.SyntaxProvider
             .CreateSyntaxProvider(
                 static (node, _) => IsAddInvocationSyntax(node),
@@ -157,12 +63,16 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             .Where(static x => x is not null)
             .Select(static (x, _) => x!);
 
+        // [ComponentRegistration] 付きの partial メソッド
+        // Partial methods carrying [ComponentRegistration]
         var methodProvider = context.SyntaxProvider
             .ForAttributeWithMetadataName(
                 ComponentRegistrationAttributeName,
                 static (node, _) => node is MethodDeclarationSyntax,
                 static (ctx, _) => CreateMethodModel(ctx));
 
+        // 規約マッチの候補クラス (アセンブリ内の具象クラス)
+        // Convention match candidates: concrete classes in this assembly
         var candidateProvider = context.SyntaxProvider
             .CreateSyntaxProvider(
                 static (node, _) => IsCandidateClassSyntax(node),
@@ -170,6 +80,8 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             .Where(static x => x is not null)
             .Select(static (x, _) => x!);
 
+        // open generic 定義の登録 (typeof オーバーロード)
+        // Open generic definition registrations through the typeof overload
         var openGenericProvider = context.SyntaxProvider
             .CreateSyntaxProvider(
                 static (node, _) => IsAddInvocationSyntax(node),
@@ -177,8 +89,8 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             .Where(static x => x is not null)
             .Select(static (x, _) => x!);
 
-        // [assembly: GenerateComponentFactory(typeof(T))] — 登録は行わずファクトリだけを生成する
-        // [assembly: GenerateComponentFactory(typeof(T))] generates the factory only, without any registration.
+        // [GenerateComponentFactory] の対象型 (登録は行わずファクトリだけを生成する)
+        // Targets of [GenerateComponentFactory], which generate the factory only, without any registration
         var generateComponentFactoryProvider = context.SyntaxProvider
             .ForAttributeWithMetadataName(
                 GenerateComponentFactoryAttributeName,
@@ -186,6 +98,8 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                 static (ctx, _) => CreateGenerateComponentFactoryModels(ctx))
             .SelectMany(static (models, _) => models);
 
+        // typeof(IRepo<Foo>) に現れる閉型の使用
+        // Closed generic usages appearing as typeof(IRepo<Foo>)
         var closedUsageProvider = context.SyntaxProvider
             .CreateSyntaxProvider(
                 static (node, _) => node is TypeOfExpressionSyntax { Type: GenericNameSyntax },
@@ -193,8 +107,8 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             .Where(static x => x is not null)
             .Select(static (x, _) => x!);
 
-        // コンストラクタ引数・プロパティ型に現れる closed generic も usage として収集する (依存駆動の発見)
-        // Closed generics appearing as constructor parameter or property types are collected as usages too (dependency driven discovery).
+        // コンストラクタ引数・プロパティ型に現れる閉型の使用 (依存駆動の発見)
+        // Closed generic usages appearing as constructor parameter or property types (dependency driven discovery)
         var dependencyUsageProvider = context.SyntaxProvider
             .CreateSyntaxProvider(
                 static (node, _) => IsGenericDependencySyntax(node),
@@ -203,30 +117,30 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             .Select(static (x, _) => x!);
 
         // Compilation 依存の値は狭い Select で切り出し、値等価な形にしてから最終 Combine に載せる。
-        // Compilation 自体を Combine すると毎編集で Execute (出力構築) がフル再実行されるため。
-        // 毎コンパイルで再計算されるのは以下の 3 つ (アセンブリ名 / closed generic 解決 / 参照モジュール走査) のみで、
-        // いずれも軽量。値が変わらない限り Execute はスキップされる
-        // Compilation dependent values are extracted through narrow Selects into value-equatable shapes before the
-        // final combine. Combining the Compilation itself would rerun Execute (output construction) on every edit.
-        // Only these three (assembly name, closed generic resolution and the referenced module scan) recompute per
-        // compilation, and all are lightweight; Execute is skipped as long as the values stay equal.
+        // Compilation 自体を Combine すると毎編集で Execute (出力構築) がフル再実行されるため
+        // Compilation dependent values are extracted through narrow Selects into value-equatable shapes before
+        // the final combine. Combining the Compilation itself would rerun Execute on every edit.
+
+        // 自アセンブリ名 (生成コードの名前空間に使う)
+        // This assembly name, used for the generated namespace
         var assemblyNameProvider = context.CompilationProvider
             .Select(static (compilation, _) => compilation.AssemblyName ?? "Generated");
 
+        // 参照アセンブリの [ComponentModule] マーカー
+        // The [ComponentModule] markers of referenced assemblies
         var referencedModulesProvider = context.CompilationProvider
             .Select(static (compilation, _) => CollectReferencedModules(compilation));
 
+        // open generic 登録と閉型使用を突き合わせた閉型ファクトリ
+        // Closed generic factories, matched from the open generic registrations against the closed usages
         var closedFactoriesProvider = openGenericProvider.Collect()
             .Combine(closedUsageProvider.Collect())
             .Combine(dependencyUsageProvider.Collect())
             .Combine(context.CompilationProvider)
             .Select(static (source, _) => DiscoverClosedGenericFactories(source.Left.Left.Left, source.Left.Left.Right, source.Left.Right, source.Right));
 
-        // Assembly 指定つき規約パターンの外部走査。要求 (メソッド属性から抽出、値等価) が空なら即空を返す軽量パス。
-        // 要求がある場合のみ対象アセンブリを走査し、結果も値等価なので Execute は変化時だけ再実行される
-        // External scan for assembly-scoped convention patterns. The requests (extracted from method attributes,
-        // value-equatable) short-circuit to an empty result when absent. Only requested assemblies are scanned and
-        // the result is value-equatable, so Execute reruns only when it changes.
+        // Assembly 指定つき規約パターンの外部走査結果
+        // External scan results for assembly-scoped convention patterns
         var externalCandidatesProvider = methodProvider.Collect()
             .Select(static (methods, _) => CollectExternalRequests(methods))
             .Combine(context.CompilationProvider)
@@ -1046,14 +960,14 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                 ContainsTypeParameter(type) ||
                 !compilation.IsSymbolAccessibleWithin(type, compilation.Assembly))
             {
-                models.Add(Results.Error<FactoryModel>(new DiagnosticInfo(InvalidGenerateComponentFactoryTarget, location, displayName)));
+                models.Add(Results.Error<FactoryModel>(new DiagnosticInfo(Diagnostics.InvalidGenerateComponentFactoryTarget, location, displayName)));
                 continue;
             }
 
             var factory = CreateFactoryModel(type, compilation.Assembly);
             if (!factory.EligibleUnkeyed)
             {
-                models.Add(Results.Error<FactoryModel>(new DiagnosticInfo(InvalidGenerateComponentFactoryTarget, location, displayName)));
+                models.Add(Results.Error<FactoryModel>(new DiagnosticInfo(Diagnostics.InvalidGenerateComponentFactoryTarget, location, displayName)));
                 continue;
             }
 
@@ -1063,7 +977,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             {
                 if (!HasValidPostConstructMethod(type, postConstruct))
                 {
-                    models.Add(Results.Error<FactoryModel>(new DiagnosticInfo(InvalidPostConstruct, location, postConstruct, displayName)));
+                    models.Add(Results.Error<FactoryModel>(new DiagnosticInfo(Diagnostics.InvalidPostConstruct, location, postConstruct, displayName)));
                     continue;
                 }
 
@@ -1085,7 +999,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         var syntax = (MethodDeclarationSyntax)context.TargetNode;
         if (context.TargetSymbol is not IMethodSymbol symbol)
         {
-            return Results.Error<MethodModel>(new DiagnosticInfo(InvalidMethodDefinition, LocationInfo.CreateFrom(syntax), context.TargetSymbol.Name));
+            return Results.Error<MethodModel>(new DiagnosticInfo(Diagnostics.InvalidMethodDefinition, LocationInfo.CreateFrom(syntax), context.TargetSymbol.Name));
         }
 
         if (!symbol.IsStatic ||
@@ -1095,7 +1009,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             (symbol.Parameters[0].Type.ToDisplayString() != ServiceCollectionName) ||
             (symbol.ReturnType.ToDisplayString() != ServiceCollectionName))
         {
-            return Results.Error<MethodModel>(new DiagnosticInfo(InvalidMethodDefinition, LocationInfo.CreateFrom(syntax), symbol.Name));
+            return Results.Error<MethodModel>(new DiagnosticInfo(Diagnostics.InvalidMethodDefinition, LocationInfo.CreateFrom(syntax), symbol.Name));
         }
 
         var patterns = new List<PatternModel>();
@@ -1258,13 +1172,13 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                 }
                 catch (ArgumentException)
                 {
-                    context.ReportDiagnostic(new DiagnosticInfo(InvalidPattern, method.Value.Location, pattern.Pattern).ToDiagnostic());
+                    context.ReportDiagnostic(new DiagnosticInfo(Diagnostics.InvalidPattern, method.Value.Location, pattern.Pattern).ToDiagnostic());
                     continue;
                 }
 
                 if ((pattern.Assembly is not null) && externalScan.MissingAssemblies.Contains(pattern.Assembly))
                 {
-                    context.ReportDiagnostic(new DiagnosticInfo(AssemblyNotFound, method.Value.Location, pattern.Assembly).ToDiagnostic());
+                    context.ReportDiagnostic(new DiagnosticInfo(Diagnostics.AssemblyNotFound, method.Value.Location, pattern.Assembly).ToDiagnostic());
                     continue;
                 }
 
@@ -1399,7 +1313,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
         foreach (var warning in closedGenerics.Warnings)
         {
-            context.ReportDiagnostic(new DiagnosticInfo(ValueTypeRuntimeGeneric, warning.Location, warning.DisplayName).ToDiagnostic());
+            context.ReportDiagnostic(new DiagnosticInfo(Diagnostics.ValueTypeRuntimeGeneric, warning.Location, warning.DisplayName).ToDiagnostic());
         }
 
         var inlineTargetMap = BuildInlineTargetMap(components, sortedCollected, conventionMatches);
@@ -1797,17 +1711,17 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         {
             if (component.Factory.AmbiguousConstructor)
             {
-                context.ReportDiagnostic(new DiagnosticInfo(AmbiguousConstructor, component.Location, Display(component.Factory.ImplementationType)).ToDiagnostic());
+                context.ReportDiagnostic(new DiagnosticInfo(Diagnostics.AmbiguousConstructor, component.Location, Display(component.Factory.ImplementationType)).ToDiagnostic());
             }
 
             if (component.Factory.InvalidPostConstruct)
             {
-                context.ReportDiagnostic(new DiagnosticInfo(InvalidPostConstruct, component.Location, component.Factory.PostConstruct!, Display(component.Factory.ImplementationType)).ToDiagnostic());
+                context.ReportDiagnostic(new DiagnosticInfo(Diagnostics.InvalidPostConstruct, component.Location, component.Factory.PostConstruct!, Display(component.Factory.ImplementationType)).ToDiagnostic());
             }
 
             if (component.Factory.ConflictingPostConstruct)
             {
-                context.ReportDiagnostic(new DiagnosticInfo(ConflictingPostConstruct, component.Location, Display(component.Factory.ImplementationType)).ToDiagnostic());
+                context.ReportDiagnostic(new DiagnosticInfo(Diagnostics.ConflictingPostConstruct, component.Location, Display(component.Factory.ImplementationType)).ToDiagnostic());
             }
 
             if (component.KeyLiteral is not null)
@@ -1821,7 +1735,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                 {
                     if ((component.Lifetime == "Singleton") && (target.Lifetime == "Scoped"))
                     {
-                        context.ReportDiagnostic(new DiagnosticInfo(CaptiveDependency, component.Location, Display(component.Factory.ImplementationType), Display(typeName)).ToDiagnostic());
+                        context.ReportDiagnostic(new DiagnosticInfo(Diagnostics.CaptiveDependency, component.Location, Display(component.Factory.ImplementationType), Display(typeName)).ToDiagnostic());
                     }
                 }
                 else if (inCompilation &&
@@ -1832,7 +1746,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                     // (実行時登録は見えないため Warning。open generic 登録の閉型は解決可能なので除外)
                     // Warns only for types inside the compiling assembly missing from compile-time visible registrations
                     // (runtime registrations are invisible, hence Warning; closed forms of open generic registrations resolve, so they are exempt).
-                    context.ReportDiagnostic(new DiagnosticInfo(UnresolvedDependency, component.Location, Display(typeName), Display(component.Factory.ImplementationType)).ToDiagnostic());
+                    context.ReportDiagnostic(new DiagnosticInfo(Diagnostics.UnresolvedDependency, component.Location, Display(typeName), Display(component.Factory.ImplementationType)).ToDiagnostic());
                 }
             }
         }
@@ -1871,7 +1785,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                         var chain = string.Join(" -> ", stack.Skip(start).Concat([target.Impl]).Select(Display));
                         if (reported.Add(chain))
                         {
-                            context.ReportDiagnostic(new DiagnosticInfo(CircularDependency, node.Location, chain).ToDiagnostic());
+                            context.ReportDiagnostic(new DiagnosticInfo(Diagnostics.CircularDependency, node.Location, chain).ToDiagnostic());
                         }
                     }
                     else if (!state.TryGetValue(target.Impl, out var visited) || (visited == 0))
