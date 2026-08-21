@@ -518,7 +518,9 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             }
         }
 
-        return filtered.Count == interfaces.Count ? interfaces : [with(filtered.ToArray())];
+#pragma warning disable IDE0028
+        return filtered.Count == interfaces.Count ? interfaces : new([.. filtered]);
+#pragma warning restore IDE0028
     }
 
     private static bool IsIgnoredInterface(string fullyQualifiedName, EquatableArray<string> ignoreInterfaces)

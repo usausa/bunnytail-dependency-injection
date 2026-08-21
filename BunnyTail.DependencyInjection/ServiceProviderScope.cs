@@ -5,10 +5,6 @@ using System.Runtime.CompilerServices;
 
 using Microsoft.Extensions.DependencyInjection;
 
-// スコープ。ルートプロバイダも root スコープとして同じ実装を使う。注入される IServiceProvider はこのスコープ自身 (MEDI 互換)
-// Scope. The root provider uses the same implementation as its root scope. The injected IServiceProvider is this scope itself (MEDI compatible).
-// 基底インタフェースの明示列挙は冗長だが、公開契約を型宣言だけで読めるようにするため残す
-// Explicitly listing base interfaces is redundant but kept so the public contract is readable from the declaration alone.
 // ReSharper disable RedundantExtendsListEntry
 public sealed class ServiceProviderScope :
     IServiceScope,
@@ -17,16 +13,11 @@ public sealed class ServiceProviderScope :
     ISupportRequiredService,
     IDisposable,
     IAsyncDisposable
-// ReSharper restore RedundantExtendsListEntry
 {
     private static readonly object NullSentinel = new();
 
     private readonly GeneratedServiceProvider provider;
 
-    // 解決に使う registry 参照。dispose 時に「必ず throw する番兵」へ差し替えることで、
-    // ホット経路から disposed フラグの分岐を消す (S-10)。MEDI と同じく dispose 競合時は best-effort
-    // Registry reference used for resolution. Swapped to an always-throwing sentinel on dispose, which removes
-    // the disposed-flag branch from the hot path (S-10). Like MEDI, racing with dispose is best-effort.
     private ServiceRegistry registry;
 
     private object?[] slots = [];
@@ -34,13 +25,6 @@ public sealed class ServiceProviderScope :
     private List<object>? disposables;
 
     private bool disposed;
-
-    internal ServiceProviderScope(GeneratedServiceProvider provider, bool isRootScope)
-    {
-        this.provider = provider;
-        registry = provider.Registry;
-        IsRootScope = isRootScope;
-    }
 
     internal bool IsRootScope { get; }
 
@@ -50,8 +34,15 @@ public sealed class ServiceProviderScope :
 
     public IServiceProvider ServiceProvider => this;
 
+    internal ServiceProviderScope(GeneratedServiceProvider provider, bool isRootScope)
+    {
+        this.provider = provider;
+        registry = provider.Registry;
+        IsRootScope = isRootScope;
+    }
+
     //--------------------------------------------------------------------------------
-    // Resolve (解決)
+    // Resolve
     //--------------------------------------------------------------------------------
 
     public object? GetService(Type serviceType) => registry.ResolveType(serviceType, this);
@@ -96,8 +87,6 @@ public sealed class ServiceProviderScope :
     private static bool IsEnumerableService(Type serviceType) =>
         serviceType.IsConstructedGenericType && serviceType.GetGenericTypeDefinition() == typeof(IEnumerable<>);
 
-    // throw は NoInlining ヘルパへ分離する。文字列補間の展開が呼び出し元のインライン化予算を食い潰さないようにするため
-    // Throws live in NoInlining helpers so the interpolated-string expansion does not eat the callers' inlining budget.
     [DoesNotReturn]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void ThrowNoService(Type serviceType) =>
@@ -117,10 +106,6 @@ public sealed class ServiceProviderScope :
     private static void ThrowAnyKeyNotEnumerable() =>
         throw new InvalidOperationException("KeyedService.AnyKey can only be used to retrieve an IEnumerable of keyed services.");
 
-    // 型付き解決 (生成コードと利用者コードの両方が使う)。sealed クラスへの直接呼び出しになり、
-    // MEDI 拡張メソッドが行う ISupportRequiredService の型テストとインタフェース二重ディスパッチを回避する
-    // Typed resolution used by generated and user code alike. Direct calls on a sealed class, avoiding the
-    // ISupportRequiredService type test and the double interface dispatch of the MEDI extension methods.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public T? GetService<T>() => (T?)GetService(typeof(T));
 
@@ -134,7 +119,7 @@ public sealed class ServiceProviderScope :
     public T GetRequiredKeyedService<T>(object? serviceKey) => (T)GetRequiredKeyedService(typeof(T), serviceKey);
 
     //--------------------------------------------------------------------------------
-    // Slot storage (スロット保持)
+    // Slot storage
     //--------------------------------------------------------------------------------
 
     internal static object WrapSlotValue(object? value) => value ?? NullSentinel;
@@ -162,7 +147,7 @@ public sealed class ServiceProviderScope :
     }
 
     //--------------------------------------------------------------------------------
-    // Disposal tracking (disposal 追跡)
+    // Disposal tracking
     //--------------------------------------------------------------------------------
 
     internal void CheckDisposed() => ObjectDisposedException.ThrowIf(disposed, typeof(IServiceProvider));
@@ -189,8 +174,6 @@ public sealed class ServiceProviderScope :
 
         if (disposed)
         {
-            // dispose 済みスコープからの生成物は即時破棄して例外 (MEDI 互換)
-            // Instances created from a disposed scope are disposed immediately and an exception is thrown (MEDI compatible).
             if (value is IDisposable d)
             {
                 d.Dispose();
@@ -203,7 +186,7 @@ public sealed class ServiceProviderScope :
     }
 
     //--------------------------------------------------------------------------------
-    // Dispose (生成の逆順 = LIFO / reverse creation order)
+    // Dispose
     //--------------------------------------------------------------------------------
 
     public void Dispose()
@@ -235,11 +218,8 @@ public sealed class ServiceProviderScope :
             }
             else
             {
-                // IAsyncDisposable のみ実装のサービスを同期 Dispose した場合は例外 (MEDI 互換)
-                // Synchronous Dispose of a service implementing only IAsyncDisposable throws (MEDI compatible).
 #pragma warning disable CA1065
-                throw new InvalidOperationException(
-                    $"'{toDispose[i].GetType()}' type only implements IAsyncDisposable. Use DisposeAsync to dispose the container.");
+                throw new InvalidOperationException($"'{toDispose[i].GetType()}' type only implements IAsyncDisposable. Use DisposeAsync to dispose the container.");
 #pragma warning restore CA1065
             }
         }
@@ -279,3 +259,4 @@ public sealed class ServiceProviderScope :
         }
     }
 }
+// ReSharper restore RedundantExtendsListEntry
