@@ -3,13 +3,10 @@ namespace BunnyTail.DependencyInjection;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 
-// 生成ファクトリがインライン展開した依存の前提。「サービス型 ServiceType の解決が、実装型 ImplementationType の
-// 生成ファクトリによる transient 解決になる」ことを表明する。実行時登録がこれを満たさない場合
-// (差し替え・lifetime 変更・ファクトリ登録等)、エンジンは生成ファクトリを採用せず互換経路へフォールバックする
-// Assumption of a dependency inlined into a generated factory. Declares that resolving ServiceType results in
-// a transient resolution through the generated factory of ImplementationType. When the runtime registrations
-// no longer satisfy this (replacement, lifetime change, factory registration, ...), the engine rejects the
-// generated factory and falls back to the runtime path.
+//--------------------------------------------------------------------------------
+// Generated component
+//--------------------------------------------------------------------------------
+
 public sealed class InlinedDependency
 {
     public Type ServiceType { get; }
@@ -18,20 +15,11 @@ public sealed class InlinedDependency
 
     public InlinedDependency(Type serviceType, Type implementationType)
     {
-        ArgumentNullException.ThrowIfNull(serviceType);
-        ArgumentNullException.ThrowIfNull(implementationType);
         ServiceType = serviceType;
         ImplementationType = implementationType;
     }
 }
 
-// 依存配列 1 スロットの前提。インスタンススロット (ImplementationType あり) は「前提どおりの実装の生成ファクトリに
-// よる singleton 解決」を要求し、解決済みインスタンスを保持する。アクセサスロット (ImplementationType なし) は
-// 解決可能であることだけを要求し、実現済み accessor を保持する (scoped / inline 不適格 transient など任意の lifetime)
-// Assumption for one slot of the dependency array. Instance slots (with ImplementationType) require a singleton
-// resolution through the assumed implementation's generated factory and hold the resolved instance. Accessor
-// slots (without ImplementationType) only require resolvability and hold the realized accessor
-// (any lifetime: scoped, non-inlinable transients and so on).
 public sealed class DependencyPlan
 {
     public Type ServiceType { get; }
@@ -42,30 +30,24 @@ public sealed class DependencyPlan
 
     public DependencyPlan(Type serviceType)
     {
-        ArgumentNullException.ThrowIfNull(serviceType);
         ServiceType = serviceType;
     }
 
     public DependencyPlan(Type serviceType, Type implementationType)
     {
-        ArgumentNullException.ThrowIfNull(serviceType);
-        ArgumentNullException.ThrowIfNull(implementationType);
         ServiceType = serviceType;
         ImplementationType = implementationType;
     }
 }
 
-// 生成コードが [ModuleInitializer] から実装型→生成ファクトリを登録するレジストリ。
-// エンジンは ImplementationType 登録の実現時にここを引き、「MEDI 規則で選択されたコンストラクタ = 生成時に
-// 前提としたコンストラクタ」が成立する場合のみ生成ファクトリを採用する (不成立ならリフレクション経路へフォールバック)
-// Registry where generated code registers implementation type -> generated factory from [ModuleInitializer].
-// The engine consults it when realizing an ImplementationType registration, and adopts the generated factory
-// only when the constructor selected by MEDI rules matches the one assumed at generation time
-// (otherwise it falls back to the reflection path).
+//--------------------------------------------------------------------------------
+// Generated component registry
+//--------------------------------------------------------------------------------
+
 public static class GeneratedComponentRegistry
 {
     //--------------------------------------------------------------------------------
-    // Entries (採用判定に使う前提の保持)
+    // Entry
     //--------------------------------------------------------------------------------
 
     internal sealed class Entry
@@ -75,14 +57,10 @@ public static class GeneratedComponentRegistry
 
         public readonly InlinedDependency[] InlinedDependencies;
 
-        // 依存配列の前提。スロット順に対応する (DependencyFactory 形のみ)
-        // Dependency array assumptions, in slot order (dependency-array-shaped factories only).
         public readonly DependencyPlan[] Dependencies;
 
         public readonly Func<IServiceProvider, object>? Factory;
 
-        // 依存を解決済み配列で受け取る形 (Factory と排他)
-        // Shape receiving resolved dependencies as an array (mutually exclusive with Factory).
         public readonly Func<IServiceProvider, object?[], object>? DependencyFactory;
 #pragma warning restore SA1401
 
@@ -110,14 +88,10 @@ public static class GeneratedComponentRegistry
 
         public readonly InlinedDependency[] InlinedDependencies;
 
-        // 依存配列の前提。スロット順に対応する (KeyedDependencyFactory 形のみ)
-        // Dependency array assumptions, in slot order (keyed dependency-array-shaped factories only).
         public readonly DependencyPlan[] Dependencies;
 
         public readonly Func<IServiceProvider, object?, object>? Factory;
 
-        // 依存を解決済み配列で受け取る形 (Factory と排他)
-        // Shape receiving resolved dependencies as an array (mutually exclusive with Factory).
         public readonly Func<IServiceProvider, object?, object?[], object>? KeyedDependencyFactory;
 #pragma warning restore SA1401
 
@@ -138,8 +112,6 @@ public static class GeneratedComponentRegistry
         }
     }
 
-    // 生成 enumerable ファクトリ (要素型 → 全要素 transient の配列リテラル実体化)
-    // Generated enumerable factories (element type -> array literal materialization of all-transient elements).
     internal sealed class EnumerableEntry
     {
 #pragma warning disable SA1401
@@ -156,7 +128,7 @@ public static class GeneratedComponentRegistry
     }
 
     //--------------------------------------------------------------------------------
-    // Registration (生成コードからの登録)
+    // Registration from generated code
     //--------------------------------------------------------------------------------
 
     private static readonly ConcurrentDictionary<Type, Entry> Map = new(IdentityTypeComparer.Instance);
@@ -165,10 +137,6 @@ public static class GeneratedComponentRegistry
 
     private static readonly ConcurrentDictionary<Type, EnumerableEntry> EnumerableMap = new(IdentityTypeComparer.Instance);
 
-    // [GenerateComponentFactory] の PostConstruct 指定。生成ファクトリが採用されない場合でも
-    // 実行時経路が同じ初期化を行えるよう、ファクトリ本体とは独立に保持する
-    // PostConstruct specifications of [GenerateComponentFactory]. Held independently of the factory so the runtime
-    // path performs the same initialization even when the generated factory is not adopted.
     private static readonly ConcurrentDictionary<Type, string> InitializerMap = new(IdentityTypeComparer.Instance);
 
     public static void Register(Type implementationType, Type[] constructorParameterTypes, Func<IServiceProvider, object> factory) =>
@@ -176,22 +144,11 @@ public static class GeneratedComponentRegistry
 
     public static void Register(Type implementationType, Type[] constructorParameterTypes, InlinedDependency[] inlinedDependencies, Func<IServiceProvider, object> factory)
     {
-        ArgumentNullException.ThrowIfNull(implementationType);
-        ArgumentNullException.ThrowIfNull(constructorParameterTypes);
-        ArgumentNullException.ThrowIfNull(inlinedDependencies);
-        ArgumentNullException.ThrowIfNull(factory);
         Map[implementationType] = new Entry(constructorParameterTypes, inlinedDependencies, factory);
     }
 
-    // 依存を 依存配列で受け取る形。dependencies がスロット順の前提になる
-    // Dependency-array-shaped registration receiving resolved dependencies; dependencies define the slot order assumptions.
     public static void Register(Type implementationType, Type[] constructorParameterTypes, InlinedDependency[] inlinedDependencies, DependencyPlan[] dependencies, Func<IServiceProvider, object?[], object> factory)
     {
-        ArgumentNullException.ThrowIfNull(implementationType);
-        ArgumentNullException.ThrowIfNull(constructorParameterTypes);
-        ArgumentNullException.ThrowIfNull(inlinedDependencies);
-        ArgumentNullException.ThrowIfNull(dependencies);
-        ArgumentNullException.ThrowIfNull(factory);
         Map[implementationType] = new Entry(constructorParameterTypes, inlinedDependencies, dependencies, factory);
     }
 
@@ -200,44 +157,26 @@ public static class GeneratedComponentRegistry
 
     public static void RegisterKeyed(Type implementationType, Type[] constructorParameterTypes, InlinedDependency[] inlinedDependencies, Func<IServiceProvider, object?, object> factory)
     {
-        ArgumentNullException.ThrowIfNull(implementationType);
-        ArgumentNullException.ThrowIfNull(constructorParameterTypes);
-        ArgumentNullException.ThrowIfNull(inlinedDependencies);
-        ArgumentNullException.ThrowIfNull(factory);
         KeyedMap[implementationType] = new KeyedEntry(constructorParameterTypes, inlinedDependencies, factory);
     }
 
-    // 依存を 依存配列で受け取る keyed 形。dependencies がスロット順の前提になる
-    // Keyed dependency-array-shaped registration receiving resolved dependencies; dependencies define the slot order assumptions.
     public static void RegisterKeyed(Type implementationType, Type[] constructorParameterTypes, InlinedDependency[] inlinedDependencies, DependencyPlan[] dependencies, Func<IServiceProvider, object?, object?[], object> factory)
     {
-        ArgumentNullException.ThrowIfNull(implementationType);
-        ArgumentNullException.ThrowIfNull(constructorParameterTypes);
-        ArgumentNullException.ThrowIfNull(inlinedDependencies);
-        ArgumentNullException.ThrowIfNull(dependencies);
-        ArgumentNullException.ThrowIfNull(factory);
         KeyedMap[implementationType] = new KeyedEntry(constructorParameterTypes, inlinedDependencies, dependencies, factory);
     }
 
-    // 全要素 transient の IEnumerable<T> 実体化を配列リテラルへ畳む形。elementImplementationTypes が登録順の前提になる
-    // Materializes an all-transient IEnumerable<T> as an array literal; elementImplementationTypes define the ordered assumptions.
     public static void RegisterEnumerable(Type elementType, Type[] elementImplementationTypes, Func<IServiceProvider, object> factory)
     {
-        ArgumentNullException.ThrowIfNull(elementType);
-        ArgumentNullException.ThrowIfNull(elementImplementationTypes);
-        ArgumentNullException.ThrowIfNull(factory);
         EnumerableMap[elementType] = new EnumerableEntry(elementImplementationTypes, factory);
     }
 
     public static void RegisterInitializer(Type implementationType, string postConstructMethodName)
     {
-        ArgumentNullException.ThrowIfNull(implementationType);
-        ArgumentNullException.ThrowIfNull(postConstructMethodName);
         InitializerMap[implementationType] = postConstructMethodName;
     }
 
     //--------------------------------------------------------------------------------
-    // Lookup (エンジンからの参照)
+    // Lookup from engine
     //--------------------------------------------------------------------------------
 
     internal static bool TryGet(Type implementationType, out Entry entry) => Map.TryGetValue(implementationType, out entry!);
