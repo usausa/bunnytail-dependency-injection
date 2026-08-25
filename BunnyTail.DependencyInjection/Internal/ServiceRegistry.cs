@@ -247,6 +247,7 @@ internal sealed class ServiceRegistry
         }
 
         // Activated types (realized lazily, so only types activated so far appear)
+        // ReSharper disable once LoopCanBeConvertedToQuery
         foreach (var pair in activationAccessors)
         {
             var status = pair.Value switch

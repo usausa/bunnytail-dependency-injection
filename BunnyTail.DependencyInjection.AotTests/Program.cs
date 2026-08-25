@@ -130,7 +130,8 @@ using (var provider = services.BuildGeneratedServiceProvider())
     Assert(activated.Prop is not null, "activation inject property");
     Assert(provider.GetService<AotActivated>() is null, "activation does not register");
 
-    var scoped = ((BunnyTail.DependencyInjection.ITypeActivator)provider).Activate<AotActivated>();
+    var scoped = provider.Activate<AotActivated>();
+    // ReSharper disable once ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
     Assert(scoped is not null, "activation via interface reference");
 }
 
