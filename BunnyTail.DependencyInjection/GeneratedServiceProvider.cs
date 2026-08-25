@@ -1,5 +1,6 @@
 namespace BunnyTail.DependencyInjection;
 
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 using BunnyTail.DependencyInjection.Internal;
@@ -14,6 +15,7 @@ public sealed class GeneratedServiceProvider :
     IServiceScopeFactory,
     IServiceProviderIsService,
     IServiceProviderIsKeyedService,
+    ITypeActivator,
     IDisposable,
     IAsyncDisposable
 {
@@ -22,8 +24,13 @@ public sealed class GeneratedServiceProvider :
     internal ServiceProviderScope RootScope { get; }
 
     public GeneratedServiceProvider(IEnumerable<ServiceDescriptor> descriptors)
+        : this(descriptors, null)
     {
-        Registry = new ServiceRegistry(descriptors, this);
+    }
+
+    public GeneratedServiceProvider(IEnumerable<ServiceDescriptor> descriptors, GeneratedServiceProviderOptions? options)
+    {
+        Registry = new ServiceRegistry(descriptors, this, options);
         RootScope = new ServiceProviderScope(this, isRootScope: true);
     }
 
@@ -58,6 +65,20 @@ public sealed class GeneratedServiceProvider :
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public T GetRequiredKeyedService<T>(object? serviceKey) => RootScope.GetRequiredKeyedService<T>(serviceKey);
+
+    //--------------------------------------------------------------------------------
+    // ITypeActivator
+    //--------------------------------------------------------------------------------
+
+    public object Activate(
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type type)
+        => RootScope.Activate(type);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public T Activate<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] T>()
+        where T : class
+        => RootScope.Activate<T>();
 
     //--------------------------------------------------------------------------------
     // IServiceScopeFactory

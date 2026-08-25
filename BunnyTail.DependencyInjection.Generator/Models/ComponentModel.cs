@@ -9,6 +9,7 @@ internal sealed record ComponentModel(
     string Lifetime,
     string? AsType,
     string? KeyLiteral,
+    string? Tracking,
     EquatableArray<string> Interfaces,
     string FilePath,
     int SpanStart,

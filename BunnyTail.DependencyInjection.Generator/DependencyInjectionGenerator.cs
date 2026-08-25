@@ -32,6 +32,9 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     private const string ServiceCollectionName = "Microsoft.Extensions.DependencyInjection.IServiceCollection";
     private const string ServiceDescriptorName = "Microsoft.Extensions.DependencyInjection.ServiceDescriptor";
     private const string ServiceDescriptorCollectionName = "System.Collections.Generic.ICollection<Microsoft.Extensions.DependencyInjection.ServiceDescriptor>";
+    private const string GeneratedServiceProviderName = "BunnyTail.DependencyInjection.GeneratedServiceProvider";
+    private const string ServiceProviderScopeName = "BunnyTail.DependencyInjection.ServiceProviderScope";
+    private const string TypeActivatorName = "BunnyTail.DependencyInjection.ITypeActivator";
 
     private const string IgnoreInterfaceProperty = "build_property.DependencyInjectionIgnoreInterface";
 
@@ -502,6 +505,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         {
             string? asType = null;
             string? keyLiteral = null;
+            string? tracking = null;
             foreach (var argument in attribute.NamedArguments)
             {
                 if (argument.Key == "As")
@@ -514,6 +518,15 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                         ? null
                         : SymbolDisplay.FormatPrimitive(argument.Value.Value!, quoteStrings: true, useHexadecimalNumbers: false);
                 }
+                else if (argument.Key == "Tracking")
+                {
+                    tracking = argument.Value.Value switch
+                    {
+                        1 => "Enabled",
+                        2 => "Disabled",
+                        _ => null
+                    };
+                }
             }
 
             models.Add(new ComponentModel(
@@ -521,6 +534,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                 lifetime,
                 asType,
                 keyLiteral,
+                tracking,
                 interfaces,
                 filePath,
                 spanStart,
@@ -543,7 +557,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         }
 
         var name = member.Name.Identifier.ValueText;
-        return name.StartsWith("Add", StringComparison.Ordinal) || name.StartsWith("TryAdd", StringComparison.Ordinal);
+        return name.StartsWith("Add", StringComparison.Ordinal) || name.StartsWith("TryAdd", StringComparison.Ordinal) || (name == "Activate");
     }
 
     // TODO
@@ -557,6 +571,34 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
         var methodName = method.Name;
         var containingType = method.ContainingType?.ToDisplayString();
+
+        // Activate 呼び出し収集。登録には一切参加せず、対象型のファクトリ生成のみを行う (ActivationOnly)
+        // Activate invocation collection: factory generation only for the target type, never joins registrations (ActivationOnly).
+        if (methodName == "Activate")
+        {
+            if (containingType is not (GeneratedServiceProviderName or ServiceProviderScopeName or TypeActivatorName))
+            {
+                return null;
+            }
+
+            ITypeSymbol? activateTarget = null;
+            if (method.TypeArguments.Length == 1)
+            {
+                activateTarget = method.TypeArguments[0];
+            }
+            else if ((invocation.ArgumentList.Arguments.Count == 1) &&
+                     (invocation.ArgumentList.Arguments[0].Expression is TypeOfExpressionSyntax activateTypeOf))
+            {
+                activateTarget = context.SemanticModel.GetTypeInfo(activateTypeOf.Type).Type;
+            }
+
+            if (activateTarget is null)
+            {
+                return null;
+            }
+
+            return CreateCollectedModelCore(context, invocation, activateTarget, activateTarget, "Transient", CollectedKinds.ActivationOnly);
+        }
 
         // ServiceDescriptor 引数形: Add / TryAdd / TryAddEnumerable(ServiceDescriptor.{Lifetime}<S, I>())。
         // Describe や typeof 形の descriptor は lifetime が定数で読めないか稀なため対象外
@@ -1390,9 +1432,9 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
         foreach (var model in collected)
         {
-            if (model.Kind == CollectedKinds.Keyed)
+            if ((model.Kind == CollectedKinds.Keyed) || (model.Kind == CollectedKinds.ActivationOnly))
             {
-                continue;
+                continue;   // ActivationOnly は登録ではないため enumerable の前提に影響しない / ActivationOnly is not a registration and never affects enumerable assumptions
             }
 
             if (model.Kind == CollectedKinds.FactoryOnly)
@@ -1660,6 +1702,11 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
         foreach (var model in collected)
         {
+            if (model.Kind == CollectedKinds.ActivationOnly)
+            {
+                continue;   // 登録ではないため解析対象外 / not a registration, excluded from analysis
+            }
+
             serviceMap[model.ServiceType] = (model.Factory.ImplementationType, model.Lifetime);
             if (!nodes.ContainsKey(model.Factory.ImplementationType))
             {
@@ -1911,9 +1958,9 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         // affect non-keyed resolution.
         foreach (var model in collected)
         {
-            if (model.Kind == CollectedKinds.Keyed)
+            if ((model.Kind == CollectedKinds.Keyed) || (model.Kind == CollectedKinds.ActivationOnly))
             {
-                continue;
+                continue;   // ActivationOnly は登録ではないためインライン前提に影響しない / ActivationOnly is not a registration and never affects inline assumptions
             }
 
             if (model.Kind == CollectedKinds.FactoryOnly)
@@ -2794,30 +2841,45 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     {
         var implementationType = component.Factory.ImplementationType;
 
+        // Tracking is declared only on the Transient attribute. It routes the registration through the tracking aware overloads.
+        var tracking = component.Tracking is not null ? "global::BunnyTail.DependencyInjection.DisposableTracking." + component.Tracking : null;
+
         if (component.KeyLiteral is not null)
         {
             if (component.AsType is not null)
             {
-                builder.Indent().Append("services.AddKeyed").Append(component.Lifetime).Append('<').Append(component.AsType).Append(", ").Append(implementationType).Append(">(").Append(component.KeyLiteral).Append(");").NewLine();
+                builder.Indent().Append("services.AddKeyed").Append(component.Lifetime).Append('<').Append(component.AsType).Append(", ").Append(implementationType).Append(">(").Append(component.KeyLiteral);
             }
             else
             {
-                builder.Indent().Append("services.AddKeyed").Append(component.Lifetime).Append('<').Append(implementationType).Append(">(").Append(component.KeyLiteral).Append(");").NewLine();
+                builder.Indent().Append("services.AddKeyed").Append(component.Lifetime).Append('<').Append(implementationType).Append(">(").Append(component.KeyLiteral);
             }
 
+            if (tracking is not null)
+            {
+                builder.Append(", ").Append(tracking);
+            }
+
+            builder.Append(");").NewLine();
             return;
         }
 
         if (component.AsType is not null)
         {
-            builder.Indent().Append("services.Add").Append(component.Lifetime).Append('<').Append(component.AsType).Append(", ").Append(implementationType).Append(">();").NewLine();
+            builder.Indent().Append("services.Add").Append(component.Lifetime).Append('<').Append(component.AsType).Append(", ").Append(implementationType).Append(">(").Append(tracking ?? string.Empty).Append(");").NewLine();
             return;
         }
 
-        builder.Indent().Append("services.Add").Append(component.Lifetime).Append('<').Append(implementationType).Append(">();").NewLine();
+        builder.Indent().Append("services.Add").Append(component.Lifetime).Append('<').Append(implementationType).Append(">(").Append(tracking ?? string.Empty).Append(");").NewLine();
         foreach (var interfaceType in component.Interfaces)
         {
-            builder.Indent().Append("services.Add").Append(component.Lifetime).Append('<').Append(interfaceType).Append(">(static provider => ((global::BunnyTail.DependencyInjection.ServiceProviderScope)provider).GetRequiredService<").Append(implementationType).Append(">());").NewLine();
+            builder.Indent().Append("services.Add").Append(component.Lifetime).Append('<').Append(interfaceType).Append(">(static provider => ((global::BunnyTail.DependencyInjection.ServiceProviderScope)provider).GetRequiredService<").Append(implementationType).Append(">()");
+            if (tracking is not null)
+            {
+                builder.Append(", ").Append(tracking);
+            }
+
+            builder.Append(");").NewLine();
         }
     }
 

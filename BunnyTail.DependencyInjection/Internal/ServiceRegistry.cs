@@ -30,6 +30,8 @@ internal sealed class ServiceRegistry
 
     private readonly ConcurrentDictionary<AccessorCacheKey, ServiceAccessor> descriptorAccessors = new();
 
+    private readonly ConcurrentDictionary<Type, ServiceAccessor> activationAccessors = new();
+
     // Lookup
 
     private FixedTypeServiceTable typeTable;
@@ -41,6 +43,12 @@ internal sealed class ServiceRegistry
     private readonly List<KeyValuePair<Type, ServiceAccessor>>? typeTableEntries;
 
     private readonly List<(Type Type, object Key, ServiceAccessor Accessor)>? keyedTableEntries;
+
+    // Tracking
+
+    private readonly bool trackTransientDisposables;
+
+    private readonly Dictionary<Type, DisposableTracking>? trackingOverrides;
 
     // Misc
 
@@ -57,6 +65,7 @@ internal sealed class ServiceRegistry
     private ServiceRegistry()
     {
         disposedSentinel = true;
+        trackTransientDisposables = true;
         typeTable = new FixedTypeServiceTable([]);
         keyedTable = new FixedKeyedServiceTable([]);
         descriptors = [];
@@ -64,8 +73,11 @@ internal sealed class ServiceRegistry
         keyedServiceTypes = [];
     }
 
-    public ServiceRegistry(IEnumerable<ServiceDescriptor> source, GeneratedServiceProvider provider)
+    public ServiceRegistry(IEnumerable<ServiceDescriptor> source, GeneratedServiceProvider provider, GeneratedServiceProviderOptions? options)
     {
+        trackTransientDisposables = options?.TrackTransientDisposables ?? true;
+        trackingOverrides = options?.TrackingOverrides is { Count: > 0 } overrides ? new Dictionary<Type, DisposableTracking>(overrides) : null;
+
         typeTable = new FixedTypeServiceTable([]);
         keyedTable = new FixedKeyedServiceTable([]);
 
@@ -95,6 +107,7 @@ internal sealed class ServiceRegistry
         entries[new ServiceIdentifier(typeof(IServiceScopeFactory), null)] = new ConstantAccessor(provider);
         entries[new ServiceIdentifier(typeof(IServiceProviderIsService), null)] = new ConstantAccessor(provider);
         entries[new ServiceIdentifier(typeof(IServiceProviderIsKeyedService), null)] = new ConstantAccessor(provider);
+        entries[new ServiceIdentifier(typeof(ITypeActivator), null)] = new ServiceProviderAccessor();
 
         // Warmup
         var typeEntries = new List<KeyValuePair<Type, ServiceAccessor>>
@@ -102,7 +115,8 @@ internal sealed class ServiceRegistry
             new(typeof(IServiceProvider), entries[new ServiceIdentifier(typeof(IServiceProvider), null)]!),
             new(typeof(IServiceScopeFactory), entries[new ServiceIdentifier(typeof(IServiceScopeFactory), null)]!),
             new(typeof(IServiceProviderIsService), entries[new ServiceIdentifier(typeof(IServiceProviderIsService), null)]!),
-            new(typeof(IServiceProviderIsKeyedService), entries[new ServiceIdentifier(typeof(IServiceProviderIsKeyedService), null)]!)
+            new(typeof(IServiceProviderIsKeyedService), entries[new ServiceIdentifier(typeof(IServiceProviderIsKeyedService), null)]!),
+            new(typeof(ITypeActivator), entries[new ServiceIdentifier(typeof(ITypeActivator), null)]!)
         };
         var keyedEntries = new List<(Type, object, ServiceAccessor)>();
         foreach (var id in exactMap.Keys)
@@ -155,6 +169,48 @@ internal sealed class ServiceRegistry
     // Diagnostics
     //--------------------------------------------------------------------------------
 
+    //--------------------------------------------------------------------------------
+    // Activation
+    //--------------------------------------------------------------------------------
+
+    internal object Activate(
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type type,
+        ServiceProviderScope scope)
+    {
+        if (!activationAccessors.TryGetValue(type, out var accessor))
+        {
+            // The value factory overload of GetOrAdd breaks the annotation flow, so create first and then publish
+            accessor = activationAccessors.GetOrAdd(type, CreateActivationAccessor(type));
+        }
+
+        var value = accessor.GetValue(scope);
+        if (value is null)
+        {
+            throw new InvalidOperationException($"Type activation failed. type=[{type}]");
+        }
+
+        return value;
+    }
+
+    private ServiceAccessor CreateActivationAccessor(
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type type)
+    {
+        if (type.IsInterface || type.IsAbstract || type.IsGenericTypeDefinition)
+        {
+            throw new InvalidOperationException($"Type activation requires a concrete class. type=[{type}]");
+        }
+
+        // Descriptor-less accessor: fresh instance per call, never captured by the container.
+        // Generated factory adoption, constructor selection, [Inject] and PostConstruct all come from the shared pipeline
+        var accessor = CreateConstructorAccessor(type, type, ResultCache.None, serviceKey: null, trackDisposable: false);
+        if (accessor is null)
+        {
+            throw new InvalidOperationException($"Type activation failed. type=[{type}]");
+        }
+
+        return accessor;
+    }
+
     internal List<Diagnostics.ServiceFactoryReportEntry> CreateFactoryReport()
     {
         var report = new List<Diagnostics.ServiceFactoryReportEntry>();
@@ -188,6 +244,18 @@ internal sealed class ServiceRegistry
                 _ => Diagnostics.ServiceFactoryStatus.NotApplicable
             };
             report.Add(new Diagnostics.ServiceFactoryReportEntry(descriptor.ServiceType, implementationType, key, descriptor.Lifetime, status));
+        }
+
+        // Activated types (realized lazily, so only types activated so far appear)
+        foreach (var pair in activationAccessors)
+        {
+            var status = pair.Value switch
+            {
+                FactoryAccessor or DependencyFactoryAccessor => Diagnostics.ServiceFactoryStatus.Generated,
+                ConstructorAccessor => Diagnostics.ServiceFactoryStatus.RuntimeFallback,
+                _ => Diagnostics.ServiceFactoryStatus.NotApplicable
+            };
+            report.Add(new Diagnostics.ServiceFactoryReportEntry(pair.Key, pair.Key, null, ServiceLifetime.Transient, status));
         }
 
         return report;
@@ -398,6 +466,9 @@ internal sealed class ServiceRegistry
             _ => ResultCache.None
         };
 
+        // Transient tracking can be disabled per registration or globally. Root/Scoped disposal is always tracked.
+        var trackDisposable = (cache != ResultCache.None) || ResolveTransientTracking(descriptor);
+
         if (!descriptor.IsKeyedService)
         {
             if (descriptor.ImplementationInstance is not null)
@@ -409,10 +480,10 @@ internal sealed class ServiceRegistry
             if (descriptor.ImplementationFactory is not null)
             {
                 // Factory
-                return new FactoryAccessor(descriptor.ImplementationFactory, cache, cache == ResultCache.Scoped ? NextSlot() : -1, trackDisposable: true);
+                return new FactoryAccessor(descriptor.ImplementationFactory, cache, cache == ResultCache.Scoped ? NextSlot() : -1, trackDisposable);
             }
 
-            return CreateConstructorAccessor(descriptor.ImplementationType!, serviceType, cache, serviceKey: null);
+            return CreateConstructorAccessor(descriptor.ImplementationType!, serviceType, cache, serviceKey: null, trackDisposable);
         }
 
         if (descriptor.KeyedImplementationInstance is not null)
@@ -424,10 +495,34 @@ internal sealed class ServiceRegistry
         if (descriptor.KeyedImplementationFactory is not null)
         {
             // Keyed
-            return new KeyedFactoryAccessor(descriptor.KeyedImplementationFactory, effectiveKey, cache, cache == ResultCache.Scoped ? NextSlot() : -1, trackDisposable: true);
+            return new KeyedFactoryAccessor(descriptor.KeyedImplementationFactory, effectiveKey, cache, cache == ResultCache.Scoped ? NextSlot() : -1, trackDisposable);
         }
 
-        return CreateConstructorAccessor(descriptor.KeyedImplementationType!, serviceType, cache, serviceKey: effectiveKey);
+        return CreateConstructorAccessor(descriptor.KeyedImplementationType!, serviceType, cache, serviceKey: effectiveKey, trackDisposable);
+    }
+
+    private bool ResolveTransientTracking(ServiceDescriptor descriptor)
+    {
+        if (descriptor is TrackingServiceDescriptor { Tracking: not DisposableTracking.Default } tracked)
+        {
+            return tracked.Tracking == DisposableTracking.Enabled;
+        }
+
+        if (trackingOverrides is not null)
+        {
+            var implementationType = descriptor.IsKeyedService ? descriptor.KeyedImplementationType : descriptor.ImplementationType;
+            if ((implementationType is not null) && trackingOverrides.TryGetValue(implementationType, out var tracking))
+            {
+                return tracking == DisposableTracking.Enabled;
+            }
+
+            if (trackingOverrides.TryGetValue(descriptor.ServiceType, out tracking))
+            {
+                return tracking == DisposableTracking.Enabled;
+            }
+        }
+
+        return trackTransientDisposables;
     }
 
     [UnconditionalSuppressMessage("AotAnalysis", "IL3050", Justification = "Only open generics with value type arguments can fail at runtime, which is documented as a runtime path limitation.")]
@@ -444,7 +539,8 @@ internal sealed class ServiceRegistry
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type implementationType,
         Type serviceType,
         ResultCache cache,
-        object? serviceKey)
+        object? serviceKey,
+        bool trackDisposable)
     {
         var implType = implementationType;
         if (implType.IsGenericTypeDefinition)
@@ -468,7 +564,7 @@ internal sealed class ServiceRegistry
             if (implType.IsValueType)
             {
                 // Value type
-                return new ValueTypeAccessor(implType, typeof(IInitializable).IsAssignableFrom(implType), cache, slot, IsDisposableType(implType));
+                return new ValueTypeAccessor(implType, typeof(IInitializable).IsAssignableFrom(implType), cache, slot, trackDisposable && IsDisposableType(implType));
             }
 
             throw new InvalidOperationException($"A suitable constructor for type '{implType}' could not be located. Ensure the type is concrete and all parameters of a public constructor are either registered as services or passed as arguments. Also ensure no extraneous arguments are provided.");
@@ -477,7 +573,7 @@ internal sealed class ServiceRegistry
         if (constructors.Length == 1)
         {
             var plans = BuildParameterPlans(constructors[0], implType, serviceKey, throwOnMiss: true)!;
-            return CreateFinalAccessor(implType, constructors[0], plans, serviceKey, cache, slot);
+            return CreateFinalAccessor(implType, constructors[0], plans, serviceKey, cache, slot, trackDisposable);
         }
 
         // Select best constructor according to the MEDI rules
@@ -516,7 +612,7 @@ internal sealed class ServiceRegistry
             throw new InvalidOperationException($"No constructor for type '{implType}' can be instantiated using services from the service container and default values.");
         }
 
-        return CreateFinalAccessor(implType, best, bestPlans!, serviceKey, cache, slot);
+        return CreateFinalAccessor(implType, best, bestPlans!, serviceKey, cache, slot, trackDisposable);
     }
 
     private static bool IsDisposableType(Type type) => typeof(IDisposable).IsAssignableFrom(type) || typeof(IAsyncDisposable).IsAssignableFrom(type);
@@ -565,9 +661,9 @@ internal sealed class ServiceRegistry
     // Generated factory
     //--------------------------------------------------------------------------------
 
-    private ServiceAccessor CreateFinalAccessor(Type implType, ConstructorInfo constructor, ParameterPlan[] plans, object? serviceKey, ResultCache cache, int slot)
+    private ServiceAccessor CreateFinalAccessor(Type implType, ConstructorInfo constructor, ParameterPlan[] plans, object? serviceKey, ResultCache cache, int slot, bool trackDisposable)
     {
-        var track = IsDisposableType(implType);
+        var track = trackDisposable && IsDisposableType(implType);
 
         if (serviceKey is null)
         {

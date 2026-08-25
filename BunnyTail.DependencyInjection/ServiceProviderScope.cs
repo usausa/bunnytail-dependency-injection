@@ -13,6 +13,7 @@ public sealed class ServiceProviderScope :
     IServiceProvider,
     IKeyedServiceProvider,
     ISupportRequiredService,
+    ITypeActivator,
     IDisposable,
     IAsyncDisposable
 {
@@ -119,6 +120,23 @@ public sealed class ServiceProviderScope :
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public T GetRequiredKeyedService<T>(object? serviceKey) => (T)GetRequiredKeyedService(typeof(T), serviceKey);
+
+    //--------------------------------------------------------------------------------
+    // ITypeActivator
+    //--------------------------------------------------------------------------------
+
+    public object Activate(
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type type)
+    {
+        CheckDisposed();
+        return registry.Activate(type, this);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public T Activate<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] T>()
+        where T : class
+        => (T)Activate(typeof(T));
 
     //--------------------------------------------------------------------------------
     // Slot storage

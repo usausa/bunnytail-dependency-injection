@@ -101,6 +101,59 @@ public sealed class GeneratorOutputTest
     }
 
     //--------------------------------------------------------------------------------
+    // Activate
+    //--------------------------------------------------------------------------------
+
+    [Fact]
+    public void FactoryIsCollectedFromActivateInvocation()
+    {
+        // Arrange
+        const string source = """
+            using System;
+
+            using BunnyTail.DependencyInjection;
+
+            namespace Demo;
+
+            public sealed class ActivatedComponent;
+
+            public sealed class TypeofActivatedComponent;
+
+            public sealed class InterfaceActivatedComponent;
+
+            public static class Setup
+            {
+                public static object[] Run(GeneratedServiceProvider provider, ServiceProviderScope scope, ITypeActivator activator)
+                {
+                    return
+                    [
+                        provider.Activate<ActivatedComponent>(),
+                        scope.Activate(typeof(TypeofActivatedComponent)),
+                        activator.Activate<InterfaceActivatedComponent>(),
+                    ];
+                }
+            }
+            """;
+
+        // Act
+        var result = CreateRunner()
+            .VerifyCompiles()
+            .Run(source);
+
+        // Assert: all three call shapes (generic / typeof literal / interface reference) produce factories
+        var generated = result.GeneratedSource("GeneratedComponents.g.cs");
+
+        Assert.Contains("typeof(global::Demo.ActivatedComponent)", generated, StringComparison.Ordinal);
+        Assert.Contains("new global::Demo.ActivatedComponent())", generated, StringComparison.Ordinal);
+        Assert.Contains("typeof(global::Demo.TypeofActivatedComponent)", generated, StringComparison.Ordinal);
+        Assert.Contains("typeof(global::Demo.InterfaceActivatedComponent)", generated, StringComparison.Ordinal);
+
+        // Activation never joins registrations
+        Assert.DoesNotContain("services.Add", generated, StringComparison.Ordinal);
+        Assert.DoesNotContain("AddGeneratedComponents", generated, StringComparison.Ordinal);
+    }
+
+    //--------------------------------------------------------------------------------
     // Convention
     //--------------------------------------------------------------------------------
 

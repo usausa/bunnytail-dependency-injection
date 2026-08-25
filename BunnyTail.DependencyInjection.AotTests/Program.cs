@@ -91,6 +91,51 @@ using (var provider = services.BuildGeneratedServiceProvider())
 
 Assert(disposable.Disposed, "singleton disposed with provider");
 
+// Disposable tracking (attribute Disabled / global option / registration override)
+AotUntrackedTransient attributeUntracked;
+AotTrackedTransient globalUntracked;
+AotTrackedTransient overrideTracked;
+using (var provider = services.BuildGeneratedServiceProvider())
+{
+    attributeUntracked = provider.GetRequiredService<AotUntrackedTransient>();
+}
+
+using (var provider = services.BuildGeneratedServiceProvider(static o => o.TrackTransientDisposables = false))
+{
+    globalUntracked = provider.GetRequiredService<AotTrackedTransient>();
+}
+
+using (var provider = services.BuildGeneratedServiceProvider(static o =>
+{
+    o.TrackTransientDisposables = false;
+    o.EnableTracking(typeof(AotTrackedTransient));
+}))
+{
+    overrideTracked = provider.GetRequiredService<AotTrackedTransient>();
+}
+
+Assert(!attributeUntracked.Disposed, "attribute disabled tracking skips disposal");
+Assert(!globalUntracked.Disposed, "global option skips transient disposal");
+Assert(overrideTracked.Disposed, "type override restores tracking");
+
+// Type activation (generic call site collection / typeof collection / caller ownership / injection)
+AotActivated activated;
+using (var provider = services.BuildGeneratedServiceProvider())
+{
+    activated = provider.Activate<AotActivated>();
+    var second = provider.Activate<AotActivated>();
+    Assert(!ReferenceEquals(activated, second), "activation distinct");
+    Assert(ReferenceEquals(activated.Singleton, provider.GetRequiredService<AotSingleton>()), "activation constructor injection");
+    // ReSharper disable once ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
+    Assert(activated.Prop is not null, "activation inject property");
+    Assert(provider.GetService<AotActivated>() is null, "activation does not register");
+
+    var scoped = ((BunnyTail.DependencyInjection.ITypeActivator)provider).Activate<AotActivated>();
+    Assert(scoped is not null, "activation via interface reference");
+}
+
+Assert(!activated.Disposed, "activated instance is caller owned");
+
 Console.WriteLine(failures == 0 ? "ALL OK" : $"FAILED: {failures}");
 return failures == 0 ? 0 : 1;
 
@@ -187,6 +232,35 @@ namespace BunnyTail.DependencyInjection.AotTests
     [Singleton]
     public sealed class DisposableAot : IDisposable
     {
+        public bool Disposed { get; private set; }
+
+        public void Dispose() => Disposed = true;
+    }
+
+    [Transient(Tracking = DisposableTracking.Disabled)]
+    public sealed class AotUntrackedTransient : IDisposable
+    {
+        public bool Disposed { get; private set; }
+
+        public void Dispose() => Disposed = true;
+    }
+
+    [Transient]
+    public sealed class AotTrackedTransient : IDisposable
+    {
+        public bool Disposed { get; private set; }
+
+        public void Dispose() => Disposed = true;
+    }
+
+    // Not registered anywhere: constructed only through ITypeActivator.Activate
+    public sealed class AotActivated(AotSingleton singleton) : IDisposable
+    {
+        public AotSingleton Singleton { get; } = singleton;
+
+        [Inject]
+        public AotPropDependency Prop { get; set; } = default!;
+
         public bool Disposed { get; private set; }
 
         public void Dispose() => Disposed = true;

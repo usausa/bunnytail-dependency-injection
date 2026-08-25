@@ -32,6 +32,8 @@ public sealed class TransientAttribute : Attribute
     public object? Key { get; set; }
 
     public string? PostConstruct { get; set; }
+
+    public DisposableTracking Tracking { get; set; }
 }
 
 //--------------------------------------------------------------------------------

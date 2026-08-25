@@ -249,6 +249,59 @@ Only one marker per assembly is allowed, so the embedded and the hand-written fo
 
 `Example` with `Example.Library` shows the embedded marker.
 
+### Disposable tracking control
+
+MEDI keeps a reference to every disposable transient it creates and disposes it when the resolving scope is disposed. When another framework owns those objects and disposes them itself — a navigation stack disposing its views, an MVVM layer disposing its view models — the container copy never goes away: the instance is retained until the scope (for root resolutions, the application) shuts down, and then disposed a second time.
+
+Transient tracking can therefore be turned off, per provider and per registration:
+
+```csharp
+// Provider level: stop tracking transient disposables entirely
+using var provider = services.BuildGeneratedServiceProvider(static o => o.TrackTransientDisposables = false);
+```
+
+```csharp
+// Registration level: an explicit three-state setting wins over the provider default
+[Transient(Tracking = DisposableTracking.Disabled)]   // attribute components
+public sealed class MainPageViewModel;
+
+services.AddTransient<MainPage>(DisposableTracking.Disabled);            // Add* registrations
+services.AddKeyedTransient<SidePanel>("side", DisposableTracking.Disabled);
+
+// Registrations you do not control, by type
+using var provider = services.BuildGeneratedServiceProvider(static o =>
+{
+    o.TrackTransientDisposables = false;
+    o.EnableTracking(typeof(ThirdPartyJob));   // keep container disposal for this one
+});
+```
+
+Precedence: explicit registration setting (`Tracking` / tracking-aware `Add*` overloads) > per-type override (`EnableTracking` / `DisableTracking`) > provider default (`TrackTransientDisposables`, default `true` = MEDI behavior).
+
+* Applies to transients only — singleton and scoped disposal always stays container owned
+* Uniform across every resolution path: generated factories, the runtime fallback, `ImplementationFactory` lambdas, keyed services
+* An untracked instance is owned by whoever resolved it: the caller disposes it — constructor injected dependencies keep their own settings
+
+### Type activation
+
+`ITypeActivator` constructs a type that is **not registered as a service** — dependencies still come from the container, but the instance belongs to the caller:
+
+```csharp
+public sealed class NavigationHost(ITypeActivator activator)   // built-in service, constructor injectable
+{
+    public object CreateView(Type viewType) => activator.Activate(viewType);
+}
+
+var page = provider.Activate<MainPage>();   // also available on the provider and on scopes
+```
+
+* Never registered, never tracked: the container does not dispose the instance — the caller owns it. Existing registrations are ignored: activation always constructs a fresh instance
+* The full construction pipeline applies: constructor injection, `[Inject]` properties, `PostConstruct` / `IInitializable`
+* Scope aware: activating from a scope — or through an activator injected inside one — resolves scoped dependencies from that scope
+* AOT: generic call sites (`Activate<T>()`) and `typeof` literal arguments are collected at build time and get generated factories. A runtime `Type` falls back to the runtime path — mark such types with `[GenerateComponentFactory]` to put them on the generated path (`DescribeRuntimeFallbacks()` lists activated fallbacks ready to paste)
+* Deliberately **not** an `IServiceProvider` extension method: on a container that cannot honor the contract the API simply does not exist, instead of failing at runtime
+
+
 ## 📖 API reference
 
 Every entry point carries `Generated` in its name: that is the source generated, reflection-free path. Nothing here replaces the MEDI API — registrations stay `IServiceCollection`, resolution stays `IServiceProvider`.
@@ -259,7 +312,8 @@ Every entry point carries `Generated` in its name: that is the source generated,
 |---|---|---|
 | `AddGeneratedComponents()` | `IServiceCollection` | The one method to call. Registers the attribute components (`[Singleton]` / `[Scoped]` / `[Transient]`) of this assembly **plus every referenced component module** (transitively, each exactly once). Emitted into `<AssemblyName>.GeneratedComponents` whenever components or referenced modules exist |
 | `RegisterComponents()` | *(static, not an extension)* | The registration unit of one module: this assembly's components only. The integration point the aggregation calls across assemblies; call it directly only to leave other modules out |
-| `BuildGeneratedServiceProvider()` | `IServiceCollection` | Builds the `GeneratedServiceProvider`. The counterpart of MEDI's `BuildServiceProvider()` |
+| `BuildGeneratedServiceProvider()` | `IServiceCollection` | Builds the `GeneratedServiceProvider`. The counterpart of MEDI's `BuildServiceProvider()`. An overload takes `Action<GeneratedServiceProviderOptions>` |
+| `AddTransient(...)` / `AddKeyedTransient(...)` with `DisposableTracking` | `IServiceCollection` | Transient registration carrying an explicit disposal tracking setting (`TrackingServiceDescriptor` under the hood) |
 | *(user defined)* | `IServiceCollection` | Partial methods annotated with `[ComponentRegistration]` get their body generated from class name patterns |
 
 ### Types
@@ -269,13 +323,16 @@ Every entry point carries `Generated` in its name: that is the source generated,
 | `GeneratedServiceProviderFactory` | `IServiceProviderFactory<IServiceCollection>` for `UseServiceProviderFactory` (Generic Host / ASP.NET Core) |
 | `GeneratedServiceProvider` | The provider itself. Implements `IServiceProvider`, `IKeyedServiceProvider`, `ISupportRequiredService`, `IServiceScopeFactory`, `IServiceProviderIsService`, `IServiceProviderIsKeyedService`, `IDisposable`, `IAsyncDisposable`. Also exposes typed `GetService<T>()` / `GetRequiredService<T>()` / `GetKeyedService<T>()` / `GetRequiredKeyedService<T>()` instance methods that skip the MEDI extension method dispatch |
 | `ServiceProviderScope` | A scope, also the injected `IServiceProvider` inside that scope. Same typed methods as above |
+| `GeneratedServiceProviderOptions` | Provider options: `TrackTransientDisposables` plus per-type `EnableTracking` / `DisableTracking` overrides |
+| `ITypeActivator` | Unregistered, caller-owned construction: `Activate(Type)` / `Activate<T>()`, implemented by the provider and scopes and pre-registered as a built-in service. Constructor injection, `[Inject]` and `PostConstruct` apply; the instance is never tracked |
+| `DisposableTracking` / `TrackingServiceDescriptor` | Three-state disposal tracking setting and the `ServiceDescriptor` subclass that carries it per registration |
 | `ServiceFactoryReportExtensions` | Development-time diagnostics (`BunnyTail.DependencyInjection.Diagnostics`) as provider extension methods: `CreateFactoryReport()` classifies every registration by resolution path, `DescribeRuntimeFallbacks()` emits ready-to-paste `[GenerateComponentFactory]` lines for the publicly constructible ones |
 
 ### Attributes
 
 | Attribute | Target | Description |
 |---|---|---|
-| `[Singleton]` / `[Scoped]` / `[Transient]` | class | Registration with `As`, `Key` and `PostConstruct` parameters |
+| `[Singleton]` / `[Scoped]` / `[Transient]` | class | Registration with `As`, `Key` and `PostConstruct` parameters. `[Transient]` also takes `Tracking` (disposal tracking) |
 | `[Inject]` | property | Property injection after construction |
 | `[ComponentRegistration]` | partial method | Convention based registration with `Lifetime`, `Pattern`, `Namespace` and `Assembly` parameters |
 | `[ComponentModule]` | assembly | Marks the module type aggregated by `AddGeneratedComponents()`. Emitted automatically for assemblies with attribute components; hand-write it when a library has none |
