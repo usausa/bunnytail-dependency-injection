@@ -10,6 +10,7 @@ internal sealed record ComponentModel(
     string? AsType,
     string? KeyLiteral,
     string? Tracking,
+    bool WithInterfaces,
     EquatableArray<string> Interfaces,
     string FilePath,
     int SpanStart,

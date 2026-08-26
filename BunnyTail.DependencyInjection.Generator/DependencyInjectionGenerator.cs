@@ -377,7 +377,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     // TODO
     private static EquatableArray<string> CollectInterfaces(INamedTypeSymbol symbol)
     {
-        var interfaces = symbol.AllInterfaces
+        var interfaces = symbol.Interfaces
             .Where(static x => x.SpecialType != SpecialType.System_IDisposable)
             .Select(static x => x.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))
             .Where(static x => x is not ("global::System.IAsyncDisposable" or InitializableInterfaceName))
@@ -506,6 +506,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             string? asType = null;
             string? keyLiteral = null;
             string? tracking = null;
+            var withInterfaces = false;
             foreach (var argument in attribute.NamedArguments)
             {
                 if (argument.Key == "As")
@@ -517,6 +518,10 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                     keyLiteral = argument.Value.IsNull
                         ? null
                         : SymbolDisplay.FormatPrimitive(argument.Value.Value!, quoteStrings: true, useHexadecimalNumbers: false);
+                }
+                else if (argument.Key == "WithInterfaces")
+                {
+                    withInterfaces = argument.Value.Value is true;
                 }
                 else if (argument.Key == "Tracking")
                 {
@@ -535,6 +540,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                 asType,
                 keyLiteral,
                 tracking,
+                withInterfaces,
                 interfaces,
                 filePath,
                 spanStart,
@@ -1071,6 +1077,8 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             var pattern = attribute.ConstructorArguments[1].Value as string ?? string.Empty;
             string? ns = null;
             string? assembly = null;
+            string? patternAsType = null;
+            var patternWithInterfaces = false;
             foreach (var argument in attribute.NamedArguments)
             {
                 if (argument.Key == "Namespace")
@@ -1081,9 +1089,24 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                 {
                     assembly = argument.Value.Value as string;
                 }
+                else if (argument.Key == "As")
+                {
+                    patternAsType = (argument.Value.Value as ITypeSymbol)?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                }
+                else if (argument.Key == "WithInterfaces")
+                {
+                    patternWithInterfaces = argument.Value.Value is true;
+                }
             }
 
-            patterns.Add(new PatternModel(lifetime, pattern, ns, assembly));
+            patterns.Add(new PatternModel(
+                lifetime,
+                pattern,
+                ns,
+                assembly,
+                patternAsType,
+                patternWithInterfaces,
+                LocationInfo.CreateFrom(syntax)));
         }
 
         var containingNamespace = symbol.ContainingType.ContainingNamespace.IsGlobalNamespace
@@ -1201,7 +1224,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         var allCandidates = sortedCandidates.Concat(externalScan.Candidates)
             .Select(x => x with { Interfaces = FilterIgnoredInterfaces(x.Interfaces, ignoreInterfaces) })
             .ToArray();
-        var conventionMatches = new List<(MethodModel Method, List<(CandidateModel Candidate, string Lifetime)> Matches)>();
+        var conventionMatches = new List<(MethodModel Method, List<(CandidateModel Candidate, PatternModel Pattern)> Matches)>();
         foreach (var method in methods)
         {
             if (!method.HasValue)
@@ -1209,7 +1232,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                 continue;
             }
 
-            var matches = new List<(CandidateModel, string)>();
+            var matches = new List<(CandidateModel, PatternModel)>();
             var matched = new HashSet<string>();
             foreach (var pattern in method.Value.Patterns)
             {
@@ -1228,6 +1251,11 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                 {
                     context.ReportDiagnostic(new DiagnosticInfo(Diagnostics.AssemblyNotFound, method.Value.Location, pattern.Assembly).ToDiagnostic());
                     continue;
+                }
+
+                if ((pattern.AsType is not null) && pattern.WithInterfaces)
+                {
+                    context.ReportDiagnostic(new DiagnosticInfo(Diagnostics.ConflictingInterfaceDelegate, pattern.Location ?? method.Value.Location, pattern.Pattern).ToDiagnostic());
                 }
 
                 // ReSharper disable once LoopCanBeConvertedToQuery
@@ -1254,7 +1282,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
                     if (matched.Add(candidate.Factory.ImplementationType))
                     {
-                        matches.Add((candidate, pattern.Lifetime));
+                        matches.Add((candidate, pattern));
                     }
                 }
             }
@@ -1392,7 +1420,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     private static List<(string ElementServiceType, List<FactoryModel> Elements)> BuildEnumerableModels(
         ComponentModel[] components,
         CollectedModel[] collected,
-        List<(MethodModel Method, List<(CandidateModel Candidate, string Lifetime)> Matches)> conventionMatches)
+        List<(MethodModel Method, List<(CandidateModel Candidate, PatternModel Pattern)> Matches)> conventionMatches)
     {
         var lists = new Dictionary<string, List<(FactoryModel? Factory, string Lifetime)>>(StringComparer.Ordinal);
         var order = new List<string>();
@@ -1423,9 +1451,12 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             else
             {
                 Append(component.Factory.ImplementationType, component.Factory, component.Lifetime);
-                foreach (var interfaceType in component.Interfaces)
+                if (component.WithInterfaces)
                 {
-                    Append(interfaceType, null, component.Lifetime);   // フォワーディングは検証不能 / forwarding cannot be identity-validated
+                    foreach (var interfaceType in component.Interfaces)
+                    {
+                        Append(interfaceType, null, component.Lifetime);   // フォワーディングは検証不能 / forwarding cannot be identity-validated
+                    }
                 }
             }
         }
@@ -1452,18 +1483,20 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
         foreach (var (_, matches) in conventionMatches)
         {
-            foreach (var (candidate, lifetime) in matches)
+            foreach (var (candidate, pattern) in matches)
             {
-                if (candidate.Interfaces.Count == 1)
+                if (pattern.AsType is not null)
                 {
-                    Append(candidate.Interfaces[0], candidate.Factory, lifetime);
+                    Append(pattern.AsType, candidate.Factory, pattern.Lifetime);
+                    continue;
                 }
-                else
+
+                Append(candidate.Factory.ImplementationType, candidate.Factory, pattern.Lifetime);
+                if (pattern.WithInterfaces)
                 {
-                    Append(candidate.Factory.ImplementationType, candidate.Factory, lifetime);
                     foreach (var interfaceType in candidate.Interfaces)
                     {
-                        Append(interfaceType, null, lifetime);
+                        Append(interfaceType, null, pattern.Lifetime);
                     }
                 }
             }
@@ -1663,7 +1696,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         SourceProductionContext context,
         ComponentModel[] components,
         CollectedModel[] collected,
-        List<(MethodModel Method, List<(CandidateModel Candidate, string Lifetime)> Matches)> conventionMatches,
+        List<(MethodModel Method, List<(CandidateModel Candidate, PatternModel Pattern)> Matches)> conventionMatches,
         EquatableArray<string> openGenericDefinitionKeys)
     {
         var openGenericKeys = new HashSet<string>(openGenericDefinitionKeys, StringComparer.Ordinal);
@@ -1688,9 +1721,12 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             else
             {
                 serviceMap[impl] = (impl, component.Lifetime);
-                foreach (var interfaceType in component.Interfaces)
+                if (component.WithInterfaces)
                 {
-                    serviceMap[interfaceType] = (impl, component.Lifetime);
+                    foreach (var interfaceType in component.Interfaces)
+                    {
+                        serviceMap[interfaceType] = (impl, component.Lifetime);
+                    }
                 }
             }
 
@@ -1716,25 +1752,28 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
         foreach (var (_, matches) in conventionMatches)
         {
-            foreach (var (candidate, lifetime) in matches)
+            foreach (var (candidate, pattern) in matches)
             {
                 var impl = candidate.Factory.ImplementationType;
-                if (candidate.Interfaces.Count == 1)
+                if (pattern.AsType is not null)
                 {
-                    serviceMap[candidate.Interfaces[0]] = (impl, lifetime);
+                    serviceMap[pattern.AsType] = (impl, pattern.Lifetime);
                 }
                 else
                 {
-                    serviceMap[impl] = (impl, lifetime);
-                    foreach (var interfaceType in candidate.Interfaces)
+                    serviceMap[impl] = (impl, pattern.Lifetime);
+                    if (pattern.WithInterfaces)
                     {
-                        serviceMap[interfaceType] = (impl, lifetime);
+                        foreach (var interfaceType in candidate.Interfaces)
+                        {
+                            serviceMap[interfaceType] = (impl, pattern.Lifetime);
+                        }
                     }
                 }
 
                 if (!nodes.ContainsKey(impl))
                 {
-                    nodes[impl] = (candidate.Factory, lifetime, null);
+                    nodes[impl] = (candidate.Factory, pattern.Lifetime, null);
                 }
             }
         }
@@ -1779,6 +1818,11 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             if (component.Factory.ConflictingPostConstruct)
             {
                 context.ReportDiagnostic(new DiagnosticInfo(Diagnostics.ConflictingPostConstruct, component.Location, Display(component.Factory.ImplementationType)).ToDiagnostic());
+            }
+
+            if ((component.AsType is not null) && component.WithInterfaces)
+            {
+                context.ReportDiagnostic(new DiagnosticInfo(Diagnostics.ConflictingInterfaceDelegate, component.Location, Display(component.Factory.ImplementationType)).ToDiagnostic());
             }
 
             if (component.KeyLiteral is not null)
@@ -1905,7 +1949,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     private static InlineTargetMap BuildInlineTargetMap(
         ComponentModel[] components,
         CollectedModel[] collected,
-        List<(MethodModel Method, List<(CandidateModel Candidate, string Lifetime)> Matches)> conventionMatches)
+        List<(MethodModel Method, List<(CandidateModel Candidate, PatternModel Pattern)> Matches)> conventionMatches)
     {
         var factories = new Dictionary<string, FactoryModel>(StringComparer.Ordinal);
         var candidates = new Dictionary<string, (string Impl, string Lifetime, bool Direct)>(StringComparer.Ordinal);
@@ -1944,9 +1988,12 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             else
             {
                 Add(impl, impl, component.Lifetime, direct: true);
-                foreach (var interfaceType in component.Interfaces)
+                if (component.WithInterfaces)
                 {
-                    Add(interfaceType, impl, component.Lifetime, direct: false);   // フォワーディングファクトリ登録 / forwarding factory registration
+                    foreach (var interfaceType in component.Interfaces)
+                    {
+                        Add(interfaceType, impl, component.Lifetime, direct: false);   // フォワーディングファクトリ登録 / forwarding factory registration
+                    }
                 }
             }
         }
@@ -1977,20 +2024,23 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         // Convention registrations (kept consistent with the shape emitted by EmitConventionMethod).
         foreach (var (_, matches) in conventionMatches)
         {
-            foreach (var (candidate, lifetime) in matches)
+            foreach (var (candidate, pattern) in matches)
             {
                 var impl = candidate.Factory.ImplementationType;
                 factories[impl] = candidate.Factory;
-                if (candidate.Interfaces.Count == 1)
+                if (pattern.AsType is not null)
                 {
-                    Add(candidate.Interfaces[0], impl, lifetime, direct: true);
+                    Add(pattern.AsType, impl, pattern.Lifetime, direct: true);
                 }
                 else
                 {
-                    Add(impl, impl, lifetime, direct: true);
-                    foreach (var interfaceType in candidate.Interfaces)
+                    Add(impl, impl, pattern.Lifetime, direct: true);
+                    if (pattern.WithInterfaces)
                     {
-                        Add(interfaceType, impl, lifetime, direct: false);
+                        foreach (var interfaceType in candidate.Interfaces)
+                        {
+                            Add(interfaceType, impl, pattern.Lifetime, direct: false);
+                        }
                     }
                 }
             }
@@ -2871,6 +2921,11 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         }
 
         builder.Indent().Append("services.Add").Append(component.Lifetime).Append('<').Append(implementationType).Append(">(").Append(tracking ?? string.Empty).Append(");").NewLine();
+        if (!component.WithInterfaces)
+        {
+            return;
+        }
+
         foreach (var interfaceType in component.Interfaces)
         {
             builder.Indent().Append("services.Add").Append(component.Lifetime).Append('<').Append(interfaceType).Append(">(static provider => ((global::BunnyTail.DependencyInjection.ServiceProviderScope)provider).GetRequiredService<").Append(implementationType).Append(">()");
@@ -2888,7 +2943,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         SourceProductionContext context,
         string? classNamespace,
         string className,
-        List<(MethodModel Method, List<(CandidateModel Candidate, string Lifetime)> Matches)> methods)
+        List<(MethodModel Method, List<(CandidateModel Candidate, PatternModel Pattern)> Matches)> methods)
     {
         var builder = new SourceBuilder();
         builder.AutoGenerated();
@@ -2926,32 +2981,33 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     }
 
     // TODO
-    private static void EmitConventionMethod(SourceBuilder builder, MethodModel method, List<(CandidateModel Candidate, string Lifetime)> matches)
+    private static void EmitConventionMethod(SourceBuilder builder, MethodModel method, List<(CandidateModel Candidate, PatternModel Pattern)> matches)
     {
         builder.Indent().Append(method.MethodAccessibility.ToText()).Append(" static partial global::Microsoft.Extensions.DependencyInjection.IServiceCollection ").Append(method.MethodName).Append("(this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)").NewLine();
         builder.BeginScope();
 
-        foreach (var (candidate, lifetime) in matches)
+        foreach (var (candidate, pattern) in matches)
         {
             var implementationType = candidate.Factory.ImplementationType;
 
-            // ServiceRegistration 互換: 0 iface → 自己 / 1 iface → IFace,Impl / 2+ → 自己 + フォワーディング
-            // ServiceRegistration compatible: 0 interfaces -> self / 1 -> IFace,Impl / 2+ -> self + forwarding.
-            if (candidate.Interfaces.Count == 0)
+            // 属性登録と同一規則: 既定は実装のみ / As はサービス型を置換 / WithInterfaces は実装 + 委譲
+            // Same rules as the lifetime attributes: implementation only by default, As replaces the service type,
+            // WithInterfaces adds a delegate registration per directly declared interface.
+            if (pattern.AsType is not null)
             {
-                builder.Indent().Append("services.Add").Append(lifetime).Append('<').Append(implementationType).Append(">();").NewLine();
+                builder.Indent().Append("services.Add").Append(pattern.Lifetime).Append('<').Append(pattern.AsType).Append(", ").Append(implementationType).Append(">();").NewLine();
+                continue;
             }
-            else if (candidate.Interfaces.Count == 1)
+
+            builder.Indent().Append("services.Add").Append(pattern.Lifetime).Append('<').Append(implementationType).Append(">();").NewLine();
+            if (!pattern.WithInterfaces)
             {
-                builder.Indent().Append("services.Add").Append(lifetime).Append('<').Append(candidate.Interfaces[0]).Append(", ").Append(implementationType).Append(">();").NewLine();
+                continue;
             }
-            else
+
+            foreach (var interfaceType in candidate.Interfaces)
             {
-                builder.Indent().Append("services.Add").Append(lifetime).Append('<').Append(implementationType).Append(">();").NewLine();
-                foreach (var interfaceType in candidate.Interfaces)
-                {
-                    builder.Indent().Append("services.Add").Append(lifetime).Append('<').Append(interfaceType).Append(">(static provider => ((global::BunnyTail.DependencyInjection.ServiceProviderScope)provider).GetRequiredService<").Append(implementationType).Append(">());").NewLine();
-                }
+                builder.Indent().Append("services.Add").Append(pattern.Lifetime).Append('<').Append(interfaceType).Append(">(static provider => ((global::BunnyTail.DependencyInjection.ServiceProviderScope)provider).GetRequiredService<").Append(implementationType).Append(">());").NewLine();
             }
         }
 

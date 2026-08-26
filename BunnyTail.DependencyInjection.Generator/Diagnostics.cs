@@ -96,5 +96,14 @@ internal static class Diagnostics
         category: "BunnyTail.DependencyInjection",
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
+
+    // 指定の矛盾 (BTDI0012) / conflicting specification
+    public static DiagnosticDescriptor ConflictingInterfaceDelegate { get; } = new(
+        id: "BTDI0012",
+        title: "Conflicting interface registration",
+        messageFormat: "As replaces the service type, so the implementation is not registered and the interface delegate has nothing to resolve. Specify only one of them. type=[{0}].",
+        category: "BunnyTail.DependencyInjection",
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
 }
 #pragma warning restore RS2008

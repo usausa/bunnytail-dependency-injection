@@ -34,7 +34,7 @@ public sealed class TransientComponent
     }
 }
 
-[Scoped]
+[Scoped(WithInterfaces = true)]
 public sealed class ScopedComponent : IScopedService
 {
     public Guid Id { get; } = Guid.NewGuid();

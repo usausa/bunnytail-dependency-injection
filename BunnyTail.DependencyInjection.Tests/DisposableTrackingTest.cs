@@ -377,7 +377,7 @@ public sealed class TrackingEnabledComponent : IDisposable
 
 public interface ITrackingForwardProbe;
 
-[Transient(Tracking = DisposableTracking.Disabled)]
+[Transient(Tracking = DisposableTracking.Disabled, WithInterfaces = true)]
 public sealed class TrackingForwardComponent : ITrackingForwardProbe, IDisposable
 {
     public int DisposeCount { get; private set; }

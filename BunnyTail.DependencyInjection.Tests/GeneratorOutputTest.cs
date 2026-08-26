@@ -177,7 +177,7 @@ public sealed class GeneratorOutputTest
 
             public static partial class Registrations
             {
-                [ComponentRegistration(Lifetime.Scoped, "Service$")]
+                [ComponentRegistration(Lifetime.Scoped, "Service$", WithInterfaces = true)]
                 public static partial IServiceCollection AddServices(this IServiceCollection services);
             }
             """;
@@ -190,12 +190,129 @@ public sealed class GeneratorOutputTest
         // Assert
         var generated = result.GeneratedSource("Demo_Registrations.g.cs");
 
-        Assert.Contains("services.AddScoped<global::Demo.IFooService, global::Demo.FooService>();", generated, StringComparison.Ordinal);
+        Assert.Contains("services.AddScoped<global::Demo.FooService>();", generated, StringComparison.Ordinal);
+        Assert.Contains("services.AddScoped<global::Demo.IFooService>(static provider =>", generated, StringComparison.Ordinal);
         Assert.Contains("services.AddScoped<global::Demo.PlainService>();", generated, StringComparison.Ordinal);
         Assert.DoesNotContain("OtherComponent", generated, StringComparison.Ordinal);
 
         var factories = result.GeneratedSource("GeneratedComponents.g.cs");
         Assert.Contains("typeof(global::Demo.FooService)", factories, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ConventionRegistersDirectInterfacesOnly()
+    {
+        // Arrange
+        const string source = """
+            using BunnyTail.DependencyInjection;
+            using Microsoft.Extensions.DependencyInjection;
+
+            namespace Demo;
+
+            public interface IInherited;
+
+            public interface IDirect;
+
+            public abstract class BaseService : IInherited;
+
+            public sealed class DerivedService : BaseService, IDirect;
+
+            public static partial class Registrations
+            {
+                [ComponentRegistration(Lifetime.Transient, "Service$", WithInterfaces = true)]
+                public static partial IServiceCollection AddServices(this IServiceCollection services);
+            }
+            """;
+
+        // Act
+        var result = CreateRunner()
+            .VerifyCompiles()
+            .Run(source);
+
+        // Assert: only the directly declared interface is registered
+        var generated = result.GeneratedSource("Demo_Registrations.g.cs");
+
+        Assert.Contains("global::Demo.IDirect", generated, StringComparison.Ordinal);
+        Assert.DoesNotContain("IInherited", generated, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ConventionDefaultRegistersImplementationOnly()
+    {
+        // Arrange
+        const string source = """
+            using BunnyTail.DependencyInjection;
+            using Microsoft.Extensions.DependencyInjection;
+
+            namespace Demo;
+
+            public interface IMarkerA;
+
+            public interface IMarkerB;
+
+            public sealed class SingleFaceViewModel : IMarkerA;
+
+            public sealed class MultiFaceViewModel : IMarkerA, IMarkerB;
+
+            public static partial class Registrations
+            {
+                [ComponentRegistration(Lifetime.Transient, "ViewModel$")]
+                public static partial IServiceCollection AddViewModels(this IServiceCollection services);
+            }
+            """;
+
+        // Act
+        var result = CreateRunner()
+            .VerifyCompiles()
+            .Run(source);
+
+        // Assert: only the implementation types are registered, whatever the interface count
+        var generated = result.GeneratedSource("Demo_Registrations.g.cs");
+
+        Assert.Contains("services.AddTransient<global::Demo.SingleFaceViewModel>();", generated, StringComparison.Ordinal);
+        Assert.Contains("services.AddTransient<global::Demo.MultiFaceViewModel>();", generated, StringComparison.Ordinal);
+        Assert.DoesNotContain("IMarkerA", generated, StringComparison.Ordinal);
+        Assert.DoesNotContain("IMarkerB", generated, StringComparison.Ordinal);
+
+        // Factories are still generated
+        var factories = result.GeneratedSource("GeneratedComponents.g.cs");
+        Assert.Contains("typeof(global::Demo.MultiFaceViewModel)", factories, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ConventionAsReplacesServiceType()
+    {
+        // Arrange
+        const string source = """
+            using BunnyTail.DependencyInjection;
+            using Microsoft.Extensions.DependencyInjection;
+
+            namespace Demo;
+
+            public interface IHandler;
+
+            public sealed class FooHandler : IHandler;
+
+            public sealed class BarHandler : IHandler;
+
+            public static partial class Registrations
+            {
+                [ComponentRegistration(Lifetime.Transient, "Handler$", As = typeof(IHandler))]
+                public static partial IServiceCollection AddHandlers(this IServiceCollection services);
+            }
+            """;
+
+        // Act
+        var result = CreateRunner()
+            .VerifyCompiles()
+            .Run(source);
+
+        // Assert: every matched class is registered under the shared service type
+        var generated = result.GeneratedSource("Demo_Registrations.g.cs");
+
+        Assert.Contains("services.AddTransient<global::Demo.IHandler, global::Demo.FooHandler>();", generated, StringComparison.Ordinal);
+        Assert.Contains("services.AddTransient<global::Demo.IHandler, global::Demo.BarHandler>();", generated, StringComparison.Ordinal);
+        Assert.DoesNotContain("services.AddTransient<global::Demo.FooHandler>();", generated, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -286,7 +403,7 @@ public sealed class GeneratorOutputTest
 
             public interface IIgnored;
 
-            [Singleton]
+            [Singleton(WithInterfaces = true)]
             public sealed class AttributeComponent : IKept, IIgnored;
 
             public sealed class ConventionService : IIgnored;

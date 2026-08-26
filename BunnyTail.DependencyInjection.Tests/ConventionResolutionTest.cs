@@ -28,9 +28,11 @@ public sealed class ConventionResolutionTest
         // Arrange
         using var provider = CreateProvider();
 
-        // Act & Assert
-        Assert.IsType<BarService>(provider.GetRequiredService<IBarService>());
-        Assert.Null(provider.GetService<BarService>());
+        // Act
+        var self = provider.GetRequiredService<BarService>();
+
+        // Assert: the implementation is always registered, the interface is delegated to it
+        Assert.Same(self, provider.GetRequiredService<IBarService>());
     }
 
     [Fact]

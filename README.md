@@ -51,11 +51,20 @@ var component = provider.GetRequiredService<Component2>();
 var keyed = provider.GetRequiredKeyedService<IService>("primary");
 ```
 
-The generated `AddGeneratedComponents()` registers the class itself and every implemented interface, forwarding the interfaces to the same instance.
+Each attribute maps to one MEDI registration shape, and nothing is registered implicitly:
+
+| Attribute | Generated registration | MEDI equivalent |
+|---|---|---|
+| `[Singleton]` | `AddSingleton<Impl>()` | `AddX<TImpl>()` |
+| `[Singleton(As = typeof(IFoo))]` | `AddSingleton<IFoo, Impl>()` | `AddX<TService, TImpl>()` |
+| `[Singleton(WithInterfaces = true)]` | `AddSingleton<Impl>()` plus `AddSingleton<IFoo>(p => p.GetRequiredService<Impl>())` per interface | `AddX<TImpl>()` plus `AddX<TService>(factory)` |
+
+`As` replaces the service type, so the implementation is not registered under its own type. `WithInterfaces` keeps the implementation registered and adds a delegate registration for each **directly declared** interface, which is what preserves a single instance for singletons and scoped services. Inherited interfaces are never registered, and `IDisposable` / `IAsyncDisposable` / `IInitializable` are always excluded. Combining `As` with `WithInterfaces` reports `BTDI0012`, because the delegate would have no implementation registration to resolve.
 
 | Parameter | Description |
 |---|---|
-| `As` | Explicit service type. When omitted, the class itself and all implemented interfaces are registered (`IDisposable` / `IAsyncDisposable` / `IInitializable` excluded) |
+| `As` | Explicit service type, replacing the implementation type. The implementation is then not registered under its own type |
+| `WithInterfaces` | Also registers each directly declared interface as a delegate to the implementation. Default `false` |
 | `Key` | Keyed service registration |
 | `PostConstruct` | Name of a method invoked after construction and property injection |
 
@@ -110,6 +119,31 @@ public static partial class ServiceCollectionExtensions
 | `Pattern` | Regex pattern to match class names to register |
 | `Namespace` | Namespace prefix to filter classes |
 | `Assembly` | Name of a referenced assembly to scan instead of the current project. Types come from metadata (publicly accessible classes only), so libraries without the generator can be registered by convention. An unreferenced name reports `BTDI0003` |
+| `As` | Explicit service type applied to every matched class, replacing the implementation type |
+| `WithInterfaces` | Also registers each directly declared interface as a delegate to the implementation. Default `false` |
+
+Convention registration follows the same rules as the lifetime attributes, so there is nothing extra to learn:
+
+| Convention | Generated registration |
+|---|---|
+| `[ComponentRegistration(Lifetime.Transient, "View$")]` | `AddTransient<Impl>()` per match |
+| `[ComponentRegistration(Lifetime.Transient, "Handler$", As = typeof(IHandler))]` | `AddTransient<IHandler, Impl>()` per match |
+| `[ComponentRegistration(Lifetime.Singleton, "Service$", WithInterfaces = true)]` | `AddSingleton<Impl>()` plus a delegate registration per directly declared interface |
+
+The default registers the implementation only, whatever interfaces it declares, so UI types work without any extra option:
+
+```csharp
+public static partial class ViewRegistrations
+{
+    [ComponentRegistration(Lifetime.Transient, "View$")]
+    public static partial IServiceCollection AddViews(this IServiceCollection services);
+
+    [ComponentRegistration(Lifetime.Transient, "ViewModel$")]
+    public static partial IServiceCollection AddViewModels(this IServiceCollection services);
+}
+```
+
+`As` registers every matched class under one shared service type, which is the way to build a plugin collection resolved with `GetServices<T>()`. A matched class that is not assignable to it fails to compile, the same way the lifetime attributes behave. Combining `As` with `WithInterfaces` reports `BTDI0012`.
 
 A class can hold as many registration methods as you like, each with its own patterns and accessibility:
 

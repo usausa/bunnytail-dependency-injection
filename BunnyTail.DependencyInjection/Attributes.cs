@@ -9,6 +9,8 @@ public sealed class SingletonAttribute : Attribute
 {
     public Type? As { get; set; }
 
+    public bool WithInterfaces { get; set; }
+
     public object? Key { get; set; }
 
     public string? PostConstruct { get; set; }
@@ -19,6 +21,8 @@ public sealed class ScopedAttribute : Attribute
 {
     public Type? As { get; set; }
 
+    public bool WithInterfaces { get; set; }
+
     public object? Key { get; set; }
 
     public string? PostConstruct { get; set; }
@@ -28,6 +32,8 @@ public sealed class ScopedAttribute : Attribute
 public sealed class TransientAttribute : Attribute
 {
     public Type? As { get; set; }
+
+    public bool WithInterfaces { get; set; }
 
     public object? Key { get; set; }
 
@@ -66,6 +72,10 @@ public sealed class ComponentRegistrationAttribute : Attribute
     public string? Namespace { get; set; }
 
     public string? Assembly { get; set; }
+
+    public Type? As { get; set; }
+
+    public bool WithInterfaces { get; set; }
 
     public ComponentRegistrationAttribute(
         Lifetime lifetime,

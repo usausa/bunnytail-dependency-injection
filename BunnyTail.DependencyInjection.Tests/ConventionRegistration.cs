@@ -6,7 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 public static partial class ConventionRegistration
 {
-    [ComponentRegistration(Lifetime.Singleton, "Service$")]
+    [ComponentRegistration(Lifetime.Singleton, "Service$", WithInterfaces = true)]
     public static partial IServiceCollection AddConventionServices(this IServiceCollection services);
 
     // Multiple registration methods can live in the same class
