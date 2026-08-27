@@ -310,7 +310,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             invalidPostConstruct,
             conflictingPostConstruct,
             new EquatableArray<ParameterModel>(parameters),
-            new EquatableArray<PropertyModel>([.. injectProperties]));
+            new EquatableArray<PropertyModel>(injectProperties));
     }
 
     // TODO
@@ -1118,7 +1118,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             symbol.ContainingType.Name,
             symbol.DeclaredAccessibility,
             symbol.Name,
-            new EquatableArray<PatternModel>([.. patterns]),
+            new EquatableArray<PatternModel>(patterns),
             LocationInfo.CreateFrom(syntax)));
     }
 
@@ -1559,9 +1559,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             registrations[model.ServiceDefinitionKey] = model;
         }
 
-        var definitionKeys = new EquatableArray<string>([
-            .. registrations.Keys.OrderBy(static x => x, StringComparer.Ordinal)
-        ]);
+        var definitionKeys = new EquatableArray<string>(registrations.Keys.OrderBy(static x => x, StringComparer.Ordinal));
         if (openGenerics.IsEmpty || (closedUsages.IsEmpty && dependencyUsages.IsEmpty))
         {
             return new ClosedGenericScanResult(new EquatableArray<FactoryModel>([]), new EquatableArray<ClosedGenericWarningModel>([]), definitionKeys);
@@ -1643,8 +1641,8 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         }
 
         return new ClosedGenericScanResult(
-            new EquatableArray<FactoryModel>([.. factories]),
-            new EquatableArray<ClosedGenericWarningModel>([.. warnings]),
+            new EquatableArray<FactoryModel>(factories),
+            new EquatableArray<ClosedGenericWarningModel>(warnings),
             definitionKeys);
     }
 
@@ -2215,9 +2213,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
         candidates.Sort(static (x, y) => string.CompareOrdinal(x.Factory.ImplementationType, y.Factory.ImplementationType));
         missing.Sort(StringComparer.Ordinal);
-        return new ExternalScanResult(new EquatableArray<CandidateModel>([.. candidates]), new EquatableArray<string>([
-            .. missing
-        ]));
+        return new ExternalScanResult(new EquatableArray<CandidateModel>(candidates), new EquatableArray<string>(missing));
     }
 
     // TODO
