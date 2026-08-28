@@ -1258,6 +1258,10 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                     context.ReportDiagnostic(new DiagnosticInfo(Diagnostics.ConflictingInterfaceDelegate, pattern.Location ?? method.Value.Location, pattern.Pattern).ToDiagnostic());
                 }
 
+                // 空振り検知はパターン単位。別パターンで登録済みの型でも一致は一致として数える
+                // No-match detection is per pattern: a type already registered by another pattern still counts as a match.
+                var patternMatched = false;
+
                 // ReSharper disable once LoopCanBeConvertedToQuery
                 foreach (var candidate in allCandidates)
                 {
@@ -1280,10 +1284,17 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                         continue;
                     }
 
+                    patternMatched = true;
+
                     if (matched.Add(candidate.Factory.ImplementationType))
                     {
                         matches.Add((candidate, pattern));
                     }
+                }
+
+                if (!patternMatched)
+                {
+                    context.ReportDiagnostic(new DiagnosticInfo(Diagnostics.PatternNoMatch, pattern.Location ?? method.Value.Location, pattern.Pattern).ToDiagnostic());
                 }
             }
 

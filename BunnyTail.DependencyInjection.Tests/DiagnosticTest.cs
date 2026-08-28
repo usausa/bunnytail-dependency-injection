@@ -1,7 +1,5 @@
 namespace BunnyTail.DependencyInjection.Tests;
 
-using SourceGenerateHelper.Testing;
-
 using Xunit;
 
 public sealed class DiagnosticTest
@@ -370,5 +368,91 @@ public sealed class DiagnosticTest
 
         // Assert
         Assert.Contains(result.Diagnostics(["BTDI"]), static x => x.Id == "BTDI0002");
+    }
+
+    [Fact]
+    public void Btdi0013PatternWithNoMatchEmitsDiagnostic()
+    {
+        // Arrange
+        const string source = """
+            using BunnyTail.DependencyInjection;
+            using Microsoft.Extensions.DependencyInjection;
+
+            namespace Demo;
+
+            public sealed class FooService
+            {
+            }
+
+            public static partial class Registrations
+            {
+                [ComponentRegistration(Lifetime.Singleton, "Service$")]
+                [ComponentRegistration(Lifetime.Transient, "NothingMatchesThis$")]
+                public static partial IServiceCollection AddServices(this IServiceCollection services);
+            }
+            """;
+
+        // Act
+        var result = GeneratorTestHelper.CreateRunner().Run(source);
+
+        // Assert
+        Assert.Contains(result.Diagnostics(["BTDI"]), static x => x.Id == "BTDI0013");
+    }
+
+    [Fact]
+    public void Btdi0013NamespaceMismatchEmitsDiagnostic()
+    {
+        // Arrange: the pattern itself matches but the Namespace filter excludes every candidate
+        const string source = """
+            using BunnyTail.DependencyInjection;
+            using Microsoft.Extensions.DependencyInjection;
+
+            namespace Demo;
+
+            public sealed class FooService
+            {
+            }
+
+            public static partial class Registrations
+            {
+                [ComponentRegistration(Lifetime.Singleton, "Service$", Namespace = "Demo.Other")]
+                public static partial IServiceCollection AddServices(this IServiceCollection services);
+            }
+            """;
+
+        // Act
+        var result = GeneratorTestHelper.CreateRunner().Run(source);
+
+        // Assert
+        Assert.Contains(result.Diagnostics(["BTDI"]), static x => x.Id == "BTDI0013");
+    }
+
+    [Fact]
+    public void Btdi0013PatternMatchedByAnotherPatternEmitsNoDiagnostic()
+    {
+        // Arrange: both patterns match the same type, so neither is a no-match
+        const string source = """
+            using BunnyTail.DependencyInjection;
+            using Microsoft.Extensions.DependencyInjection;
+
+            namespace Demo;
+
+            public sealed class FooService
+            {
+            }
+
+            public static partial class Registrations
+            {
+                [ComponentRegistration(Lifetime.Singleton, "Service$")]
+                [ComponentRegistration(Lifetime.Singleton, "^Foo")]
+                public static partial IServiceCollection AddServices(this IServiceCollection services);
+            }
+            """;
+
+        // Act
+        var result = GeneratorTestHelper.CreateRunner().Run(source);
+
+        // Assert
+        Assert.DoesNotContain(result.Diagnostics(["BTDI"]), static x => x.Id == "BTDI0013");
     }
 }

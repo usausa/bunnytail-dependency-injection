@@ -105,5 +105,14 @@ internal static class Diagnostics
         category: "BunnyTail.DependencyInjection",
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
+
+    // 空振り (BTDI0013) / no match
+    public static DiagnosticDescriptor PatternNoMatch { get; } = new(
+        id: "BTDI0013",
+        title: "Pattern matched no type",
+        messageFormat: "Pattern matched no type, so nothing is registered. Check the pattern, Namespace and Assembly. pattern=[{0}].",
+        category: "BunnyTail.DependencyInjection",
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
 }
 #pragma warning restore RS2008

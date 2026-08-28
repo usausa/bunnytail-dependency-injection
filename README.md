@@ -116,8 +116,8 @@ public static partial class ServiceCollectionExtensions
 | Parameter | Description |
 |---|---|
 | `Lifetime` | Service lifetime: `Transient`, `Singleton`, or `Scoped` |
-| `Pattern` | Regex pattern to match class names to register |
-| `Namespace` | Namespace prefix to filter classes |
+| `Pattern` | Regex pattern to match class names to register. A pattern that matches no type reports `BTDI0013`, so a typo does not silently register nothing |
+| `Namespace` | Namespace prefix to filter classes. A pattern that matches nothing after this filter reports `BTDI0013` |
 | `Assembly` | Name of a referenced assembly to scan instead of the current project. Types come from metadata (publicly accessible classes only), so libraries without the generator can be registered by convention. An unreferenced name reports `BTDI0003` |
 | `As` | Explicit service type applied to every matched class, replacing the implementation type |
 | `WithInterfaces` | Also registers each directly declared interface as a delegate to the implementation. Default `false` |
@@ -493,6 +493,8 @@ Behavior always follows the actual registrations: a descriptor that no longer ma
 | BTDI0009 | ⚠️ Warning | Dependency cannot be resolved from the registrations visible at compile time |
 | BTDI0010 | ⚠️ Warning | Captive dependency: a singleton depends on a scoped service |
 | BTDI0011 | ⚠️ Warning | Closed generic with value type arguments has no generated factory and resolves through the runtime path, which fails on NativeAOT |
+| BTDI0012 | ⚠️ Warning | `As` and `WithInterfaces` are combined, so the interface delegate has no implementation registration to resolve |
+| BTDI0013 | ⚠️ Warning | Registration pattern matched no type, so the method registers nothing |
 
 ## 📂 Samples
 
