@@ -11,12 +11,6 @@ using Xunit;
 
 public sealed class GeneratorOutputTest
 {
-    private static GeneratorTestRunner CreateRunner() =>
-        GeneratorTestRunner.For<DependencyInjectionGenerator>()
-            .WithAssemblyName("BunnyTail.DependencyInjection.Tests")
-            .WithReference(typeof(SingletonAttribute).Assembly)
-            .WithReference(typeof(IServiceCollection).Assembly);
-
     private static string Normalize(string text) => text.Replace("\r\n", "\n", StringComparison.Ordinal).TrimEnd('\n');
 
     private const string ImplicitUsings =
@@ -43,7 +37,7 @@ public sealed class GeneratorOutputTest
         var expected = File.ReadAllText(Path.Combine("Expected", "ComponentRegistration.expected.txt"));
 
         // Act
-        var result = CreateRunner()
+        var result = GeneratorTestHelper.CreateRunner()
             .VerifyCompiles()
             .Run(source);
 
@@ -84,7 +78,7 @@ public sealed class GeneratorOutputTest
             """;
 
         // Act
-        var result = CreateRunner()
+        var result = GeneratorTestHelper.CreateRunner()
             .VerifyCompiles()
             .Run(source);
 
@@ -136,7 +130,7 @@ public sealed class GeneratorOutputTest
             """;
 
         // Act
-        var result = CreateRunner()
+        var result = GeneratorTestHelper.CreateRunner()
             .VerifyCompiles()
             .Run(source);
 
@@ -183,7 +177,7 @@ public sealed class GeneratorOutputTest
             """;
 
         // Act
-        var result = CreateRunner()
+        var result = GeneratorTestHelper.CreateRunner()
             .VerifyCompiles()
             .Run(source);
 
@@ -225,7 +219,7 @@ public sealed class GeneratorOutputTest
             """;
 
         // Act
-        var result = CreateRunner()
+        var result = GeneratorTestHelper.CreateRunner()
             .VerifyCompiles()
             .Run(source);
 
@@ -262,7 +256,7 @@ public sealed class GeneratorOutputTest
             """;
 
         // Act
-        var result = CreateRunner()
+        var result = GeneratorTestHelper.CreateRunner()
             .VerifyCompiles()
             .Run(source);
 
@@ -303,7 +297,7 @@ public sealed class GeneratorOutputTest
             """;
 
         // Act
-        var result = CreateRunner()
+        var result = GeneratorTestHelper.CreateRunner()
             .VerifyCompiles()
             .Run(source);
 
@@ -340,7 +334,7 @@ public sealed class GeneratorOutputTest
             """;
 
         // Act
-        var result = CreateRunner()
+        var result = GeneratorTestHelper.CreateRunner()
             .VerifyCompiles()
             .Run(source);
 
@@ -375,7 +369,7 @@ public sealed class GeneratorOutputTest
             """;
 
         // Act
-        var result = CreateRunner()
+        var result = GeneratorTestHelper.CreateRunner()
             .VerifyCompiles()
             .Run(source);
 
@@ -416,7 +410,7 @@ public sealed class GeneratorOutputTest
             """;
 
         // Act
-        var result = CreateRunner()
+        var result = GeneratorTestHelper.CreateRunner()
             .WithGlobalOption("build_property.DependencyInjectionIgnoreInterface", "Demo.IIgnored")
             .VerifyCompiles()
             .Run(source);
@@ -436,129 +430,6 @@ public sealed class GeneratorOutputTest
     //--------------------------------------------------------------------------------
 
     [Fact]
-    public void InvalidMethodDefinitionIsReported()
-    {
-        // Arrange
-        const string source = """
-            using BunnyTail.DependencyInjection;
-            using Microsoft.Extensions.DependencyInjection;
-
-            namespace Demo;
-
-            public static class Registrations
-            {
-                [ComponentRegistration(Lifetime.Singleton, "Service$")]
-                public static IServiceCollection AddServices(IServiceCollection services) => services;   // neither partial nor an extension method
-            }
-            """;
-
-        // Act
-        var result = CreateRunner().Run(source);
-
-        // Assert
-        Assert.Contains(result.Diagnostics(["BTDI"]), static x => x.Id == "BTDI0001");
-    }
-
-    [Fact]
-    public void CircularDependencyIsReported()
-    {
-        // Arrange
-        const string source = """
-            using BunnyTail.DependencyInjection;
-
-            namespace Demo;
-
-            [Singleton]
-            public sealed class First(Second second);
-
-            [Singleton]
-            public sealed class Second(First first);
-            """;
-
-        // Act
-        var result = CreateRunner().Run(source);
-
-        // Assert
-        Assert.Contains(result.Diagnostics(["BTDI"]), static x => x.Id == "BTDI0008");
-    }
-
-    [Fact]
-    public void UnresolvedDependencyIsReported()
-    {
-        // Arrange
-        const string source = """
-            using BunnyTail.DependencyInjection;
-
-            namespace Demo;
-
-            public sealed class NotRegistered;
-
-            [Singleton]
-            public sealed class Component(NotRegistered dependency);
-            """;
-
-        // Act
-        var result = CreateRunner().Run(source);
-
-        // Assert
-        Assert.Contains(result.Diagnostics(["BTDI"]), static x => x.Id == "BTDI0009");
-    }
-
-    [Fact]
-    public void CaptiveDependencyIsReported()
-    {
-        // Arrange
-        const string source = """
-            using BunnyTail.DependencyInjection;
-
-            namespace Demo;
-
-            [Scoped]
-            public sealed class ScopedDependency;
-
-            [Singleton]
-            public sealed class SingletonComponent(ScopedDependency dependency);
-            """;
-
-        // Act
-        var result = CreateRunner().Run(source);
-
-        // Assert
-        Assert.Contains(result.Diagnostics(["BTDI"]), static x => x.Id == "BTDI0010");
-    }
-
-    [Fact]
-    public void AmbiguousConstructorIsReported()
-    {
-        // Arrange
-        const string source = """
-            using BunnyTail.DependencyInjection;
-
-            namespace Demo;
-
-            [Singleton]
-            public sealed class DependencyA;
-
-            [Singleton]
-            public sealed class DependencyB;
-
-            [Singleton]
-            public sealed class Component
-            {
-                public Component(DependencyA a) { }
-
-                public Component(DependencyB b) { }
-            }
-            """;
-
-        // Act
-        var result = CreateRunner().Run(source);
-
-        // Assert
-        Assert.Contains(result.Diagnostics(["BTDI"]), static x => x.Id == "BTDI0005");
-    }
-
-    [Fact]
     public void KeyedFactoryIsGeneratedWithServiceKeyInjection()
     {
         // Arrange
@@ -575,7 +446,7 @@ public sealed class GeneratorOutputTest
             """;
 
         // Act
-        var result = CreateRunner()
+        var result = GeneratorTestHelper.CreateRunner()
             .VerifyCompiles()
             .Run(source);
 
@@ -627,7 +498,7 @@ public sealed class GeneratorOutputTest
             """;
 
         // Act
-        var result = CreateRunner()
+        var result = GeneratorTestHelper.CreateRunner()
             .VerifyCompiles()
             .Run(source);
 
@@ -644,32 +515,6 @@ public sealed class GeneratorOutputTest
         Assert.Contains("static (provider, dependencies) =>", generated, StringComparison.Ordinal);
         Assert.Contains("global::System.Runtime.CompilerServices.Unsafe.As<global::BunnyTail.DependencyInjection.Internal.DependencyAccessor>(dependencies[1])!.GetValue<global::Demo.DisposableLeaf>(scope)", generated, StringComparison.Ordinal);
         Assert.Contains("new global::Demo.Mixed(", generated, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void TransientCycleDoesNotBreakInlineExpansion()
-    {
-        // Arrange
-        const string source = """
-            using BunnyTail.DependencyInjection;
-
-            namespace Demo;
-
-            [Transient]
-            public sealed class First(Second second);
-
-            [Transient]
-            public sealed class Second(First first);
-            """;
-
-        // Act
-        var result = CreateRunner().Run(source);
-
-        // Assert
-        Assert.Contains(result.Diagnostics(["BTDI"]), static x => x.Id == "BTDI0008");
-
-        var generated = result.GeneratedSource("GeneratedComponents.g.cs");
-        Assert.Contains(".GetValue<global::Demo.First>(scope)", generated, StringComparison.Ordinal);
     }
 
     //--------------------------------------------------------------------------------
@@ -712,7 +557,7 @@ public sealed class GeneratorOutputTest
             """;
 
         // Act
-        var result = CreateRunner()
+        var result = GeneratorTestHelper.CreateRunner()
             .VerifyCompiles()
             .Run(source);
 
@@ -758,7 +603,7 @@ public sealed class GeneratorOutputTest
             """;
 
         // Act
-        var result = CreateRunner()
+        var result = GeneratorTestHelper.CreateRunner()
             .VerifyCompiles()
             .Run(source);
 
@@ -790,7 +635,7 @@ public sealed class GeneratorOutputTest
             """;
 
         // Act
-        var result = CreateRunner()
+        var result = GeneratorTestHelper.CreateRunner()
             .VerifyCompiles()
             .Run(source);
 
@@ -799,48 +644,6 @@ public sealed class GeneratorOutputTest
 
         Assert.Contains("instance.Prepare();", generated, StringComparison.Ordinal);
         Assert.Contains("RegisterInitializer(typeof(global::Demo.Uncontrolled), \"Prepare\")", generated, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void InvalidGenerateComponentFactoryPostConstructIsReported()
-    {
-        // Arrange
-        const string source = """
-            using BunnyTail.DependencyInjection;
-
-            [assembly: GenerateComponentFactory(typeof(Demo.Uncontrolled), PostConstruct = "Missing")]
-
-            namespace Demo;
-
-            public sealed class Uncontrolled;
-            """;
-
-        // Act
-        var result = CreateRunner().Run(source);
-
-        // Assert
-        Assert.Contains(result.Diagnostics(["BTDI"]), static x => x.Id == "BTDI0006");
-    }
-
-    [Fact]
-    public void InvalidGenerateComponentFactoryTargetIsReported()
-    {
-        // Arrange
-        const string source = """
-            using BunnyTail.DependencyInjection;
-
-            [assembly: GenerateComponentFactory(typeof(Demo.NotConstructible))]
-
-            namespace Demo;
-
-            public abstract class NotConstructible;
-            """;
-
-        // Act
-        var result = CreateRunner().Run(source);
-
-        // Assert
-        Assert.Contains(result.Diagnostics(["BTDI"]), static x => x.Id == "BTDI0004");
     }
 
     //--------------------------------------------------------------------------------
@@ -880,31 +683,6 @@ public sealed class GeneratorOutputTest
         Assert.Contains("global::BunnyTail.DependencyInjection.Tests.Components.MultiLeafA", generated, StringComparison.Ordinal);
         var components = result.GeneratedSource("GeneratedComponents.g.cs");
         Assert.Contains("typeof(global::BunnyTail.DependencyInjection.Tests.Components.MultiLeafA)", components, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void MissingAssemblyIsReported()
-    {
-        // Arrange
-        const string source = """
-            using BunnyTail.DependencyInjection;
-
-            using Microsoft.Extensions.DependencyInjection;
-
-            namespace Demo;
-
-            public static partial class Registrations
-            {
-                [ComponentRegistration(Lifetime.Transient, ".*", Assembly = "No.Such.Assembly")]
-                public static partial IServiceCollection AddExternal(this IServiceCollection services);
-            }
-            """;
-
-        // Act
-        var result = CreateRunner().Run(source);
-
-        // Assert
-        Assert.Contains(result.Diagnostics(["BTDI"]), static x => x.Id == "BTDI0003");
     }
 
     //--------------------------------------------------------------------------------
@@ -1004,7 +782,7 @@ public sealed class GeneratorOutputTest
             """;
 
         // Act
-        var result = CreateRunner()
+        var result = GeneratorTestHelper.CreateRunner()
             .VerifyCompiles()
             .Run(source);
 
@@ -1050,7 +828,7 @@ public sealed class GeneratorOutputTest
             """;
 
         // Act
-        var result = CreateRunner()
+        var result = GeneratorTestHelper.CreateRunner()
             .VerifyCompiles()
             .Run(source);
 
@@ -1059,51 +837,6 @@ public sealed class GeneratorOutputTest
 
         Assert.Contains("typeof(global::Demo.Repository<int>)", generated, StringComparison.Ordinal);
         Assert.Contains("new global::Demo.Repository<int>())", generated, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void ValueTypeRuntimeGenericIsReported()
-    {
-        // Arrange
-        const string source = """
-            using Microsoft.Extensions.DependencyInjection;
-
-            namespace Demo;
-
-            public interface IRepository<T>;
-
-            public sealed class Repository<T> : IRepository<T>
-            {
-                public Repository(int retries = 3)
-                {
-                    _ = retries;
-                }
-            }
-
-            public sealed class Consumer(IRepository<int> intRepository, IRepository<string> stringRepository)
-            {
-                public IRepository<int> IntRepository { get; } = intRepository;
-
-                public IRepository<string> StringRepository { get; } = stringRepository;
-            }
-
-            public static class Setup
-            {
-                public static void Configure(IServiceCollection services)
-                {
-                    services.AddTransient(typeof(IRepository<>), typeof(Repository<>));
-                    services.AddTransient<Consumer>();
-                }
-            }
-            """;
-
-        // Act
-        var result = CreateRunner().Run(source);
-
-        // Assert
-        var diagnostics = result.Diagnostics(["BTDI"]).Where(static x => x.Id == "BTDI0011").ToArray();
-        Assert.Single(diagnostics);
-        Assert.Contains("Repository<int>", diagnostics[0].GetMessage(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1141,7 +874,7 @@ public sealed class GeneratorOutputTest
             """;
 
         // Act
-        var result = CreateRunner()
+        var result = GeneratorTestHelper.CreateRunner()
             .VerifyCompiles()
             .Run(source);
 
@@ -1187,7 +920,7 @@ public sealed class GeneratorOutputTest
             """;
 
         // Act
-        var result = CreateRunner()
+        var result = GeneratorTestHelper.CreateRunner()
             .VerifyCompiles()
             .Run(source);
 
@@ -1200,79 +933,5 @@ public sealed class GeneratorOutputTest
         Assert.DoesNotContain("services.AddTransient<global::BunnyTail.DependencyInjection.IInitializable>", generated, StringComparison.Ordinal);
 
         Assert.Contains(".GetValue<global::Demo.WithInterface>(scope)", generated, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void InvalidPostConstructIsReported()
-    {
-        // Arrange
-        const string source = """
-            using BunnyTail.DependencyInjection;
-
-            namespace Demo;
-
-            [Singleton(PostConstruct = "Missing")]
-            public sealed class Component;
-            """;
-
-        // Act
-        var result = CreateRunner().Run(source);
-
-        // Assert
-        Assert.Contains(result.Diagnostics(["BTDI"]), static x => x.Id == "BTDI0006");
-    }
-
-    [Fact]
-    public void ConflictingPostConstructIsReported()
-    {
-        // Arrange
-        const string source = """
-            using BunnyTail.DependencyInjection;
-
-            namespace Demo;
-
-            [Singleton(PostConstruct = nameof(First))]
-            [Transient(PostConstruct = nameof(Second))]
-            public sealed class Component
-            {
-                public void First()
-                {
-                }
-
-                public void Second()
-                {
-                }
-            }
-            """;
-
-        // Act
-        var result = CreateRunner().Run(source);
-
-        // Assert
-        Assert.Contains(result.Diagnostics(["BTDI"]), static x => x.Id == "BTDI0007");
-    }
-
-    [Fact]
-    public void InvalidPatternIsReported()
-    {
-        // Arrange
-        const string source = """
-            using BunnyTail.DependencyInjection;
-            using Microsoft.Extensions.DependencyInjection;
-
-            namespace Demo;
-
-            public static partial class Registrations
-            {
-                [ComponentRegistration(Lifetime.Singleton, "([")]
-                public static partial IServiceCollection AddServices(this IServiceCollection services);
-            }
-            """;
-
-        // Act
-        var result = CreateRunner().Run(source);
-
-        // Assert
-        Assert.Contains(result.Diagnostics(["BTDI"]), static x => x.Id == "BTDI0002");
     }
 }
