@@ -478,24 +478,6 @@ Both paths share one runtime core, so lifetime, disposal and collection semantic
 
 Behavior always follows the actual registrations: a descriptor that no longer matches the generated assumptions falls back automatically.
 
-## 🩺 Diagnostics
-
-| ID | Severity | Description |
-|---|---|---|
-| BTDI0001 | ❌ Error | `[ComponentRegistration]` method is not a static partial extension method with the required signature |
-| BTDI0002 | ⚠️ Warning | Registration pattern is not a valid regular expression |
-| BTDI0003 | ⚠️ Warning | Assembly named on `[ComponentRegistration]` is not referenced by the project |
-| BTDI0004 | ⚠️ Warning | `[GenerateComponentFactory]` target is not a publicly accessible concrete class with a usable public constructor |
-| BTDI0005 | ❌ Error | Multiple public constructors share the same maximum parameter count |
-| BTDI0006 | ❌ Error | `PostConstruct` method is not a public parameterless instance method returning void |
-| BTDI0007 | ❌ Error | Conflicting `PostConstruct` specifications across lifetime attributes |
-| BTDI0008 | ❌ Error | Circular dependency between components |
-| BTDI0009 | ⚠️ Warning | Dependency cannot be resolved from the registrations visible at compile time |
-| BTDI0010 | ⚠️ Warning | Captive dependency: a singleton depends on a scoped service |
-| BTDI0011 | ⚠️ Warning | Closed generic with value type arguments has no generated factory and resolves through the runtime path, which fails on NativeAOT |
-| BTDI0012 | ⚠️ Warning | `As` and `WithInterfaces` are combined, so the interface delegate has no implementation registration to resolve |
-| BTDI0013 | ⚠️ Warning | Registration pattern matched no type, so the method registers nothing |
-
 ## 📂 Samples
 
 | Project | Contents |
