@@ -934,4 +934,55 @@ public sealed class GeneratorOutputTest
 
         Assert.Contains(".GetValue<global::Demo.WithInterface>(scope)", generated, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void InstanceRegistrationIsNotTreatedAsSelfRegistration()
+    {
+        // Arrange: Value is registered by instance, so the container never constructs it
+        const string source = """
+            using Microsoft.Extensions.DependencyInjection;
+
+            namespace Demo;
+
+            public sealed class Value
+            {
+                public Value(int a, int b)
+                {
+                    _ = a;
+                    _ = b;
+                }
+            }
+
+            public sealed class Consumer
+            {
+                public Consumer(Value value)
+                {
+                    Value = value;
+                }
+
+                public Value Value { get; }
+            }
+
+            public static class Registrations
+            {
+                public static void Register(IServiceCollection services)
+                {
+                    services.AddSingleton(new Value(1, 2));
+                    services.AddTransient<Consumer>();
+                }
+            }
+            """;
+
+        // Act
+        var result = GeneratorTestHelper.CreateRunner()
+            .VerifyCompiles()
+            .Run(source);
+
+        // Assert: the consumer resolves the instance through the accessor, not through a generated factory
+        var generated = result.GeneratedSource("GeneratedComponents.g.cs");
+
+        Assert.Contains("DependencyPlan(typeof(global::Demo.Value))", generated, StringComparison.Ordinal);
+        Assert.DoesNotContain("DependencyPlan(typeof(global::Demo.Value), typeof(global::Demo.Value))", generated, StringComparison.Ordinal);
+        Assert.DoesNotContain("new global::Demo.Value(", generated, StringComparison.Ordinal);
+    }
 }

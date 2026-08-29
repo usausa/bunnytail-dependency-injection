@@ -211,6 +211,7 @@ internal sealed class ServiceRegistry
         return accessor;
     }
 
+    [UnconditionalSuppressMessage("Trimming", "IL2072", Justification = "The report is a development time diagnostic, and the types come from registrations the container already holds.")]
     internal List<Diagnostics.ServiceFactoryReportEntry> CreateFactoryReport()
     {
         var report = new List<Diagnostics.ServiceFactoryReportEntry>();

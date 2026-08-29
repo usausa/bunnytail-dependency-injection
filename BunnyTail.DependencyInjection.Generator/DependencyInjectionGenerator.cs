@@ -722,7 +722,9 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     // TODO
     private static bool HasFactoryOrInstanceParameter(IMethodSymbol method)
     {
-        foreach (var parameter in method.Parameters)
+        // 構築済みジェネリックでは AddSingleton<T>(T instance) の T が置換済みなので、定義側を見る
+        // In a constructed generic, T of AddSingleton<T>(T instance) is already substituted, so the definition is inspected.
+        foreach (var parameter in method.OriginalDefinition.Parameters)
         {
             if ((parameter.Type.TypeKind == TypeKind.Delegate) || (parameter.Type is ITypeParameterSymbol))
             {

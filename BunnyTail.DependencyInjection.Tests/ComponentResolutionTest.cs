@@ -93,6 +93,37 @@ public sealed class ComponentResolutionTest
     }
 
     [Fact]
+    public void FactoryReportSkipsTypeWithDefaultedConstructorParameter()
+    {
+        // Arrange: the generator refuses a constructor with a defaulted parameter, so it must not be suggested
+        var services = new ServiceCollection().AddGeneratedComponents();
+        services.Add(ServiceDescriptor.Describe(typeof(DefaultedParameterProbe), typeof(DefaultedParameterProbe), ServiceLifetime.Transient));
+        using var provider = services.BuildGeneratedServiceProvider();
+
+        // Act
+        var report = provider.CreateFactoryReport();
+        var text = provider.DescribeRuntimeFallbacks();
+
+        // Assert
+        var entry = report.First(static x => x.ImplementationType == typeof(DefaultedParameterProbe));
+        Assert.Equal(ServiceFactoryStatus.RuntimeFallback, entry.Status);
+        Assert.False(entry.CanGenerateFactory);
+        Assert.DoesNotContain(nameof(DefaultedParameterProbe), text, StringComparison.Ordinal);
+    }
+
+    // 最多引数コンストラクタに既定値付き引数があるため、生成側が受け付けない型
+    // The generator refuses this type because its greediest constructor has a defaulted parameter.
+    public sealed class DefaultedParameterProbe
+    {
+        public DefaultedParameterProbe(int value = 0)
+        {
+            Value = value;
+        }
+
+        public int Value { get; }
+    }
+
+    [Fact]
     public void FactoryReportDescribeAcceptsPredicate()
     {
         // Arrange
