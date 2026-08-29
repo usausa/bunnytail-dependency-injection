@@ -8,7 +8,7 @@ internal static class Diagnostics
     public static DiagnosticDescriptor InvalidMethodDefinition { get; } = new(
         id: "BTDI0001",
         title: "Invalid registration method",
-        messageFormat: "Method must be a static partial extension. method=[{0}]",
+        messageFormat: "[ComponentRegistration] method must be a static partial extension. method=[{0}]",
         category: "Usage",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
@@ -24,7 +24,7 @@ internal static class Diagnostics
     public static DiagnosticDescriptor AssemblyNotFound { get; } = new(
         id: "BTDI0003",
         title: "Referenced assembly not found",
-        messageFormat: "Assembly is not referenced. assembly=[{0}]",
+        messageFormat: "[ComponentRegistration] assembly is not referenced. assembly=[{0}]",
         category: "Usage",
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
