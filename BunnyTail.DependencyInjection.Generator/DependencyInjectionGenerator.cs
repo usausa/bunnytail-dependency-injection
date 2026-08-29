@@ -367,7 +367,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                     return (typeName, DependencyKinds.Service, null, inCompilation, isValueType);
                 }
 
-                return (typeName, DependencyKinds.KeyedExplicit, SymbolDisplay.FormatPrimitive(argument.Value!, quoteStrings: true, useHexadecimalNumbers: false), inCompilation, isValueType);
+                return (typeName, DependencyKinds.KeyedExplicit, argument.ToCSharpExpression(), inCompilation, isValueType);
             }
         }
 
@@ -517,7 +517,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                 {
                     keyLiteral = argument.Value.IsNull
                         ? null
-                        : SymbolDisplay.FormatPrimitive(argument.Value.Value!, quoteStrings: true, useHexadecimalNumbers: false);
+                        : argument.Value.ToCSharpExpression();
                 }
                 else if (argument.Key == "WithInterfaces")
                 {
