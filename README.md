@@ -6,18 +6,12 @@
 
 ## ❓ What is this?
 
-A BunnyTail extension for Microsoft.Extensions.DependencyInjection - not another DI container. You keep the standard MEDI API with its exact semantics; this package swaps the engine underneath for an AOT-safe service provider that wires object graphs with source generated factories instead of reflection.
+A BunnyTail extension for Microsoft.Extensions.DependencyInjection. You keep the standard MEDI API with its exact semantics; this package swaps the engine underneath for an AOT-safe service provider that wires object graphs with source generated factories instead of reflection.
 
-* 🤝 **100% MEDI compatible** - passes the official `Microsoft.Extensions.DependencyInjection.Specification.Tests` suite in full (base + keyed, **143/143**), and drops in via `IServiceProviderFactory`
-  * Keyed services: `KeyedService.AnyKey`, `[ServiceKey]`, `[FromKeyedServices]`
-  * Scope-aware injected `IServiceProvider`
-  * Enumerable semantics and constrained open generics
-  * Container-tracked reverse-order disposal
+* 🤝 **100% MEDI compatible** - passes the official `Microsoft.Extensions.DependencyInjection.Specification.Tests` suite in full (base + keyed, **143/143**)
 * 🛡️ **AOT safe** - no `Reflection.Emit` / `Expression.Compile` on the resolution path. Verified on NativeAOT with zero trim/AOT warnings
 * ⚡ **Source generator powered** - constructor selection, lifetime shapes, disposal tracking and transient graph inlining are all settled at compile time
 * 🔎 **Automatic registration** - components are collected from attributes, existing `Add*` calls and naming conventions
-
-Only need registration generation on top of the stock MEDI engine? That is the sibling package [BunnyTail.ServiceRegistration](https://www.nuget.org/packages/BunnyTail.ServiceRegistration) - this package replaces the engine itself.
 
 ## 🚀 Usage
 
@@ -49,53 +43,46 @@ builder.Host.UseServiceProviderFactory(new GeneratedServiceProviderFactory());
 builder.Services.AddGeneratedComponents();
 ```
 
-* Framework services registered by the host take the runtime path
-* Application components take the generated path
-* Both with identical semantics
-* `Example.WebApplication` is a runnable minimal API using this setup
-
 ## 📖 API reference
-
-Every entry point carries `Generated` in its name: that is the source generated, reflection-free path.
 
 ### 🟦 Extension methods
 
 | Method | Target | Description |
 |---|---|---|
-| `AddGeneratedComponents()` | `IServiceCollection` | The one method to call. Registers the attribute components (`[Singleton]` / `[Scoped]` / `[Transient]`) of this assembly **plus every referenced component module** (transitively, each exactly once). Emitted into `<AssemblyName>.GeneratedComponents` whenever components or referenced modules exist |
-| `RegisterComponents()` | *(static, not an extension)* | The registration unit of one module: this assembly's components only. The integration point the aggregation calls across assemblies; call it directly only to leave other modules out |
-| `BuildGeneratedServiceProvider()` | `IServiceCollection` | Builds the `GeneratedServiceProvider`. The counterpart of MEDI's `BuildServiceProvider()`. An overload takes `Action<GeneratedServiceProviderOptions>` |
-| `AddTransient(...)` / `AddKeyedTransient(...)` with `DisposableTracking` | `IServiceCollection` | Transient registration carrying an explicit disposal tracking setting (`TrackingServiceDescriptor` under the hood) |
-| *(user defined)* | `IServiceCollection` | Partial methods annotated with `[ComponentRegistration]` get their body generated from class name patterns |
+| `AddGeneratedComponents()` | `IServiceCollection` | This assembly's attribute components plus every referenced module. The one method to call |
+| `RegisterComponents()` | *(static, not an extension)* | This assembly's components only. The per-module integration point |
+| `BuildGeneratedServiceProvider()` | `IServiceCollection` | Builds the provider. An overload takes `Action<GeneratedServiceProviderOptions>` |
+| `AddTransient(...)` / `AddKeyedTransient(...)` with `DisposableTracking` | `IServiceCollection` | Transient registration with an explicit disposal tracking setting |
+| *(user defined)* | `IServiceCollection` | `[ComponentRegistration]` partial methods get a generated body |
 
 ### 🟦 Types
 
 | Type | Description |
 |---|---|
-| `GeneratedServiceProviderFactory` | `IServiceProviderFactory<IServiceCollection>` for `UseServiceProviderFactory` (Generic Host / ASP.NET Core) |
-| `GeneratedServiceProvider` | The provider itself. Implements `IServiceProvider`, `IKeyedServiceProvider`, `ISupportRequiredService`, `IServiceScopeFactory`, `IServiceProviderIsService`, `IServiceProviderIsKeyedService`, `IDisposable`, `IAsyncDisposable`. Also exposes typed `GetService<T>()` / `GetRequiredService<T>()` / `GetKeyedService<T>()` / `GetRequiredKeyedService<T>()` instance methods that skip the MEDI extension method dispatch |
-| `ServiceProviderScope` | A scope, also the injected `IServiceProvider` inside that scope. Same typed methods as above |
-| `GeneratedServiceProviderOptions` | Provider options: `TrackTransientDisposables` plus per-type `EnableTracking` / `DisableTracking` overrides |
-| `ITypeActivator` | Unregistered, caller-owned construction: `Activate(Type)` / `Activate<T>()`, implemented by the provider and scopes and pre-registered as a built-in service. Constructor injection, `[Inject]` and `PostConstruct` apply; the instance is never tracked |
-| `DisposableTracking` / `TrackingServiceDescriptor` | Three-state disposal tracking setting and the `ServiceDescriptor` subclass that carries it per registration |
-| `ServiceFactoryReportExtensions` | Development-time diagnostics (`BunnyTail.DependencyInjection.Diagnostics`) as provider extension methods: `CreateFactoryReport()` classifies every registration by resolution path, `DescribeRuntimeFallbacks()` emits ready-to-paste `[GenerateComponentFactory]` lines for the publicly constructible ones |
+| `GeneratedServiceProviderFactory` | `IServiceProviderFactory<IServiceCollection>` for `UseServiceProviderFactory` |
+| `GeneratedServiceProvider` | The provider. Adds typed `GetService<T>()` and keyed equivalents that skip the MEDI extension method dispatch |
+| `ServiceProviderScope` | A scope, and the `IServiceProvider` injected inside it. Same typed methods |
+| `GeneratedServiceProviderOptions` | `TrackTransientDisposables` plus per-type `EnableTracking` / `DisableTracking` |
+| `ITypeActivator` | Built-in service. Constructs a type from container dependencies without registering it |
+| `DisposableTracking` / `TrackingServiceDescriptor` | Per-registration disposal tracking setting, and the descriptor carrying it |
+| `ServiceFactoryReportExtensions` | Development-time diagnostics: `CreateFactoryReport()` / `DescribeRuntimeFallbacks()` |
 
 ### 🟦 Attributes
 
 | Attribute | Target | Description |
 |---|---|---|
-| `[Singleton]` / `[Scoped]` / `[Transient]` | class | Registration with `As`, `Key` and `PostConstruct` parameters. `[Transient]` also takes `Tracking` (disposal tracking) |
-| `[Inject]` | property | Property injection after construction |
-| `[ComponentRegistration]` | partial method | Convention based registration with `Lifetime`, `Pattern`, `Namespace` and `Assembly` parameters |
-| `[ComponentModule]` | assembly | Marks the module type aggregated by `AddGeneratedComponents()`. Emitted automatically for assemblies with attribute components; hand-write it when a library has none |
-| `[GenerateComponentFactory]` | assembly | Generates a factory for a type without registering it, for libraries you do not control. Supports `PostConstruct` |
-| `IInitializable` | interface | Initialization callback invoked after construction |
+| `[Singleton]` / `[Scoped]` / `[Transient]` | class | `As`, `Key`, `WithInterfaces`, `PostConstruct`. `[Transient]` also takes `Tracking` |
+| `[Inject]` | property | Property injection |
+| `[ComponentRegistration]` | partial method | `Lifetime`, `Pattern`, `Namespace`, `Assembly`, `As`, `WithInterfaces` |
+| `[ComponentModule]` | assembly | The module type aggregated by `AddGeneratedComponents()`. Emitted automatically unless the assembly has no attribute components |
+| `[GenerateComponentFactory]` | assembly | A factory without a registration, for libraries you do not control. Supports `PostConstruct` |
+| `IInitializable` | interface | Initialization callback |
 
 ### 🟦 MSBuild properties
 
 | Property | Default | Description |
 |---|---|---|
-| `DependencyInjectionIgnoreInterface` | (none) | Comma-separated interface names excluded from automatic registration. `IDisposable` / `IAsyncDisposable` / `IInitializable` are always excluded |
+| `DependencyInjectionIgnoreInterface` | (none) | Comma-separated interfaces excluded from automatic registration. `IDisposable` / `IAsyncDisposable` / `IInitializable` always are |
 
 ## 💡 Feature examples
 
@@ -311,7 +298,7 @@ using var provider = services.BuildGeneratedServiceProvider(static o =>
 
 ### 🟨 Type activation
 
-`ITypeActivator` is the reflection-free counterpart of `ActivatorUtilities.CreateInstance()`. It constructs a type that is **not registered as a service**, taking constructor arguments from the container, and hands the instance to the caller:
+`ITypeActivator` is the reflection-free counterpart of `ActivatorUtilities.CreateInstance()`. It takes constructor arguments from the container and hands a **fresh, caller-owned** instance back, ignoring any registration the type may have:
 
 ```csharp
 var page = provider.Activate<MainPage>();   // on the provider and on scopes
@@ -323,12 +310,6 @@ Differences from `ActivatorUtilities.CreateInstance()`:
 * Generated factories instead of reflection, so it stays on the AOT safe path. Generic call sites and `typeof` literal arguments are resolved at build time; a runtime `Type` falls back to the runtime path, so mark such types with `[GenerateComponentFactory]`
 * The full construction pipeline applies: `[Inject]` properties and `PostConstruct` / `IInitializable`
 * Everything comes from the container. There is no overload taking extra constructor arguments
-* Deliberately **not** an `IServiceProvider` extension method: on a container that cannot honor the contract the API simply does not exist, instead of failing at runtime
-
-Shared with the container path:
-
-* Existing registrations are ignored: activation always constructs a fresh instance, and the container never tracks or disposes it
-* Scope aware: activating from a scope resolves scoped dependencies from that scope
 
 ## ⚙️ How it works
 
@@ -396,19 +377,12 @@ Both paths share one runtime core, so lifetime, disposal and collection semantic
 
 | Project | Contents |
 |---|---|
-| `Example` | Console sample asserting every feature: attribute components, module aggregation, convention registration scanning a referenced assembly, `[GenerateComponentFactory]`, the diagnostic report, and standard `Add*` registrations (generic, open generic, keyed, `TryAddEnumerable`, factory) |
-| `Example.Library` | Class library referencing this package: its components are marked as a module automatically and aggregated by the application |
-| `Example.ThirdPartyLibrary` | Stands in for a third party library, referencing nothing of this package. Its registrations come from its own extension methods, so they are invisible to the application's generator - the target of convention scanning, `[GenerateComponentFactory]` and the runtime fallback diagnostics |
-| `Example.WebApplication` | ASP.NET Core minimal API with the container replaced, showing singleton / scoped / transient behavior per request |
+| `Example` | Console sample asserting every feature |
+| `Example.Library` | Class library aggregated by the application as a module |
+| `Example.ThirdPartyLibrary` | Third party stand-in that references nothing of this package. The target of convention scanning, `[GenerateComponentFactory]` and the fallback diagnostics |
+| `Example.WebApplication` | ASP.NET Core minimal API with the container replaced |
 
 ## ⚡ Benchmark
-
-Resolution cost of the generated path against Microsoft.Extensions.DependencyInjection and Smart.Resolver. For reference purpose only.
-
-* All three providers receive the identical `IServiceCollection`
-* The same validator checks every provider before measurement, so the scenarios resolve equivalent object graphs
-* Each method repeats its operation five times and `OperationsPerInvoke = 5` divides the result - **Mean is the cost of one operation**
-* Measured with the `BunnyTail.DependencyInjection.Benchmark` project
 
 | Scenario | Measured operation |
 |---|---|
@@ -424,7 +398,6 @@ Resolution cost of the generated path against Microsoft.Extensions.DependencyInj
 | `AspNet` | Create a scope, resolve a controller graph (three transients sharing one scoped service), dispose the scope |
 
 ```
-
 BenchmarkDotNet v0.15.8, Windows 11 (10.0.26200.9168/25H2/2025Update/HudsonValley2)
 AMD Ryzen AI 9 HX 370 w/ Radeon 890M 2.00GHz, 1 CPU, 24 logical and 12 physical cores
 .NET SDK 10.0.302
@@ -433,12 +406,9 @@ AMD Ryzen AI 9 HX 370 w/ Radeon 890M 2.00GHz, 1 CPU, 24 logical and 12 physical 
 
 Job=MediumRun  Jit=RyuJit  Platform=X64  
 IterationCount=15  LaunchCount=2  WarmupCount=10  
-
 ```
 
 ### 🟧 Comparison
-
-Ratio is BunnyTail divided by the other provider, so **lower is better** - `0.21` means BunnyTail takes 21% of that provider's time.
 
 * ✅ BunnyTail is faster
 * ➖ tie - the 99.9% confidence intervals overlap
@@ -471,19 +441,6 @@ Allocation per operation:
 | MultipleSingleton | 0 B | 6 B | 0 B |
 | MultipleTransient | 190 B | 190 B | 184 B |
 | AspNet | 312 B | 448 B | 232 B |
-
-Against MEDI:
-
-* ✅ Faster in all 10 scenarios
-* ✅ Widest margins on `Scoped` (0.13), `Singleton` (0.21), `MultipleSingleton` (0.39) and `AspNet` (0.48)
-* ✅ Allocates less on `AspNet` (312 B vs 448 B) and `MultipleSingleton` (0 B vs 6 B)
-
-Against Smart.Resolver - mixed:
-
-* ✅ Ahead on `Scoped` (0.23), `AspNet` (0.66), `Complex` (0.69) and `Singleton` (0.84)
-* ✅ Allocates nothing on `Scoped`, where Smart takes 32 B per call
-* 🔻 Behind on `Keyed` (1.13), `MultipleTransient` (1.22), `Transient` (1.34) and `Generics` (1.59)
-* ➖ `MultipleSingleton` (1.00) and `Combined` (1.02) are ties
 
 <details>
 <summary>Full BenchmarkDotNet output</summary>
