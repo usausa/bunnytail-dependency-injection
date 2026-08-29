@@ -62,6 +62,7 @@ public sealed class ServiceFactoryReportEntry
 
         // 既定値付き引数を持つコンストラクタは生成対象外 (GetRequiredService と挙動が変わるため)
         // A constructor with defaulted parameters is not generated (behavior differs from GetRequiredService).
+        // ReSharper disable once LoopCanBeConvertedToQuery
         foreach (var parameter in constructor.GetParameters())
         {
             if (parameter.HasDefaultValue)
