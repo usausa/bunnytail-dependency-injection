@@ -4,8 +4,6 @@ using Microsoft.CodeAnalysis;
 
 using SourceGenerateHelper;
 
-// [ComponentRegistration] 付き partial メソッド
-// Partial method annotated with [ComponentRegistration].
 internal sealed record MethodModel(
     string? Namespace,
     string ClassName,

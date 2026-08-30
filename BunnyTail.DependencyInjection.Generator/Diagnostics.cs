@@ -4,7 +4,8 @@ using Microsoft.CodeAnalysis;
 
 internal static class Diagnostics
 {
-    // 指定の解析 (BTDI0001-0004) / directive parsing
+    // Directive parsing
+
     public static DiagnosticDescriptor InvalidMethodDefinition { get; } = new(
         id: "BTDI0001",
         title: "Invalid registration method",
@@ -37,7 +38,8 @@ internal static class Diagnostics
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
 
-    // 型の解析 (BTDI0005-0007) / per-type analysis
+    // Per-type analysis
+
     public static DiagnosticDescriptor AmbiguousConstructor { get; } = new(
         id: "BTDI0005",
         title: "Ambiguous constructor",
@@ -62,7 +64,8 @@ internal static class Diagnostics
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
-    // 依存グラフの解析 (BTDI0008-0010) / dependency graph analysis
+    // Dependency graph analysis
+
     public static DiagnosticDescriptor CircularDependency { get; } = new(
         id: "BTDI0008",
         title: "Circular dependency",
@@ -87,7 +90,8 @@ internal static class Diagnostics
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
 
-    // 生成の限界 (BTDI0011) / generation limit
+    // Generation limit
+
     public static DiagnosticDescriptor ValueTypeRuntimeGeneric { get; } = new(
         id: "BTDI0011",
         title: "Value type generic on runtime path",
@@ -96,7 +100,8 @@ internal static class Diagnostics
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
 
-    // 指定の矛盾 (BTDI0012) / conflicting specification
+    // Conflicting specification
+
     public static DiagnosticDescriptor ConflictingInterfaceDelegate { get; } = new(
         id: "BTDI0012",
         title: "Conflicting interface delegate",
@@ -105,7 +110,8 @@ internal static class Diagnostics
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
 
-    // 空振り (BTDI0013) / no match
+    // No match
+
     public static DiagnosticDescriptor PatternNoMatch { get; } = new(
         id: "BTDI0013",
         title: "Pattern matched no type",

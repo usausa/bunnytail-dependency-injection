@@ -153,8 +153,6 @@ public sealed class ComponentResolutionTest
         Assert.DoesNotContain(nameof(DefaultedParameterProbe), text, StringComparison.Ordinal);
     }
 
-    // 最多引数コンストラクタに既定値付き引数があるため、生成側が受け付けない型
-    // The generator refuses this type because its greediest constructor has a defaulted parameter.
     public sealed class DefaultedParameterProbe
     {
         public DefaultedParameterProbe(int value = 0)
