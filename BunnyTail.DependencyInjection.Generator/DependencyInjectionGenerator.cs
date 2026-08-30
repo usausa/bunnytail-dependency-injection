@@ -841,14 +841,10 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             return null;
         }
 
-        var lifetime = method.Name switch
-        {
-            "AddSingleton" or "TryAddSingleton" => "Singleton",
-            "AddScoped" or "TryAddScoped" => "Scoped",
-            "AddTransient" or "TryAddTransient" => "Transient",
-            _ => null
-        };
-        if (lifetime is null || (method.TypeArguments.Length != 0))
+        // 生成物にライフタイムは出ない (実行時の descriptor が決める) ので、ここでは対象呼び出しかの絞り込みにだけ使う
+        // The lifetime never reaches the output (the runtime descriptor decides it), so it only filters the invocation here.
+        if (method.Name is not ("AddSingleton" or "TryAddSingleton" or "AddScoped" or "TryAddScoped" or "AddTransient" or "TryAddTransient") ||
+            (method.TypeArguments.Length != 0))
         {
             return null;
         }
@@ -893,7 +889,6 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         return new OpenGenericModel(
             DefinitionKey(service),
             metadataName,
-            lifetime,
             invocation.SyntaxTree.FilePath,
             invocation.SpanStart);
     }
