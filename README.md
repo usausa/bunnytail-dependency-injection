@@ -43,47 +43,6 @@ builder.Host.UseServiceProviderFactory(new GeneratedServiceProviderFactory());
 builder.Services.AddGeneratedComponents();
 ```
 
-## 📖 API reference
-
-### 🟦 Extension methods
-
-| Method | Target | Description |
-|---|---|---|
-| `AddGeneratedComponents()` | `IServiceCollection` | This assembly's attribute components plus every referenced module. The one method to call |
-| `RegisterComponents()` | *(static, not an extension)* | This assembly's components only. The per-module integration point |
-| `BuildGeneratedServiceProvider()` | `IServiceCollection` | Builds the provider. An overload takes `Action<GeneratedServiceProviderOptions>` |
-| `AddTransient(...)` / `AddKeyedTransient(...)` with `DisposableTracking` | `IServiceCollection` | Transient registration with an explicit disposal tracking setting |
-| *(user defined)* | `IServiceCollection` | `[ComponentRegistration]` partial methods get a generated body |
-
-### 🟦 Types
-
-| Type | Description |
-|---|---|
-| `GeneratedServiceProviderFactory` | `IServiceProviderFactory<IServiceCollection>` for `UseServiceProviderFactory` |
-| `GeneratedServiceProvider` | The provider. Adds typed `GetService<T>()` and keyed equivalents that skip the MEDI extension method dispatch |
-| `ServiceProviderScope` | A scope, and the `IServiceProvider` injected inside it. Same typed methods |
-| `GeneratedServiceProviderOptions` | `TrackTransientDisposables` plus per-type `EnableTracking` / `DisableTracking` |
-| `ITypeActivator` | Built-in service. Constructs a type from container dependencies without registering it |
-| `DisposableTracking` / `TrackingServiceDescriptor` | Per-registration disposal tracking setting, and the descriptor carrying it |
-| `ServiceFactoryReportExtensions` | Development-time diagnostics: `CreateFactoryReport()` / `DescribeRuntimeFallbacks()` |
-
-### 🟦 Attributes
-
-| Attribute | Target | Description |
-|---|---|---|
-| `[Singleton]` / `[Scoped]` / `[Transient]` | class | `As`, `Key`, `WithInterfaces`, `PostConstruct`. `[Transient]` also takes `Tracking` |
-| `[Inject]` | property | Property injection |
-| `[ComponentRegistration]` | partial method | `Lifetime`, `Pattern`, `Namespace`, `Assembly`, `As`, `WithInterfaces` |
-| `[ComponentModule]` | assembly | The module type aggregated by `AddGeneratedComponents()`. Emitted automatically unless the assembly has no attribute components |
-| `[GenerateComponentFactory]` | assembly | A factory without a registration, for libraries you do not control. Supports `PostConstruct` |
-| `IInitializable` | interface | Initialization callback |
-
-### 🟦 MSBuild properties
-
-| Property | Default | Description |
-|---|---|---|
-| `DependencyInjectionIgnoreInterface` | (none) | Comma-separated interfaces excluded from automatic registration. `IDisposable` / `IAsyncDisposable` / `IInitializable` always are |
-
 ## 💡 Feature examples
 
 ### 🟨 Attribute based registration
@@ -110,8 +69,8 @@ var component = provider.GetRequiredService<Component2>();
 var keyed = provider.GetRequiredKeyedService<IService>("primary");
 ```
 
-* One attribute maps to one MEDI registration shape, and nothing is registered implicitly. Plain is `AddX<TImpl>()`, `As` is `AddX<TService, TImpl>()`, `Key` is the keyed form
-* `WithInterfaces = true` keeps `AddX<TImpl>()` and adds a delegate registration per **directly declared** interface, which is what preserves a single instance. Combining it with `As` reports `BTDI0012`
+* One attribute maps to one MEDI registration shape. Plain is `AddX<TImpl>()`, `As` is `AddX<TService, TImpl>()`, `Key` is the keyed form
+* `WithInterfaces = true` keeps `AddX<TImpl>()` and adds a delegate registration per **directly declared** interface, so a single instance is shared. Combining it with `As` reports `BTDI0012`
 * `[FromKeyedServices]` and `[ServiceKey]` follow MEDI rules, on constructor parameters and `[Inject]` properties alike
 
 ### 🟨 Convention based registration
@@ -128,10 +87,9 @@ public static partial class ServiceCollectionExtensions
 }
 ```
 
-* `As` and `WithInterfaces` behave exactly as on the lifetime attributes, so there is nothing extra to learn. The default registers the implementation only, so views and view models need no extra option
-* `Pattern` matching no type reports `BTDI0013`, so a typo does not silently register nothing
-* `Assembly` scans a referenced assembly from metadata (publicly accessible classes only), which brings libraries without the generator into convention registration. An unreferenced name reports `BTDI0003`
-* A class can hold any number of registration methods, each with its own patterns and accessibility
+* `As` and `WithInterfaces` behave exactly as on the lifetime attributes. The default registers the implementation only
+* `Assembly` scans a referenced assembly from metadata (publicly accessible classes only). An unreferenced name reports `BTDI0003`
+* A pattern matching no type reports `BTDI0013`
 
 ### 🟨 Property injection
 
@@ -150,7 +108,6 @@ public sealed class Component3(Component1 component)
 
 * Runs after the constructor and before the initialization callback
 * Applies on every path, including type activation
-* Constructor injection is still the default choice: property injection exists for types the container constructs but whose constructor is not yours to change
 
 ### 🟨 Initialization callback
 
@@ -214,9 +171,8 @@ using var provider = new ServiceCollection()
     .BuildGeneratedServiceProvider();
 ```
 
-* A library compiles its components into its own module, and `AddGeneratedComponents()` discovers every referenced module transitively, each exactly once. There is no list of libraries to keep track of
-* Each module also gets `RegisterComponents(IServiceCollection)` for its own components only. That is the integration point the aggregation calls across assemblies; call it directly only to leave other modules out
-* `Example` with `Example.Library` shows this layout
+* A library compiles its components into its own module, and `AddGeneratedComponents()` discovers every referenced module transitively, each exactly once
+* Each module also gets a `RegisterComponents(IServiceCollection)` static for its own components only. That is the integration point the aggregation calls; call it directly only to leave other modules out
 
 The module marker is embedded for assemblies that have attribute components. A library that has none declares one by hand, and only one marker per assembly is allowed:
 
@@ -263,12 +219,12 @@ Console.Write(provider.DescribeRuntimeFallbacks(static x => x.Lifetime != Servic
 ```
 
 * ⚠️ Development-time only: it realizes every entry, so keep it out of release paths
-* `CreateFactoryReport()` classifies each registration as `Generated`, `RuntimeFallback`, `NotApplicable` (factory, instance or open generic definition, which the container never constructs) or `Unresolvable`
-* Not every fallback is worth marking: factory and instance registrations cannot benefit, singletons pay the cost once, and internal types cannot be constructed by generated code. ✅ The ones that pay off are public transient or scoped services on hot paths
+* `CreateFactoryReport()` classifies each registration as `Generated`, `RuntimeFallback`, `NotApplicable` or `Unresolvable`
+* ✅ The fallbacks worth marking are public transient or scoped services on hot paths. Singletons pay the cost once, and factory / instance registrations cannot benefit at all
 
 ### 🟨 Disposable tracking control
 
-MEDI keeps a reference to every disposable transient and disposes it with the resolving scope. When another framework owns those objects - a navigation stack disposing its views, an MVVM layer disposing its view models - the container copy is retained until shutdown and then disposed a second time. Transient tracking can therefore be turned off:
+MEDI keeps a reference to every disposable transient and disposes it with the resolving scope, which double-disposes objects another framework already owns (views, view models). Transient tracking can therefore be turned off:
 
 ```csharp
 // Provider level
@@ -293,7 +249,6 @@ using var provider = services.BuildGeneratedServiceProvider(static o =>
 
 * Precedence: registration setting > per-type override > provider default (`TrackTransientDisposables`, default `true` = MEDI behavior)
 * Transients only. Singleton and scoped disposal always stays container owned
-* Uniform across every resolution path: generated factories, the runtime fallback, `ImplementationFactory` lambdas, keyed services
 * An untracked instance is owned by whoever resolved it. Constructor injected dependencies keep their own settings
 
 ### 🟨 Type activation
@@ -311,6 +266,45 @@ Differences from `ActivatorUtilities.CreateInstance()`:
 * The full construction pipeline applies: `[Inject]` properties and `PostConstruct` / `IInitializable`
 * Everything comes from the container. There is no overload taking extra constructor arguments
 
+## 📖 API reference
+
+### 🟦 Extension methods
+
+All extend `IServiceCollection`.
+
+| Method | Description |
+|---|---|
+| `AddGeneratedComponents()` | This assembly's attribute components plus every referenced module. The one method to call |
+| `BuildGeneratedServiceProvider()` | Builds the provider. An overload takes `Action<GeneratedServiceProviderOptions>` |
+| `AddTransient()` / `AddKeyedTransient()` with `DisposableTracking` | Transient registration with an explicit disposal tracking setting |
+
+### 🟦 Types
+
+| Type | Description |
+|---|---|
+| `GeneratedServiceProviderFactory` | `IServiceProviderFactory<IServiceCollection>` for `UseServiceProviderFactory` |
+| `GeneratedServiceProvider` | The provider. Adds typed `GetService<T>()` and keyed equivalents that skip the MEDI extension method dispatch |
+| `ServiceProviderScope` | A scope, and the `IServiceProvider` injected inside it. Same typed methods |
+| `GeneratedServiceProviderOptions` | `TrackTransientDisposables` plus per-type `EnableTracking` / `DisableTracking` |
+| `ITypeActivator` | Built-in service. Constructs a type from container dependencies without registering it |
+| `DisposableTracking` / `TrackingServiceDescriptor` | Per-registration disposal tracking setting, and the descriptor carrying it |
+| `ServiceFactoryReportExtensions` | Development-time diagnostics: `CreateFactoryReport()` / `DescribeRuntimeFallbacks()` |
+
+### 🟦 Attributes
+
+| Attribute | Target | Description |
+|---|---|---|
+| `[Singleton]` / `[Scoped]` / `[Transient]` | class | `As`, `Key`, `WithInterfaces`, `PostConstruct`. `[Transient]` also takes `Tracking` |
+| `[Inject]` | property | Property injection |
+| `[ComponentRegistration]` | partial method | `Lifetime`, `Pattern`, `Namespace`, `Assembly`, `As`, `WithInterfaces` |
+| `[ComponentModule]` | assembly | The module type aggregated by `AddGeneratedComponents()`. Emitted automatically unless the assembly has no attribute components |
+| `[GenerateComponentFactory]` | assembly | A factory without a registration, for libraries you do not control. Supports `PostConstruct` |
+| `IInitializable` | interface | Initialization callback |
+
+### 🟦 MSBuild properties
+
+* `DependencyInjectionIgnoreInterface` - comma-separated interfaces excluded from automatic registration. `IDisposable` / `IAsyncDisposable` / `IInitializable` always are
+
 ## ⚙️ How it works
 
 ### 🟪 What the generator collects
@@ -320,7 +314,7 @@ All sources are incremental - editing a method body regenerates nothing.
 | Source | Collected from | Result |
 |---|---|---|
 | Attributes | `[Singleton]` / `[Scoped]` / `[Transient]` classes | `RegisterComponents()` body + a factory per implementation |
-| `Add*` calls | `AddSingleton<T>()`, `typeof` overloads, `AddKeyed*`, `ServiceDescriptor` based `Add` / `TryAdd` / `TryAddEnumerable` in user code | A factory per implementation (the registration itself stays in user code) |
+| `Add*` calls | `Add*` / `TryAdd*` / `AddKeyed*` in user code | A factory per implementation (the registration itself stays in user code) |
 | Conventions | `[ComponentRegistration]` partial methods, optionally scanning a referenced assembly | The method body + a factory per matched implementation |
 | Referenced modules | Assemblies marked with `[ComponentModule]` | The `AddGeneratedComponents()` aggregation |
 
@@ -346,32 +340,13 @@ Three shapes come out of this, chosen per dependency lifetime:
 * 📌 **Instance slots** - an unambiguous singleton dependency is resolved once, then read straight from the dependency array
 * 🎯 **Accessor slots** - scoped and non-inlinable dependencies get a validated accessor handle, skipping the service table lookup on every resolution
 
-Two more cases are handled at compile time:
-
-* `IEnumerable<T>` sets whose elements are all inlinable transients become an array literal
-* Closed forms of open generic registrations appearing in code - as `typeof(IRepository<Foo>)`, a constructor parameter, or a property type - get their own factories, which is what makes value type arguments AOT safe. A closed form known only at runtime has no factory, and NativeAOT cannot instantiate it with a value type argument (`BTDI0011` warns about the compile-time visible cases)
+Closed forms of open generic registrations visible in code also get their own factories, which is what makes value type arguments AOT safe. A form known only at runtime has none, and NativeAOT cannot instantiate it with a value type argument (`BTDI0011` warns).
 
 ### 🟪 How generated code stays correct
 
-Generated factories are assumptions about registrations, and registrations are only final at runtime. Each assumption is verified when the provider realizes an entry, and any mismatch silently falls back to the runtime path:
+Generated factories are assumptions about registrations, and registrations are only final at runtime. Every assumption is re-checked when the provider realizes an entry, and any mismatch silently falls back to the runtime path - so `Replace`, a lifetime change, a factory registration and a decorator all keep working.
 
-| Assumption | Verified by |
-|---|---|
-| The constructor MEDI selects is the one the factory was generated for | Parameter type comparison |
-| Every inlined transient dependency still resolves to that implementation's generated factory as a transient | Delegate reference comparison per dependency |
-| Every dependency slot still matches its planned lifetime and implementation | Same comparison, per slot |
-| An enumerable still has the same elements in the same order | Ordered per-element comparison |
-
-So `Replace`, a lifetime change, a factory registration and a decorator all keep working - they simply take the runtime path.
-
-### 🟪 The two paths
-
-Both paths share one runtime core, so lifetime, disposal and collection semantics are always identical:
-
-| Path | Registrations | Implementation |
-|---|---|---|
-| Generated | Visible at compile time (attributes, `Add*` calls, conventions) | Generated factories with literal `new`. Transient dependency graphs inlined into a single factory. Reflection-free |
-| Runtime | Known only at runtime (framework assemblies, factories, instances, replacements) | `ConstructorInfo.Invoke` based. No Emit, so it works on NativeAOT too |
+The runtime path is `ConstructorInfo.Invoke` based and uses no Emit, so it stays NativeAOT safe. Both paths share one runtime core, so lifetime, disposal and collection semantics are identical either way.
 
 ## 📂 Samples
 
