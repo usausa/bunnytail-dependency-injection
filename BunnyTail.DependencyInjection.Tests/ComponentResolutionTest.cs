@@ -51,6 +51,48 @@ public sealed class ComponentResolutionTest
     }
 
     [Fact]
+    public void KeyedDependenciesFillConstructorParameterAndInjectProperty()
+    {
+        // Arrange
+        using var provider = CreateProvider();
+
+        // Act
+        var consumer = provider.GetRequiredService<KeyedConsumer>();
+
+        // Assert
+        Assert.Equal("left", consumer.Left.Name);
+        Assert.Equal("right", consumer.Right.Name);
+        Assert.Same(provider.GetRequiredKeyedService<IKeyedLeaf>("left"), consumer.Left);
+        Assert.Same(provider.GetRequiredKeyedService<IKeyedLeaf>("right"), consumer.Right);
+    }
+
+    [Fact]
+    public void InjectKeyIsIndependentOfTheResolvingKey()
+    {
+        // Arrange
+        using var provider = CreateProvider();
+
+        // Act
+        var consumer = provider.GetRequiredKeyedService<IKeyedPropertyConsumer>("left");
+
+        // Assert
+        Assert.Same(provider.GetRequiredKeyedService<IKeyedLeaf>("right"), consumer.Leaf);
+    }
+
+    [Fact]
+    public void KeyedInjectPropertyStaysOnTheGeneratedPath()
+    {
+        // Arrange: a literal key needs no resolving key, so a non-keyed registration keeps its generated factory
+        using var provider = CreateProvider();
+
+        // Act
+        var entry = provider.CreateFactoryReport().First(static x => x.ImplementationType == typeof(KeyedConsumer));
+
+        // Assert
+        Assert.Equal(ServiceFactoryStatus.Generated, entry.Status);
+    }
+
+    [Fact]
     public void FactoryReportClassifiesResolutionPaths()
     {
         // Arrange

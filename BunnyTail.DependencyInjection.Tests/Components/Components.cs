@@ -192,6 +192,50 @@ public sealed class KeyedWithDependency(KeyedProbeDependency probe, [ServiceKey]
     public string Key { get; } = key;
 }
 
+// Keyed dependency injection
+
+public interface IKeyedLeaf
+{
+    string Name { get; }
+}
+
+[Singleton(As = typeof(IKeyedLeaf), Key = "left")]
+public sealed class LeftKeyedLeaf : IKeyedLeaf
+{
+    public string Name => "left";
+}
+
+[Singleton(As = typeof(IKeyedLeaf), Key = "right")]
+public sealed class RightKeyedLeaf : IKeyedLeaf
+{
+    public string Name => "right";
+}
+
+// 非 keyed 登録 + キー指定の依存。コンストラクタ引数は [FromKeyedServices]、プロパティは [Inject(Key)]
+// Non-keyed registration with keyed dependencies: [FromKeyedServices] on the parameter, [Inject(Key)] on the property.
+[Transient]
+public sealed class KeyedConsumer([FromKeyedServices("left")] IKeyedLeaf left)
+{
+    public IKeyedLeaf Left { get; } = left;
+
+    [Inject(Key = "right")]
+    public IKeyedLeaf Right { get; set; } = default!;
+}
+
+// keyed 登録でも [Inject(Key)] は独立したキーを指す
+// Even on a keyed registration, [Inject(Key)] names its own key.
+public interface IKeyedPropertyConsumer
+{
+    IKeyedLeaf Leaf { get; }
+}
+
+[Transient(As = typeof(IKeyedPropertyConsumer), Key = "left")]
+public sealed class KeyedPropertyConsumer : IKeyedPropertyConsumer
+{
+    [Inject(Key = "right")]
+    public IKeyedLeaf Leaf { get; set; } = default!;
+}
+
 // Add* calls
 
 public interface IUntrackedProbe;

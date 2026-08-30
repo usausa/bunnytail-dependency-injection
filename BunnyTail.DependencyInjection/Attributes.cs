@@ -49,6 +49,7 @@ public sealed class TransientAttribute : Attribute
 [AttributeUsage(AttributeTargets.Property)]
 public sealed class InjectAttribute : Attribute
 {
+    public object? Key { get; set; }
 }
 
 //--------------------------------------------------------------------------------

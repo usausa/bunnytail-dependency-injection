@@ -171,6 +171,18 @@ public static class GeneratedComponents
             global::System.Type.EmptyTypes,
             static provider => new global::BunnyTail.DependencyInjection.Tests.Components.KeyedProbeDependency());
 
+        global::BunnyTail.DependencyInjection.Internal.GeneratedFactoryRegistry.Register(
+            typeof(global::BunnyTail.DependencyInjection.Tests.Components.KeyedConsumer),
+            [typeof(global::BunnyTail.DependencyInjection.Tests.Components.IKeyedLeaf)],
+            static provider =>
+            {
+                var scope = (global::BunnyTail.DependencyInjection.ServiceProviderScope)provider;
+                var instance = new global::BunnyTail.DependencyInjection.Tests.Components.KeyedConsumer(
+                    scope.GetRequiredKeyedService<global::BunnyTail.DependencyInjection.Tests.Components.IKeyedLeaf>("left"));
+                instance.Right = scope.GetRequiredKeyedService<global::BunnyTail.DependencyInjection.Tests.Components.IKeyedLeaf>("right");
+                return instance;
+            });
+
         global::BunnyTail.DependencyInjection.Internal.GeneratedFactoryRegistry.RegisterKeyed(
             typeof(global::BunnyTail.DependencyInjection.Tests.Components.PrimaryKeyedComponent),
             global::System.Type.EmptyTypes,
@@ -186,6 +198,27 @@ public static class GeneratedComponents
                 var instance = new global::BunnyTail.DependencyInjection.Tests.Components.KeyedWithDependency(
                     global::System.Runtime.CompilerServices.Unsafe.As<global::BunnyTail.DependencyInjection.Tests.Components.KeyedProbeDependency>(dependencies[0])!,
                     (string)key!);
+                return instance;
+            });
+
+        global::BunnyTail.DependencyInjection.Internal.GeneratedFactoryRegistry.RegisterKeyed(
+            typeof(global::BunnyTail.DependencyInjection.Tests.Components.LeftKeyedLeaf),
+            global::System.Type.EmptyTypes,
+            static (provider, key) => new global::BunnyTail.DependencyInjection.Tests.Components.LeftKeyedLeaf());
+
+        global::BunnyTail.DependencyInjection.Internal.GeneratedFactoryRegistry.RegisterKeyed(
+            typeof(global::BunnyTail.DependencyInjection.Tests.Components.RightKeyedLeaf),
+            global::System.Type.EmptyTypes,
+            static (provider, key) => new global::BunnyTail.DependencyInjection.Tests.Components.RightKeyedLeaf());
+
+        global::BunnyTail.DependencyInjection.Internal.GeneratedFactoryRegistry.RegisterKeyed(
+            typeof(global::BunnyTail.DependencyInjection.Tests.Components.KeyedPropertyConsumer),
+            global::System.Type.EmptyTypes,
+            static (provider, key) =>
+            {
+                var scope = (global::BunnyTail.DependencyInjection.ServiceProviderScope)provider;
+                var instance = new global::BunnyTail.DependencyInjection.Tests.Components.KeyedPropertyConsumer();
+                instance.Leaf = scope.GetRequiredKeyedService<global::BunnyTail.DependencyInjection.Tests.Components.IKeyedLeaf>("right");
                 return instance;
             });
 
@@ -228,6 +261,10 @@ public static class GeneratedComponents
         services.AddTransient<global::BunnyTail.DependencyInjection.Tests.Components.NodeWithDisposable>();
         services.AddSingleton<global::BunnyTail.DependencyInjection.Tests.Components.KeyedProbeDependency>();
         services.AddKeyedTransient<global::BunnyTail.DependencyInjection.Tests.Components.IKeyedWithDependency, global::BunnyTail.DependencyInjection.Tests.Components.KeyedWithDependency>("kd");
+        services.AddKeyedSingleton<global::BunnyTail.DependencyInjection.Tests.Components.IKeyedLeaf, global::BunnyTail.DependencyInjection.Tests.Components.LeftKeyedLeaf>("left");
+        services.AddKeyedSingleton<global::BunnyTail.DependencyInjection.Tests.Components.IKeyedLeaf, global::BunnyTail.DependencyInjection.Tests.Components.RightKeyedLeaf>("right");
+        services.AddTransient<global::BunnyTail.DependencyInjection.Tests.Components.KeyedConsumer>();
+        services.AddKeyedTransient<global::BunnyTail.DependencyInjection.Tests.Components.IKeyedPropertyConsumer, global::BunnyTail.DependencyInjection.Tests.Components.KeyedPropertyConsumer>("left");
         return services;
     }
 

@@ -709,7 +709,7 @@ internal sealed class ServiceRegistry
         }
 
         // Constructor
-        var properties = BuildPropertyInjections(implType, serviceKey);
+        var properties = BuildPropertyInjections(implType);
         var (postConstruct, initializable) = ResolveInitializer(implType);
         return new ConstructorAccessor(constructor, plans, properties, postConstruct, initializable, cache, slot, track);
     }
@@ -831,12 +831,13 @@ internal sealed class ServiceRegistry
     private static readonly PropertyInjection[] EmptyPropertyInjections = [];
 
     [UnconditionalSuppressMessage("Trimming", "IL2070", Justification = "Types with [Inject] properties are preserved because generated code references them statically, and types registered only at runtime are documented as a limitation.")]
-    private PropertyInjection[] BuildPropertyInjections(Type implType, object? serviceKey)
+    private PropertyInjection[] BuildPropertyInjections(Type implType)
     {
         List<PropertyInjection>? list = null;
         foreach (var property in implType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
-            if (property.GetCustomAttribute<InjectAttribute>() is null)
+            var inject = property.GetCustomAttribute<InjectAttribute>();
+            if (inject is null)
             {
                 continue;
             }
@@ -846,14 +847,7 @@ internal sealed class ServiceRegistry
                 throw new InvalidOperationException($"[Inject] property must have a public setter. type=[{implType}] property=[{property.Name}]");
             }
 
-            object? key = null;
-            var fromKeyed = property.GetCustomAttribute<FromKeyedServicesAttribute>();
-            if (fromKeyed is not null)
-            {
-                key = fromKeyed.LookupMode == ServiceKeyLookupMode.InheritKey ? serviceKey : fromKeyed.Key;
-            }
-
-            var accessor = GetEntry(new ServiceIdentifier(property.PropertyType, key));
+            var accessor = GetEntry(new ServiceIdentifier(property.PropertyType, inject.Key));
             if (accessor is null)
             {
                 throw new InvalidOperationException($"Unable to resolve service for type '{property.PropertyType}' while attempting to activate '{implType}'.");

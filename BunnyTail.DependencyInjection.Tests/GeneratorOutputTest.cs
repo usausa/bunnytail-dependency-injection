@@ -458,6 +458,78 @@ public sealed class GeneratorOutputTest
         Assert.Contains("(string)key!", generated, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void LiteralKeyedInjectPropertyKeepsTheUnkeyedFactory()
+    {
+        // Arrange: a literal key needs no resolving key, so the unkeyed factory can carry it
+        const string source = """
+            using BunnyTail.DependencyInjection;
+            using Microsoft.Extensions.DependencyInjection;
+
+            namespace Demo;
+
+            public interface ILeaf;
+
+            [Singleton(As = typeof(ILeaf), Key = "right")]
+            public sealed class Leaf : ILeaf;
+
+            [Transient]
+            public sealed class Consumer
+            {
+                [Inject(Key = "right")]
+                public ILeaf Right { get; set; } = default!;
+            }
+            """;
+
+        // Act
+        var result = GeneratorTestHelper.CreateRunner()
+            .VerifyCompiles()
+            .Run(source);
+
+        // Assert
+        var generated = result.GeneratedSource("GeneratedComponents.g.cs");
+
+        Assert.Contains("GeneratedFactoryRegistry.Register(", generated, StringComparison.Ordinal);
+        Assert.Contains("instance.Right = scope.GetRequiredKeyedService<global::Demo.ILeaf>(\"right\");", generated, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void KeyedFactoryCarriesTheInjectKeyOfItsProperty()
+    {
+        // Arrange: [Inject(Key)] names its own key, independent of the key the component is registered under
+        const string source = """
+            using BunnyTail.DependencyInjection;
+            using Microsoft.Extensions.DependencyInjection;
+
+            namespace Demo;
+
+            public interface ILeaf;
+
+            [Singleton(As = typeof(ILeaf), Key = "right")]
+            public sealed class Leaf : ILeaf;
+
+            public interface IConsumer;
+
+            [Transient(As = typeof(IConsumer), Key = "left")]
+            public sealed class Consumer : IConsumer
+            {
+                [Inject(Key = "right")]
+                public ILeaf Leaf { get; set; } = default!;
+            }
+            """;
+
+        // Act
+        var result = GeneratorTestHelper.CreateRunner()
+            .VerifyCompiles()
+            .Run(source);
+
+        // Assert
+        var generated = result.GeneratedSource("GeneratedComponents.g.cs");
+
+        Assert.Contains("RegisterKeyed(", generated, StringComparison.Ordinal);
+        Assert.Contains("instance.Leaf = scope.GetRequiredKeyedService<global::Demo.ILeaf>(\"right\");", generated, StringComparison.Ordinal);
+    }
+
     //--------------------------------------------------------------------------------
     // Transient inline expansion
     //--------------------------------------------------------------------------------

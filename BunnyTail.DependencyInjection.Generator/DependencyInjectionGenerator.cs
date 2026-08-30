@@ -211,9 +211,12 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                     eligibleKeyed = false;
                 }
 
-                // keyed 依存 ([ServiceKey]/[FromKeyedServices]) は keyed ファクトリでのみ扱える
-                // Keyed dependencies ([ServiceKey]/[FromKeyedServices]) can only be handled by keyed factories.
-                if (kind != DependencyKinds.Service)
+                // 解決中のキーを必要とする依存 ([ServiceKey] / キー省略の [FromKeyedServices]) は keyed ファクトリでのみ扱える。
+                // リテラルキーの [FromKeyedServices(key)] は key を参照しないので非 keyed ファクトリからも出力できる
+                // Dependencies that need the key being resolved ([ServiceKey], [FromKeyedServices] without a key) can only
+                // be handled by a keyed factory. A literal [FromKeyedServices(key)] never references key, so an unkeyed
+                // factory can emit it too.
+                if (kind is DependencyKinds.ServiceKey or DependencyKinds.KeyedInherit)
                 {
                     eligibleUnkeyed = false;
                 }
@@ -236,17 +239,16 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             }
 
             var (typeName, kind, keyLiteral, inCompilation, isValueType) = CreateDependencyModel(property.Type, property.GetAttributes(), compilationAssembly);
-            if (kind == DependencyKinds.ServiceKey)
-            {
-                // プロパティへの [ServiceKey] は非対応 / [ServiceKey] on properties is not supported
-                eligibleUnkeyed = false;
-                eligibleKeyed = false;
-                continue;
-            }
 
-            if (kind != DependencyKinds.Service)
+            // MEDI の [FromKeyedServices] / [ServiceKey] は Parameter 限定でプロパティには付けられないため、
+            // キーは [Inject(Key = ...)] から読む。リテラルキーは解決中のキーを必要としないので適格は落とさない
+            // MEDI's [FromKeyedServices] / [ServiceKey] are parameter only, so the key is read from [Inject(Key = ...)].
+            // A literal key needs no resolving key, so neither eligibility flag drops.
+            var injectKey = SelectInjectKey(property.GetAttributes());
+            if (injectKey is not null)
             {
-                eligibleUnkeyed = false;
+                kind = DependencyKinds.KeyedExplicit;
+                keyLiteral = injectKey;
             }
 
             injectProperties.Add(new PropertyModel(property.Name, typeName, inCompilation, isValueType, kind, keyLiteral));
@@ -372,6 +374,29 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         }
 
         return (typeName, DependencyKinds.Service, null, inCompilation, isValueType);
+    }
+
+    // [Inject(Key = ...)] のキーリテラルを取り出す (未指定または null なら非 keyed 解決)
+    // Extracts the key literal of [Inject(Key = ...)] (unspecified or null resolves non-keyed).
+    private static string? SelectInjectKey(ImmutableArray<AttributeData> attributes)
+    {
+        foreach (var attribute in attributes)
+        {
+            if (attribute.AttributeClass?.ToDisplayString() != InjectAttributeName)
+            {
+                continue;
+            }
+
+            foreach (var argument in attribute.NamedArguments)
+            {
+                if ((argument.Key == "Key") && !argument.Value.IsNull)
+                {
+                    return argument.Value.ToCSharpExpression();
+                }
+            }
+        }
+
+        return null;
     }
 
     // TODO

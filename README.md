@@ -71,7 +71,7 @@ var keyed = provider.GetRequiredKeyedService<IService>("primary");
 
 * One attribute maps to one MEDI registration shape. Plain is `AddX<TImpl>()`, `As` is `AddX<TService, TImpl>()`, `Key` is the keyed form
 * `WithInterfaces = true` keeps `AddX<TImpl>()` and adds a delegate registration per **directly declared** interface, so a single instance is shared. Combining it with `As` reports `BTDI0012`
-* `[FromKeyedServices]` and `[ServiceKey]` follow MEDI rules, on constructor parameters and `[Inject]` properties alike
+* `[FromKeyedServices]` and `[ServiceKey]` follow MEDI rules on constructor parameters. Both target parameters only, so a keyed property uses `[Inject(Key = ...)]` instead
 
 ### 🟨 Convention based registration
 
@@ -100,8 +100,7 @@ public sealed class Component3(Component1 component)
     [Inject]
     public Component2 Two { get; set; } = default!;
 
-    [Inject]
-    [FromKeyedServices("primary")]
+    [Inject(Key = "primary")]
     public IService Service { get; set; } = default!;
 }
 ```
@@ -295,7 +294,7 @@ All extend `IServiceCollection`.
 | Attribute | Target | Description |
 |---|---|---|
 | `[Singleton]` / `[Scoped]` / `[Transient]` | class | `As`, `Key`, `WithInterfaces`, `PostConstruct`. `[Transient]` also takes `Tracking` |
-| `[Inject]` | property | Property injection |
+| `[Inject]` | property | Property injection. `Key` resolves a keyed service |
 | `[ComponentRegistration]` | partial method | `Lifetime`, `Pattern`, `Namespace`, `Assembly`, `As`, `WithInterfaces` |
 | `[ComponentModule]` | assembly | The module type aggregated by `AddGeneratedComponents()`. Emitted automatically unless the assembly has no attribute components |
 | `[GenerateComponentFactory]` | assembly | A factory without a registration, for libraries you do not control. Supports `PostConstruct` |
