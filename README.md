@@ -70,8 +70,7 @@ var keyed = provider.GetRequiredKeyedService<IService>("primary");
 ```
 
 * One attribute maps to one MEDI registration shape. Plain is `AddX<TImpl>()`, `As` is `AddX<TService, TImpl>()`, `Key` is the keyed form
-* `WithInterfaces = true` keeps `AddX<TImpl>()` and adds a delegate registration per **directly declared** interface, so a single instance is shared. Combining it with `As` reports `BTDI0012`
-* `[FromKeyedServices]` and `[ServiceKey]` follow MEDI rules on constructor parameters. Both target parameters only, so a keyed property uses `[Inject(Key = ...)]` instead
+* `WithInterfaces = true` keeps `AddX<TImpl>()` and adds a delegate registration per directly declared interface, so a single instance is shared
 
 ### 🟨 Convention based registration
 
@@ -88,8 +87,7 @@ public static partial class ServiceCollectionExtensions
 ```
 
 * `As` and `WithInterfaces` behave exactly as on the lifetime attributes. The default registers the implementation only
-* `Assembly` scans a referenced assembly from metadata (publicly accessible classes only). An unreferenced name reports `BTDI0003`
-* A pattern matching no type reports `BTDI0013`
+* `Assembly` scans a referenced assembly from metadata (publicly accessible classes only)
 
 ### 🟨 Property injection
 
@@ -106,7 +104,6 @@ public sealed class Component3(Component1 component)
 ```
 
 * Runs after the constructor and before the initialization callback
-* Applies on every path, including type activation
 
 ### 🟨 Initialization callback
 
@@ -128,9 +125,7 @@ public sealed class Component6 : IInitializable
 }
 ```
 
-* Runs after the constructor and `[Inject]` property injection, with identical timing on both paths
 * Must be a public parameterless instance method returning void. `PostConstruct` wins when both are present
-* Only container-constructed instances are initialized: factory and instance registrations are user-owned and never touched
 
 ### 🟨 Existing Add* registrations
 
@@ -140,7 +135,6 @@ Registration calls in user code are collected by the generator, so existing MEDI
 * `AddKeyed{Lifetime}` / `TryAddKeyed{Lifetime}` - generic and `typeof` overloads
 * `Add` / `TryAdd` / `TryAddEnumerable` taking `ServiceDescriptor.{Lifetime}<TService, TImplementation>()`
 * Open generic definition pairs such as `AddTransient(typeof(IRepository<>), typeof(Repository<>))`
-* Factory, instance and `ServiceDescriptor.Describe` based registrations are not collected - they take the runtime path, with identical semantics
 
 ### 🟨 Excluding interfaces from automatic registration
 
@@ -152,7 +146,7 @@ Registration without an explicit `As` covers the class and every interface it im
 </PropertyGroup>
 ```
 
-* Comma separated, matched against the namespace-qualified name (write generics as they appear in source, such as `MyApp.IHandler<MyApp.Command>`)
+* Comma separated, matched against the namespace-qualified name
 * Applies to attribute and convention registration alike. An explicit `As = typeof(...)` is never affected
 
 ### 🟨 Multi-project modules
@@ -171,9 +165,7 @@ using var provider = new ServiceCollection()
 ```
 
 * A library compiles its components into its own module, and `AddGeneratedComponents()` discovers every referenced module transitively, each exactly once
-* Each module also gets a `RegisterComponents(IServiceCollection)` static for its own components only. That is the integration point the aggregation calls; call it directly only to leave other modules out
-
-The module marker is embedded for assemblies that have attribute components. A library that has none declares one by hand, and only one marker per assembly is allowed:
+* The module marker is embedded for assemblies that have attribute components. A library that has none declares one by hand - one marker per assembly, naming a type with a `RegisterComponents(IServiceCollection)` static
 
 ```csharp
 [assembly: BunnyTail.DependencyInjection.ComponentModule(typeof(MyLibrary.LibraryModule))]
@@ -192,7 +184,7 @@ public static class LibraryModule
 
 ### 🟨 Types you do not control
 
-The generator only sees the source it compiles, so a library registering its own types through its own extension method resolves through the runtime path. `[GenerateComponentFactory]` prepares a factory for such a type **without registering it**:
+The generator only sees the source it compiles, so a library registering its own types through its own extension method resolves through the runtime path. `[GenerateComponentFactory]` prepares a factory for such a type without registering it:
 
 ```csharp
 [assembly: GenerateComponentFactory(typeof(SomeLibrary.SomeService))]
@@ -201,9 +193,6 @@ The generator only sees the source it compiles, so a library registering its own
 // registration still comes from the library
 services.AddSomeLibrary();
 ```
-
-* Eligible targets: publicly accessible concrete classes with a usable public constructor. Anything else reports `BTDI0004`, and an invalid `PostConstruct` name reports `BTDI0006`
-* `PostConstruct` runs on both paths, so behavior never depends on which one resolved the type
 
 To find the types worth marking, ask the built provider which registrations fell back:
 
@@ -218,12 +207,10 @@ Console.Write(provider.DescribeRuntimeFallbacks(static x => x.Lifetime != Servic
 ```
 
 * ⚠️ Development-time only: it realizes every entry, so keep it out of release paths
-* `CreateFactoryReport()` classifies each registration as `Generated`, `RuntimeFallback`, `NotApplicable` or `Unresolvable`
-* ✅ The fallbacks worth marking are public transient or scoped services on hot paths. Singletons pay the cost once, and factory / instance registrations cannot benefit at all
 
 ### 🟨 Disposable tracking control
 
-MEDI keeps a reference to every disposable transient and disposes it with the resolving scope, which double-disposes objects another framework already owns (views, view models). Transient tracking can therefore be turned off:
+MEDI keeps a reference to every disposable transient and disposes it with the resolving scope. Transient tracking can therefore be turned off:
 
 ```csharp
 // Provider level
@@ -246,13 +233,11 @@ using var provider = services.BuildGeneratedServiceProvider(static o =>
 });
 ```
 
-* Precedence: registration setting > per-type override > provider default (`TrackTransientDisposables`, default `true` = MEDI behavior)
 * Transients only. Singleton and scoped disposal always stays container owned
-* An untracked instance is owned by whoever resolved it. Constructor injected dependencies keep their own settings
 
 ### 🟨 Type activation
 
-`ITypeActivator` is the reflection-free counterpart of `ActivatorUtilities.CreateInstance()`. It takes constructor arguments from the container and hands a **fresh, caller-owned** instance back, ignoring any registration the type may have:
+`ITypeActivator` is the reflection-free counterpart of `ActivatorUtilities.CreateInstance()`. It constructs a type from container dependencies without registering it, and the fresh instance belongs to the caller:
 
 ```csharp
 var page = provider.Activate<MainPage>();   // on the provider and on scopes
@@ -296,7 +281,7 @@ All extend `IServiceCollection`.
 | `[Singleton]` / `[Scoped]` / `[Transient]` | class | `As`, `Key`, `WithInterfaces`, `PostConstruct`. `[Transient]` also takes `Tracking` |
 | `[Inject]` | property | Property injection. `Key` resolves a keyed service |
 | `[ComponentRegistration]` | partial method | `Lifetime`, `Pattern`, `Namespace`, `Assembly`, `As`, `WithInterfaces` |
-| `[ComponentModule]` | assembly | The module type aggregated by `AddGeneratedComponents()`. Emitted automatically unless the assembly has no attribute components |
+| `[ComponentModule]` | assembly | The module type aggregated by `AddGeneratedComponents()`. Emitted automatically for assemblies with attribute components |
 | `[GenerateComponentFactory]` | assembly | A factory without a registration, for libraries you do not control. Supports `PostConstruct` |
 | `IInitializable` | interface | Initialization callback |
 
@@ -339,13 +324,9 @@ Three shapes come out of this, chosen per dependency lifetime:
 * 📌 **Instance slots** - an unambiguous singleton dependency is resolved once, then read straight from the dependency array
 * 🎯 **Accessor slots** - scoped and non-inlinable dependencies get a validated accessor handle, skipping the service table lookup on every resolution
 
-Closed forms of open generic registrations visible in code also get their own factories, which is what makes value type arguments AOT safe. A form known only at runtime has none, and NativeAOT cannot instantiate it with a value type argument (`BTDI0011` warns).
-
 ### 🟪 How generated code stays correct
 
-Generated factories are assumptions about registrations, and registrations are only final at runtime. Every assumption is re-checked when the provider realizes an entry, and any mismatch silently falls back to the runtime path - so `Replace`, a lifetime change, a factory registration and a decorator all keep working.
-
-The runtime path is `ConstructorInfo.Invoke` based and uses no Emit, so it stays NativeAOT safe. Both paths share one runtime core, so lifetime, disposal and collection semantics are identical either way.
+Generated factories are assumptions about registrations, and registrations are only final at runtime. Every assumption is re-checked when the provider realizes an entry, and any mismatch silently falls back to the runtime path.
 
 ## 📂 Samples
 
