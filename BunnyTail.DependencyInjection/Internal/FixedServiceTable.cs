@@ -207,7 +207,7 @@ internal sealed class FixedKeyedServiceTable
         var node = table[hash & (table.Length - 1)];
         do
         {
-            if (hash == node.Hash && ReferenceEquals(node.Type, type) && node.Key.Equals(key))
+            if ((hash == node.Hash) && ReferenceEquals(node.Type, type) && node.Key.Equals(key))
             {
                 return node.Accessor;
             }
@@ -227,7 +227,7 @@ internal sealed class FixedKeyedServiceTable
         var node = table[hash & (table.Length - 1)];
         do
         {
-            if (hash == node.Hash && ReferenceEquals(node.Type, type) && node.Key.Equals(key))
+            if ((hash == node.Hash) && ReferenceEquals(node.Type, type) && node.Key.Equals(key))
             {
                 var constant = node.Constant;
                 if (constant is not null)

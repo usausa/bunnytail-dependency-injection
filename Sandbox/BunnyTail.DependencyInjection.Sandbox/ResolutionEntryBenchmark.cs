@@ -229,7 +229,7 @@ public class ResolutionEntryBenchmark
             foreach (var pair in source)
             {
                 var index = RuntimeHelpers.GetHashCode(pair.Key) & mask;
-                var constant = primeConstants && pair.Value.Cache == CacheKind.Root ? pair.Value.GetValue(this) : null;
+                var constant = primeConstants && (pair.Value.Cache == CacheKind.Root) ? pair.Value.GetValue(this) : null;
                 var node = new Node(pair.Key, pair.Value, constant);
                 if (nodes[index] == EmptyNode)
                 {

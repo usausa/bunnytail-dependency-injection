@@ -56,12 +56,14 @@ public sealed class InjectAttribute : Attribute
 // Convention based
 //--------------------------------------------------------------------------------
 
+#pragma warning disable CA1724
 public enum Lifetime
 {
     Transient = 0,
     Singleton = 1,
     Scoped = 2
 }
+#pragma warning restore CA1724
 
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = true)]
 public sealed class ComponentRegistrationAttribute : Attribute

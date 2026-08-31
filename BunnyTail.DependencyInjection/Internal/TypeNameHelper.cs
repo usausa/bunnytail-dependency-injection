@@ -15,7 +15,7 @@ internal static class TypeNameHelper
     {
         if (type.IsGenericType)
         {
-            var name = type.FullName is not null && !type.IsConstructedGenericType ? type.FullName : GetFullNameWithoutArity(type);
+            var name = (type.FullName is not null) && !type.IsConstructedGenericType ? type.FullName : GetFullNameWithoutArity(type);
             builder.Append(name);
             builder.Append('<');
             var arguments = type.GetGenericArguments();

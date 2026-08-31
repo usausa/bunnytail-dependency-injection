@@ -88,7 +88,7 @@ public sealed class ServiceProviderScope :
     }
 
     private static bool IsEnumerableService(Type serviceType) =>
-        serviceType.IsConstructedGenericType && serviceType.GetGenericTypeDefinition() == typeof(IEnumerable<>);
+        serviceType.IsConstructedGenericType && (serviceType.GetGenericTypeDefinition() == typeof(IEnumerable<>));
 
     [DoesNotReturn]
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -174,7 +174,7 @@ public sealed class ServiceProviderScope :
 
     internal void CaptureDisposable(object? value)
     {
-        if (value is not IDisposable && value is not IAsyncDisposable)
+        if ((value is not IDisposable) && (value is not IAsyncDisposable))
         {
             return;
         }
@@ -187,7 +187,7 @@ public sealed class ServiceProviderScope :
 
     internal void CaptureDisposableUnderLock(object? value)
     {
-        if (value is not IDisposable && value is not IAsyncDisposable)
+        if ((value is not IDisposable) && (value is not IAsyncDisposable))
         {
             return;
         }

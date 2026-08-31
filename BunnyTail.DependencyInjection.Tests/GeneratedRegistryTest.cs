@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 using Xunit;
 
+#pragma warning disable CA1034
 public sealed class GeneratedRegistryTest
 {
     public sealed class HookComponent
@@ -185,3 +186,4 @@ public sealed class GeneratedRegistryTest
         Assert.False(instance.CreatedByGeneratedFactory);
     }
 }
+#pragma warning restore CA1034

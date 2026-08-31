@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 using Xunit;
 
+#pragma warning disable CA1034
 public sealed class ComponentResolutionTest
 {
     private static GeneratedServiceProvider CreateProvider() =>
@@ -586,3 +587,4 @@ public sealed class ComponentResolutionTest
         Assert.NotSame(root.A.Leaf, root.B.Leaf);
     }
 }
+#pragma warning restore CA1034

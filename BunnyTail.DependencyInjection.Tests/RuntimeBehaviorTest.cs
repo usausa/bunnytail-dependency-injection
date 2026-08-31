@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 using Xunit;
 
+#pragma warning disable CA1034
 public sealed class RuntimeBehaviorTest
 {
     //--------------------------------------------------------------------------------
@@ -345,3 +346,4 @@ public sealed class RuntimeBehaviorTest
         Assert.Equal(32, log.Count);
     }
 }
+#pragma warning restore CA1034

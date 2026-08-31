@@ -26,10 +26,10 @@ internal readonly struct ServiceIdentifier : IEquatable<ServiceIdentifier>
             return other.Key is null;
         }
 
-        return other.Key is not null && Key.Equals(other.Key);
+        return (other.Key is not null) && Key.Equals(other.Key);
     }
 
-    public override bool Equals(object? obj) => obj is ServiceIdentifier other && Equals(other);
+    public override bool Equals(object? obj) => (obj is ServiceIdentifier other) && Equals(other);
 
     public override int GetHashCode()
     {

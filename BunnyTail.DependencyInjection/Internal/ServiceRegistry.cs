@@ -11,6 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 internal sealed class ServiceRegistry
 {
+#pragma warning disable SA1214
     [ThreadStatic]
     private static List<ServiceIdentifier>? realizationStack;
 
@@ -57,6 +58,7 @@ internal sealed class ServiceRegistry
     private int slotCounter;
 
     private readonly bool disposedSentinel;
+#pragma warning restore SA1214
 
     //--------------------------------------------------------------------------------
     // Constructor
@@ -123,7 +125,7 @@ internal sealed class ServiceRegistry
         {
             if (id.ServiceType.IsGenericTypeDefinition ||
                 ReferenceEquals(id.Key, KeyedService.AnyKey) ||
-                (id.Key is null && typeEntries.Exists(x => ReferenceEquals(x.Key, id.ServiceType))))
+                ((id.Key is null) && typeEntries.Exists(x => ReferenceEquals(x.Key, id.ServiceType))))
             {
                 continue;
             }
@@ -387,7 +389,7 @@ internal sealed class ServiceRegistry
         }
 
         // Check for AnyKey match
-        if (id.Key is not null &&
+        if ((id.Key is not null) &&
             !ReferenceEquals(id.Key, KeyedService.AnyKey) &&
             exactMap.TryGetValue(new ServiceIdentifier(serviceType, KeyedService.AnyKey), out var anyList))
         {
@@ -417,7 +419,7 @@ internal sealed class ServiceRegistry
                 }
             }
 
-            if (id.Key is not null && !ReferenceEquals(id.Key, KeyedService.AnyKey) &&
+            if ((id.Key is not null) && !ReferenceEquals(id.Key, KeyedService.AnyKey) &&
                 exactMap.TryGetValue(new ServiceIdentifier(definition, KeyedService.AnyKey), out var anyOpenList))
             {
                 for (var i = anyOpenList.Count - 1; i >= 0; i--)
@@ -648,7 +650,7 @@ internal sealed class ServiceRegistry
         if (name is not null)
         {
             var method = implType.GetMethod(name, BindingFlags.Public | BindingFlags.Instance, Type.EmptyTypes);
-            if (method is null || method.ReturnType != typeof(void) || method.IsGenericMethodDefinition)
+            if ((method is null) || (method.ReturnType != typeof(void)) || method.IsGenericMethodDefinition)
             {
                 throw new InvalidOperationException($"PostConstruct method must be a public parameterless instance method returning void. type=[{implType}] method=[{name}]");
             }
@@ -842,7 +844,7 @@ internal sealed class ServiceRegistry
                 continue;
             }
 
-            if (property.SetMethod is null || !property.SetMethod.IsPublic)
+            if ((property.SetMethod is null) || !property.SetMethod.IsPublic)
             {
                 throw new InvalidOperationException($"[Inject] property must have a public setter. type=[{implType}] property=[{property.Name}]");
             }
@@ -988,8 +990,8 @@ internal sealed class ServiceRegistry
             cache = ResultCache.None;
         }
 
-        if (key is null &&
-            cache == ResultCache.None &&
+        if ((key is null) &&
+            (cache == ResultCache.None) &&
             GeneratedFactoryRegistry.TryGetEnumerable(elementType, out var generatedEnumerable) &&
             IsEnumerableElementsMatch(items, generatedEnumerable.ElementImplementationTypes))
         {
@@ -1052,10 +1054,10 @@ internal sealed class ServiceRegistry
         }
 
         if ((id.Key is null) &&
-            (serviceType == typeof(IServiceProvider) ||
-             serviceType == typeof(IServiceScopeFactory) ||
-             serviceType == typeof(IServiceProviderIsService) ||
-             serviceType == typeof(IServiceProviderIsKeyedService)))
+            ((serviceType == typeof(IServiceProvider)) ||
+             (serviceType == typeof(IServiceScopeFactory)) ||
+             (serviceType == typeof(IServiceProviderIsService)) ||
+             (serviceType == typeof(IServiceProviderIsKeyedService))))
         {
             return true;
         }
@@ -1070,7 +1072,7 @@ internal sealed class ServiceRegistry
             return true;
         }
 
-        if (id.Key is not null && exactMap.ContainsKey(new ServiceIdentifier(serviceType, KeyedService.AnyKey)))
+        if ((id.Key is not null) && exactMap.ContainsKey(new ServiceIdentifier(serviceType, KeyedService.AnyKey)))
         {
             return true;
         }
@@ -1088,7 +1090,7 @@ internal sealed class ServiceRegistry
                 return true;
             }
 
-            if (id.Key is not null && exactMap.ContainsKey(new ServiceIdentifier(definition, KeyedService.AnyKey)))
+            if ((id.Key is not null) && exactMap.ContainsKey(new ServiceIdentifier(definition, KeyedService.AnyKey)))
             {
                 return true;
             }
@@ -1117,9 +1119,9 @@ internal sealed class ServiceRegistry
         public bool Equals(AccessorCacheKey other) =>
             ReferenceEquals(descriptor, other.descriptor) &&
             ReferenceEquals(serviceType, other.serviceType) &&
-            (key is null ? other.key is null : other.key is not null && key.Equals(other.key));
+            (key is null ? other.key is null : (other.key is not null) && key.Equals(other.key));
 
-        public override bool Equals(object? obj) => obj is AccessorCacheKey other && Equals(other);
+        public override bool Equals(object? obj) => (obj is AccessorCacheKey other) && Equals(other);
 
         public override int GetHashCode()
         {

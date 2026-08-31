@@ -140,7 +140,6 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             .Combine(assemblyNameProvider)
             .Combine(referencedModulesProvider)
             .Combine(ignoreInterfacesProvider);
-
         context.RegisterSourceOutput(source, static (context, source) => Execute(
             context,
             source.Left.Left.Left.Left.Left.Left.Left.Left.Left.Left.Left,
@@ -157,6 +156,24 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             source.Right));
     }
 
+    // ------------------------------------------------------------
+    // Parser
+    // ------------------------------------------------------------
+
+    private static EquatableArray<string> SelectIgnoreInterfaces(AnalyzerConfigOptionsProvider provider)
+    {
+        if (!provider.GlobalOptions.TryGetValue(IgnoreInterfaceProperty, out var value) || String.IsNullOrWhiteSpace(value))
+        {
+            return [];
+        }
+
+        var names = value.Split(',')
+            .Select(static x => x.Trim())
+            .Where(static x => x.Length > 0)
+            .ToArray();
+        return [with(names)];
+    }
+
     private static IncrementalValuesProvider<ComponentModel> CreateComponentProvider(IncrementalGeneratorInitializationContext context, string attributeName, string lifetime) =>
         context.SyntaxProvider
             .ForAttributeWithMetadataName(
@@ -166,10 +183,9 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             .SelectMany(static (models, _) => models);
 
     // ------------------------------------------------------------
-    // Parser : shared factory analysis (共通ファクトリ解析)
+    // Parser : shared factory analysis
     // ------------------------------------------------------------
 
-    // TODO
     private static FactoryModel CreateFactoryModel(INamedTypeSymbol symbol, IAssemblySymbol compilationAssembly)
     {
         var implementationType = symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
@@ -285,7 +301,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
             foreach (var argument in attribute.NamedArguments)
             {
-                if ((argument.Key == "PostConstruct") && argument.Value.Value is string value)
+                if ((argument.Key == "PostConstruct") && (argument.Value.Value is string value))
                 {
                     if (postConstruct is null)
                     {
@@ -411,20 +427,6 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     }
 
     // TODO
-    private static EquatableArray<string> SelectIgnoreInterfaces(AnalyzerConfigOptionsProvider provider)
-    {
-        if (!provider.GlobalOptions.TryGetValue(IgnoreInterfaceProperty, out var value) || String.IsNullOrWhiteSpace(value))
-        {
-            return [];
-        }
-
-        var names = value.Split(',')
-            .Select(static x => x.Trim())
-            .Where(static x => x.Length > 0)
-            .ToArray();
-        return [with(names)];
-    }
-
     // 除外指定は名前空間つきの名前 (global:: なし) で比較する。ジェネリックは型引数まで含めた形が対象
     // Exclusions are compared by namespace qualified name without global::; generics match the form including type arguments.
     // TODO
@@ -816,7 +818,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     // TODO
     private static string? TryGetMetadataName(ITypeSymbol type)
     {
-        if (type is not INamedTypeSymbol { Arity: 0, IsAnonymousType: false } named || type.TypeKind == TypeKind.TypeParameter)
+        if ((type is not INamedTypeSymbol { Arity: 0, IsAnonymousType: false } named) || (type.TypeKind == TypeKind.TypeParameter))
         {
             return null;
         }
@@ -828,7 +830,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         }
 
         var ns = named.ContainingNamespace;
-        var nested = string.Join("+", parts);
+        var nested = String.Join("+", parts);
         return (ns is null) || ns.IsGlobalNamespace ? nested : ns.ToDisplayString() + "." + nested;
     }
 
@@ -843,7 +845,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
         // 生成物にライフタイムは出ない (実行時の descriptor が決める) ので、ここでは対象呼び出しかの絞り込みにだけ使う
         // The lifetime never reaches the output (the runtime descriptor decides it), so it only filters the invocation here.
-        if (method.Name is not ("AddSingleton" or "TryAddSingleton" or "AddScoped" or "TryAddScoped" or "AddTransient" or "TryAddTransient") ||
+        if ((method.Name is not ("AddSingleton" or "TryAddSingleton" or "AddScoped" or "TryAddScoped" or "AddTransient" or "TryAddTransient")) ||
             (method.TypeArguments.Length != 0))
         {
             return null;
@@ -858,15 +860,15 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         // typeof(IRepo<>) と typeof(Repo<>) の 2 引数形のみ対象
         // Only the two-argument form with unbound typeof expressions is collected.
         var arguments = invocation.ArgumentList.Arguments;
-        if (arguments.Count != 2 ||
-            arguments[0].Expression is not TypeOfExpressionSyntax serviceTypeOf ||
-            arguments[1].Expression is not TypeOfExpressionSyntax implementationTypeOf)
+        if ((arguments.Count != 2) ||
+            (arguments[0].Expression is not TypeOfExpressionSyntax serviceTypeOf) ||
+            (arguments[1].Expression is not TypeOfExpressionSyntax implementationTypeOf))
         {
             return null;
         }
 
-        if (context.SemanticModel.GetTypeInfo(serviceTypeOf.Type).Type is not INamedTypeSymbol service ||
-            context.SemanticModel.GetTypeInfo(implementationTypeOf.Type).Type is not INamedTypeSymbol implementation ||
+        if ((context.SemanticModel.GetTypeInfo(serviceTypeOf.Type).Type is not INamedTypeSymbol service) ||
+            (context.SemanticModel.GetTypeInfo(implementationTypeOf.Type).Type is not INamedTypeSymbol implementation) ||
             !service.IsUnboundGenericType ||
             !implementation.IsUnboundGenericType ||
             (service.Arity != implementation.Arity))
@@ -910,7 +912,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         }
 
         var ns = definition.ContainingNamespace;
-        var nested = string.Join("+", parts);
+        var nested = String.Join("+", parts);
         return (ns is null) || ns.IsGlobalNamespace ? nested : ns.ToDisplayString() + "." + nested;
     }
 
@@ -965,7 +967,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     // TODO
     private static ClosedGenericUsageModel? CreateUsageModel(ITypeSymbol? type, SyntaxNode locationNode)
     {
-        if (type is not INamedTypeSymbol closed ||
+        if ((type is not INamedTypeSymbol closed) ||
             !closed.IsGenericType ||
             closed.IsUnboundGenericType)
         {
@@ -1289,7 +1291,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                 {
                     // パターンの走査対象 (自コンパイル or 指定アセンブリ) と候補の出自を一致させる
                     // The candidate origin must match the pattern's scan target (current compilation or the named assembly).
-                    if (!string.Equals(candidate.Assembly, pattern.Assembly, StringComparison.Ordinal))
+                    if (!String.Equals(candidate.Assembly, pattern.Assembly, StringComparison.Ordinal))
                     {
                         continue;
                     }
@@ -1914,7 +1916,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                     {
                         // 循環検出 / cycle detected
                         var start = stack.IndexOf(target.Impl);
-                        var chain = string.Join(" -> ", stack.Skip(start).Concat([target.Impl]).Select(Display));
+                        var chain = String.Join(" -> ", stack.Skip(start).Concat([target.Impl]).Select(Display));
                         if (reported.Add(chain))
                         {
                             context.ReportDiagnostic(new DiagnosticInfo(Diagnostics.CircularDependency, node.Location, chain).ToDiagnostic());
@@ -2172,14 +2174,14 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
         requests.Sort(static (x, y) =>
         {
-            var result = string.CompareOrdinal(x.Assembly, y.Assembly);
+            var result = String.CompareOrdinal(x.Assembly, y.Assembly);
             if (result != 0)
             {
                 return result;
             }
 
-            result = string.CompareOrdinal(x.Pattern, y.Pattern);
-            return result != 0 ? result : string.CompareOrdinal(x.Namespace, y.Namespace);
+            result = String.CompareOrdinal(x.Pattern, y.Pattern);
+            return result != 0 ? result : String.CompareOrdinal(x.Namespace, y.Namespace);
         });
         return [with([.. requests])];
     }
@@ -2228,7 +2230,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             foreach (var reference in compilation.References)
             {
                 if ((compilation.GetAssemblyOrModuleSymbol(reference) is IAssemblySymbol symbol) &&
-                    string.Equals(symbol.Name, pair.Key, StringComparison.Ordinal))
+                    String.Equals(symbol.Name, pair.Key, StringComparison.Ordinal))
                 {
                     assembly = symbol;
                     break;
@@ -2244,7 +2246,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             CollectNamespaceCandidates(assembly.GlobalNamespace, pair.Key, pair.Value, compilation, candidates);
         }
 
-        candidates.Sort(static (x, y) => string.CompareOrdinal(x.Factory.ImplementationType, y.Factory.ImplementationType));
+        candidates.Sort(static (x, y) => String.CompareOrdinal(x.Factory.ImplementationType, y.Factory.ImplementationType));
         missing.Sort(StringComparer.Ordinal);
         return new ExternalScanResult(new EquatableArray<CandidateModel>(candidates), new EquatableArray<string>(missing));
     }
@@ -2334,7 +2336,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
             // 自アセンブリと同名の参照は集約しない (自己参照 = 二重登録の防止)
             // References with the same name as the current assembly are never aggregated (guards self references and duplicate registration).
-            if (string.Equals(assembly.Name, compilation.AssemblyName, StringComparison.Ordinal))
+            if (String.Equals(assembly.Name, compilation.AssemblyName, StringComparison.Ordinal))
             {
                 continue;
             }

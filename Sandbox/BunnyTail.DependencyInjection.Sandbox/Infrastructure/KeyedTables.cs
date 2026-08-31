@@ -17,7 +17,7 @@ public readonly struct CompositeKey : IEquatable<CompositeKey>
 
     public bool Equals(CompositeKey other) => ReferenceEquals(Type, other.Type) && Key.Equals(other.Key);
 
-    public override bool Equals(object? obj) => obj is CompositeKey other && Equals(other);
+    public override bool Equals(object? obj) => (obj is CompositeKey other) && Equals(other);
 
     public override int GetHashCode() => (RuntimeHelpers.GetHashCode(Type) * 397) ^ Key.GetHashCode();
 }
