@@ -11,7 +11,6 @@ using Microsoft.Extensions.DependencyInjection;
 
 internal sealed class ServiceRegistry
 {
-#pragma warning disable SA1214
     [ThreadStatic]
     private static List<ServiceIdentifier>? realizationStack;
 
@@ -58,7 +57,6 @@ internal sealed class ServiceRegistry
     private int slotCounter;
 
     private readonly bool disposedSentinel;
-#pragma warning restore SA1214
 
     //--------------------------------------------------------------------------------
     // Constructor
