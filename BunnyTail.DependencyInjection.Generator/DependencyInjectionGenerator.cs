@@ -448,7 +448,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
         // ReSharper disable UseCollectionExpression
 #pragma warning disable IDE0028
-        return filtered.Count == interfaces.Count ? interfaces : new([.. filtered]);
+        return filtered.Count == interfaces.Count ? interfaces : new(filtered.ToArray());
 #pragma warning restore IDE0028
         // ReSharper restore UseCollectionExpression
     }
@@ -1440,7 +1440,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         // Methods of the same class go into a single file (the output unit is the class; splitting would collide on hintName).
         foreach (var group in conventionMatches.GroupBy(static x => (x.Method.Namespace, x.Method.ClassName)))
         {
-            EmitConventionClass(context, group.Key.Namespace, group.Key.ClassName, [.. group]);
+            EmitConventionClass(context, group.Key.Namespace, group.Key.ClassName, group.ToList());
         }
     }
 
@@ -2183,7 +2183,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             result = String.CompareOrdinal(x.Pattern, y.Pattern);
             return result != 0 ? result : String.CompareOrdinal(x.Namespace, y.Namespace);
         });
-        return [with([.. requests])];
+        return [with(requests.ToArray())];
     }
 
     // 外部アセンブリの候補走査。要求されたアセンブリだけを歩き、名前と名前空間で絞ってから
@@ -2353,7 +2353,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         }
 
         modules.Sort(StringComparer.Ordinal);
-        return [with([.. modules])];
+        return [with(modules.ToArray())];
     }
 
     // TODO

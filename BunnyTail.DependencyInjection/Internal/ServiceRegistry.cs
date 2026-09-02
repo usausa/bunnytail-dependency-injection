@@ -81,7 +81,7 @@ internal sealed class ServiceRegistry
         typeTable = new FixedTypeServiceTable([]);
         keyedTable = new FixedKeyedServiceTable([]);
 
-        descriptors = [.. source];
+        descriptors = source.ToArray();
         exactMap = [];
         keyedServiceTypes = [];
         foreach (var descriptor in descriptors)
@@ -856,7 +856,7 @@ internal sealed class ServiceRegistry
             (list ??= []).Add(new PropertyInjection(property, ParameterPlan.FromService(accessor)));
         }
 
-        return list is null ? EmptyPropertyInjections : [.. list];
+        return list is null ? EmptyPropertyInjections : list.ToArray();
     }
 
     private ParameterPlan[]? BuildParameterPlans(ConstructorInfo constructor, Type implementationType, object? serviceKey, bool throwOnMiss)
@@ -998,7 +998,7 @@ internal sealed class ServiceRegistry
         }
 
         // Enumerable
-        return new EnumerableAccessor(elementType, [.. items], cache, cache == ResultCache.Scoped ? NextSlot() : -1);
+        return new EnumerableAccessor(elementType, items.ToArray(), cache, cache == ResultCache.Scoped ? NextSlot() : -1);
     }
 
     private static bool IsEnumerableElementsMatch(List<ServiceAccessor> items, Type[] expected)
