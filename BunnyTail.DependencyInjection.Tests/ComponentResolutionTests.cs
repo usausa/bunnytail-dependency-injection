@@ -6,9 +6,7 @@ using BunnyTail.DependencyInjection.Tests.Components;
 
 using Microsoft.Extensions.DependencyInjection;
 
-using Xunit;
-
-public sealed class ComponentResolutionTest
+public sealed class ComponentResolutionTests
 {
     private static GeneratedServiceProvider CreateProvider() =>
         new ServiceCollection().AddGeneratedComponents().BuildGeneratedServiceProvider();
@@ -22,7 +20,7 @@ public sealed class ComponentResolutionTest
         // Act & Assert
         Assert.Same(((IServiceProvider)provider).GetRequiredService(typeof(SingletonComponent)), provider.GetRequiredService<SingletonComponent>());
         Assert.Same(provider.GetRequiredService<SingletonComponent>(), provider.GetService<SingletonComponent>());
-        Assert.Null(provider.GetService<ComponentResolutionTest>());
+        Assert.Null(provider.GetService<ComponentResolutionTests>());
 
         // Arrange
         using var scope = provider.CreateScope();

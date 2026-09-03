@@ -5,9 +5,7 @@ using BunnyTail.DependencyInjection.Diagnostics;
 
 using Microsoft.Extensions.DependencyInjection;
 
-using Xunit;
-
-public sealed class TypeActivatorTest
+public sealed class TypeActivatorTests
 {
     //--------------------------------------------------------------------------------
     // Activation

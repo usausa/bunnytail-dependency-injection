@@ -5,7 +5,7 @@ using BunnyTail.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Specification;
 
-public sealed class DependencyInjectionComplianceTest : DependencyInjectionSpecificationTests
+public sealed class DependencyInjectionComplianceTests : DependencyInjectionSpecificationTests
 {
     public override bool SupportsIServiceProviderIsService => true;
 

@@ -1,8 +1,6 @@
 namespace BunnyTail.DependencyInjection.Tests;
 
-using Xunit;
-
-public sealed class DiagnosticTest
+public sealed class DiagnosticTests
 {
     // ------------------------------------------------------------
     // Interface conflict

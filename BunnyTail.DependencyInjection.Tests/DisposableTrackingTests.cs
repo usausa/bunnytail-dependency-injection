@@ -7,9 +7,7 @@ using BunnyTail.DependencyInjection.Diagnostics;
 
 using Microsoft.Extensions.DependencyInjection;
 
-using Xunit;
-
-public sealed class DisposableTrackingTest
+public sealed class DisposableTrackingTests
 {
     private static GeneratedServiceProvider CreateGeneratedProvider(Action<GeneratedServiceProviderOptions>? configure = null) =>
         configure is null

@@ -2,9 +2,7 @@ namespace BunnyTail.DependencyInjection.Tests;
 
 using SourceGenerateHelper.Testing;
 
-using Xunit;
-
-public sealed class PipelineCacheTest
+public sealed class PipelineCacheTests
 {
     private const string Source =
         """

@@ -6,9 +6,7 @@ using BunnyTail.DependencyInjection.Tests.Components;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
-using Xunit;
-
-public sealed class HostIntegrationTest
+public sealed class HostIntegrationTests
 {
     [Fact]
     public void HostUsesGeneratedServiceProvider()

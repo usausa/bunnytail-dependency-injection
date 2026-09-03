@@ -7,9 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 using SourceGenerateHelper.Testing;
 
-using Xunit;
-
-public sealed class GeneratorOutputTest
+public sealed class GeneratorOutputTests
 {
     private static string Normalize(string text) => text.Replace("\r\n", "\n", StringComparison.Ordinal).TrimEnd('\n');
 
@@ -745,7 +743,7 @@ public sealed class GeneratorOutputTest
             .WithAssemblyName("Demo")
             .WithReference(typeof(SingletonAttribute).Assembly)
             .WithReference(typeof(IServiceCollection).Assembly)
-            .WithReference(typeof(GeneratorOutputTest).Assembly)
+            .WithReference(typeof(GeneratorOutputTests).Assembly)
             .VerifyCompiles()
             .Run(source);
 
@@ -808,7 +806,7 @@ public sealed class GeneratorOutputTest
             .WithAssemblyName("Demo")
             .WithReference(typeof(SingletonAttribute).Assembly)
             .WithReference(typeof(IServiceCollection).Assembly)
-            .WithReference(typeof(GeneratorOutputTest).Assembly)
+            .WithReference(typeof(GeneratorOutputTests).Assembly)
             .VerifyCompiles()
             .Run(source);
 

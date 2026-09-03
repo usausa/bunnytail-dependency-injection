@@ -5,9 +5,7 @@ using BunnyTail.DependencyInjection.Tests.Components;
 
 using Microsoft.Extensions.DependencyInjection;
 
-using Xunit;
-
-public sealed class ConventionResolutionTest
+public sealed class ConventionResolutionTests
 {
     private static GeneratedServiceProvider CreateProvider() =>
         new ServiceCollection().AddConventionServices().BuildGeneratedServiceProvider();

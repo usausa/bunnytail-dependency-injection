@@ -5,9 +5,7 @@ using BunnyTail.DependencyInjection.Internal;
 
 using Microsoft.Extensions.DependencyInjection;
 
-using Xunit;
-
-public sealed class GeneratedRegistryTest
+public sealed class GeneratedRegistryTests
 {
     public sealed class HookComponent
     {
@@ -34,7 +32,7 @@ public sealed class GeneratedRegistryTest
         public bool CreatedByGeneratedFactory { get; init; }
     }
 
-    static GeneratedRegistryTest()
+    static GeneratedRegistryTests()
     {
         // Matching assumption: HookComponent has a parameterless constructor
         GeneratedFactoryRegistry.Register(

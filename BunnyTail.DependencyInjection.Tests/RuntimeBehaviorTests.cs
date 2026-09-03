@@ -4,9 +4,7 @@ using BunnyTail.DependencyInjection;
 
 using Microsoft.Extensions.DependencyInjection;
 
-using Xunit;
-
-public sealed class RuntimeBehaviorTest
+public sealed class RuntimeBehaviorTests
 {
     //--------------------------------------------------------------------------------
     // Concurrent
