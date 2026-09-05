@@ -1440,7 +1440,9 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         // Methods of the same class go into a single file (the output unit is the class; splitting would collide on hintName).
         foreach (var group in conventionMatches.GroupBy(static x => (x.Method.Namespace, x.Method.ClassName)))
         {
+#pragma warning disable IDE0028
             EmitConventionClass(context, group.Key.Namespace, group.Key.ClassName, group.ToList());
+#pragma warning restore IDE0028
         }
     }
 
@@ -2183,7 +2185,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             result = String.CompareOrdinal(x.Pattern, y.Pattern);
             return result != 0 ? result : String.CompareOrdinal(x.Namespace, y.Namespace);
         });
-        return [with(requests.ToArray())];
+        return new(requests);
     }
 
     // 外部アセンブリの候補走査。要求されたアセンブリだけを歩き、名前と名前空間で絞ってから
@@ -2353,7 +2355,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         }
 
         modules.Sort(StringComparer.Ordinal);
-        return [with(modules.ToArray())];
+        return new(modules);
     }
 
     // TODO

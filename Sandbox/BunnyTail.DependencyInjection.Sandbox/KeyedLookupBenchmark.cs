@@ -195,7 +195,7 @@ public static class KeyedFixture
             }
         }
 
-        return pairs.ToArray();
+        return [.. pairs];
     }
 
     public static (Type Type, object Key)[] CreateHitSequence(int n, string[] keys, int count)

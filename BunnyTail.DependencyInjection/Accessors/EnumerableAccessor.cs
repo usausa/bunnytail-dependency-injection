@@ -13,11 +13,11 @@ internal sealed class EnumerableAccessor : ServiceAccessor
 
     private readonly Func<int, Array>? arrayFactory;
 
-    public EnumerableAccessor(Type elementType, ServiceAccessor[] items, ResultCache cache, int slot)
+    public EnumerableAccessor(Type elementType, IEnumerable<ServiceAccessor> items, ResultCache cache, int slot)
         : base(cache, slot, trackDisposable: false)
     {
         this.elementType = elementType;
-        this.items = items;
+        this.items = [.. items];
         arrayFactory = elementType.IsValueType ? null : CreateArrayFactory(elementType);
     }
 
