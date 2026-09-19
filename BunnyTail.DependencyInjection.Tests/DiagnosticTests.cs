@@ -193,6 +193,7 @@ public sealed class DiagnosticTests
         // Assert
         Assert.DoesNotContain(result.Diagnostics(["BTDI"]), static x => x.Id == "BTDI0010");
     }
+
     [Fact]
     public void Btdi0005AmbiguousConstructorEmitsDiagnostic()
     {
