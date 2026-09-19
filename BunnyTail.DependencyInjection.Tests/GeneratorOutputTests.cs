@@ -644,6 +644,70 @@ public sealed class GeneratorOutputTests
         Assert.DoesNotContain("RegisterEnumerable(", generated, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void TrackingOverloadsGenerateFactories()
+    {
+        // Arrange: the DisposableTracking overloads register through TrackingServiceDescriptor, so the container still constructs the type
+        const string source = """
+            using System;
+
+            using BunnyTail.DependencyInjection;
+
+            using Microsoft.Extensions.DependencyInjection;
+
+            namespace Demo;
+
+            public interface ITracked;
+
+            public sealed class TrackedA : ITracked, IDisposable
+            {
+                public void Dispose()
+                {
+                }
+            }
+
+            public sealed class TrackedB : ITracked;
+
+            public sealed class TrackedC : ITracked;
+
+            public sealed class TrackedD : ITracked;
+
+            public sealed class TrackedE : ITracked;
+
+            public sealed class SelfTracked;
+
+            public static class Registrations
+            {
+                public static void Register(IServiceCollection services)
+                {
+                    services.AddTransient<TrackedA>(DisposableTracking.Disabled);
+                    services.AddTransient<ITracked, TrackedB>(DisposableTracking.Enabled);
+                    services.AddTransient(typeof(ITracked), typeof(TrackedC), DisposableTracking.Disabled);
+                    services.AddKeyedTransient<ITracked, TrackedD>("key", DisposableTracking.Disabled);
+                    services.AddTransient(typeof(SelfTracked), DisposableTracking.Disabled);
+                    services.AddTransient<ITracked>(static _ => new TrackedE(), DisposableTracking.Disabled);   // factory registrations are not collected
+                }
+            }
+            """;
+
+        // Act
+        var result = GeneratorTestHelper.CreateRunner()
+            .VerifyCompiles()
+            .Run(source);
+
+        // Assert
+        var generated = result.GeneratedSource("GeneratedComponents.g.cs");
+
+        Assert.Contains("typeof(global::Demo.TrackedA)", generated, StringComparison.Ordinal);
+        Assert.Contains("typeof(global::Demo.TrackedB)", generated, StringComparison.Ordinal);
+        Assert.Contains("typeof(global::Demo.TrackedC)", generated, StringComparison.Ordinal);
+        Assert.Contains("typeof(global::Demo.SelfTracked)", generated, StringComparison.Ordinal);
+        var keyedIndex = generated.IndexOf("RegisterKeyed(", StringComparison.Ordinal);
+        Assert.True((keyedIndex >= 0) && (generated.IndexOf("typeof(global::Demo.TrackedD)", keyedIndex, StringComparison.Ordinal) > keyedIndex));
+
+        Assert.DoesNotContain("typeof(global::Demo.TrackedE)", generated, StringComparison.Ordinal);
+    }
+
     //--------------------------------------------------------------------------------
     // Factory generation
     //--------------------------------------------------------------------------------

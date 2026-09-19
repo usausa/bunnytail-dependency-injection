@@ -126,6 +126,74 @@ public sealed class DiagnosticTests
     }
 
     [Fact]
+    public void Btdi0009KeyedOnlyRegistrationEmitsDiagnostic()
+    {
+        // Arrange: a keyed registration never satisfies a non-keyed dependency
+        const string source = """
+            using BunnyTail.DependencyInjection;
+            using Microsoft.Extensions.DependencyInjection;
+
+            namespace Demo;
+
+            public interface IDependency;
+
+            public sealed class Dependency : IDependency;
+
+            [Transient]
+            public sealed class Component(IDependency dependency);
+
+            public static class Registrations
+            {
+                public static void Register(IServiceCollection services)
+                {
+                    services.AddKeyedSingleton<IDependency, Dependency>("key");
+                }
+            }
+            """;
+
+        // Act
+        var result = GeneratorTestHelper.CreateRunner().Run(source);
+
+        // Assert
+        Assert.Contains(result.Diagnostics(["BTDI"]), static x => x.Id == "BTDI0009");
+    }
+
+    [Fact]
+    public void Btdi0010KeyedRegistrationEmitsNoDiagnostic()
+    {
+        // Arrange: the non-keyed IDependency is a singleton, and the later keyed scoped registration must not override it
+        const string source = """
+            using BunnyTail.DependencyInjection;
+            using Microsoft.Extensions.DependencyInjection;
+
+            namespace Demo;
+
+            public interface IDependency;
+
+            public sealed class SingletonDependency : IDependency;
+
+            public sealed class ScopedDependency : IDependency;
+
+            [Singleton]
+            public sealed class Component(IDependency dependency);
+
+            public static class Registrations
+            {
+                public static void Register(IServiceCollection services)
+                {
+                    services.AddSingleton<IDependency, SingletonDependency>();
+                    services.AddKeyedScoped<IDependency, ScopedDependency>("key");
+                }
+            }
+            """;
+
+        // Act
+        var result = GeneratorTestHelper.CreateRunner().Run(source);
+
+        // Assert
+        Assert.DoesNotContain(result.Diagnostics(["BTDI"]), static x => x.Id == "BTDI0010");
+    }
+    [Fact]
     public void Btdi0005AmbiguousConstructorEmitsDiagnostic()
     {
         // Arrange

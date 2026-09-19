@@ -28,6 +28,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     private const string ServiceKeyAttributeName = "Microsoft.Extensions.DependencyInjection.ServiceKeyAttribute";
     private const string ServiceCollectionExtensionsName = "Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions";
     private const string ServiceCollectionDescriptorExtensionsName = "Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions";
+    private const string TrackingServiceCollectionExtensionsName = "BunnyTail.DependencyInjection.TrackingServiceCollectionExtensions";
     private const string GenerateComponentFactoryAttributeName = "BunnyTail.DependencyInjection.GenerateComponentFactoryAttribute";
     private const string ServiceCollectionName = "Microsoft.Extensions.DependencyInjection.IServiceCollection";
     private const string ServiceDescriptorName = "Microsoft.Extensions.DependencyInjection.ServiceDescriptor";
@@ -698,7 +699,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             return null;
         }
 
-        if (containingType is not (ServiceCollectionExtensionsName or ServiceCollectionDescriptorExtensionsName))
+        if (containingType is not (ServiceCollectionExtensionsName or ServiceCollectionDescriptorExtensionsName or TrackingServiceCollectionExtensionsName))
         {
             return null;
         }
@@ -1773,9 +1774,9 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
         foreach (var model in collected)
         {
-            if (model.Kind == CollectedKinds.ActivationOnly)
+            if (model.Kind is CollectedKinds.ActivationOnly or CollectedKinds.Keyed)
             {
-                continue;   // 登録ではないため解析対象外 / not a registration, excluded from analysis
+                continue;   // 登録ではない / keyed は非 keyed 解決に影響しないため解析対象外 / not a registration, or keyed (never affects non-keyed resolution)
             }
 
             serviceMap[model.ServiceType] = (model.Factory.ImplementationType, model.Lifetime);

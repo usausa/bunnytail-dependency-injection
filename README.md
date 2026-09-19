@@ -138,7 +138,7 @@ Registration calls in user code are collected by the generator, so existing MEDI
 
 ### 🟨 Excluding interfaces from automatic registration
 
-Registration without an explicit `As` covers the class and every interface it implements, inherited ones included.
+`WithInterfaces = true` registers the interfaces the class declares directly. Base interfaces of those and interfaces implemented by base classes are not included. Interfaces that should never be registered this way can be excluded:
 
 ```xml
 <PropertyGroup>
