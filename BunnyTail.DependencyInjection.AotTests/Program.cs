@@ -163,7 +163,7 @@ namespace BunnyTail.DependencyInjection.AotTests
         public AotPropDependency Prop { get; set; } = default!;
     }
 
-    [Scoped]
+    [Scoped(WithInterfaces = true)]
     public sealed class AotScoped : IAotScoped;
 
     [Singleton(PostConstruct = nameof(Setup))]
