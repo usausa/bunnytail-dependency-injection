@@ -7,6 +7,53 @@ using Microsoft.Extensions.DependencyInjection;
 public sealed class RuntimeBehaviorTests
 {
     //--------------------------------------------------------------------------------
+    // Promotion
+    //--------------------------------------------------------------------------------
+
+    public interface IPromotedService<T>;
+
+    public sealed class PromotedService<T> : IPromotedService<T>;
+
+    [Fact]
+    public void PromotedEntriesSurviveLookupTableGrowth()
+    {
+        // Arrange: closed generics are realized on first use and promoted into the fixed lookup table one by one,
+        // so 40 of them force several rebuilds of that table
+        using var provider = new ServiceCollection()
+            .AddSingleton<SlowSingleton>()
+            .AddTransient(typeof(IPromotedService<>), typeof(PromotedService<>))
+            .BuildGeneratedServiceProvider();
+
+        Type[] arguments =
+        [
+            typeof(bool), typeof(byte), typeof(sbyte), typeof(char), typeof(short), typeof(ushort), typeof(int), typeof(uint),
+            typeof(long), typeof(ulong), typeof(float), typeof(double), typeof(decimal), typeof(string), typeof(object), typeof(Guid),
+            typeof(DateTime), typeof(DateTimeOffset), typeof(TimeSpan), typeof(DateOnly), typeof(TimeOnly), typeof(Uri), typeof(Version), typeof(Half),
+            typeof(Int128), typeof(UInt128), typeof(nint), typeof(nuint), typeof(Exception), typeof(Type), typeof(Random), typeof(Attribute),
+            typeof(List<int>), typeof(List<string>), typeof(Dictionary<int, int>), typeof(HashSet<int>), typeof(Queue<int>), typeof(Stack<int>), typeof(int[]), typeof(string[])
+        ];
+        var closedTypes = arguments.Select(static x => typeof(IPromotedService<>).MakeGenericType(x)).ToArray();
+        var singleton = provider.GetRequiredService<SlowSingleton>();
+
+        // Act: first pass realizes and promotes, second pass must hit the (rebuilt) table for every earlier entry
+        var first = closedTypes.Select(provider.GetRequiredService).ToArray();
+        var second = closedTypes.Select(provider.GetRequiredService).ToArray();
+
+        // Assert
+        for (var i = 0; i < closedTypes.Length; i++)
+        {
+            Assert.IsAssignableFrom(closedTypes[i], first[i]);
+            Assert.IsAssignableFrom(closedTypes[i], second[i]);
+            Assert.NotSame(first[i], second[i]);
+        }
+
+        // Entries that were in the table before the rebuilds are still there, including the cached singleton
+        Assert.Same(singleton, provider.GetRequiredService<SlowSingleton>());
+        Assert.NotNull(provider.GetRequiredService<IServiceProvider>());
+        Assert.NotNull(provider.GetRequiredService<IServiceScopeFactory>());
+    }
+
+    //--------------------------------------------------------------------------------
     // Concurrent
     //--------------------------------------------------------------------------------
 

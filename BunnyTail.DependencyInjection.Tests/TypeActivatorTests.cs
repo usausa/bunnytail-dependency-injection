@@ -126,6 +126,69 @@ public sealed class TypeActivatorTests
     }
 
     //--------------------------------------------------------------------------------
+    // Activation table
+    //--------------------------------------------------------------------------------
+
+    // Distinct closed generic types are cheap to make and each one is a separate activation entry
+    private static Type[] CreateManyActivationTypes(int count)
+    {
+        Type[] arguments =
+        [
+            typeof(bool), typeof(byte), typeof(sbyte), typeof(char), typeof(short), typeof(ushort), typeof(int), typeof(uint),
+            typeof(long), typeof(ulong), typeof(float), typeof(double), typeof(decimal), typeof(string), typeof(object), typeof(Guid),
+            typeof(DateTime), typeof(DateTimeOffset), typeof(TimeSpan), typeof(DateOnly), typeof(TimeOnly), typeof(Uri), typeof(Version), typeof(Half),
+            typeof(Int128), typeof(UInt128), typeof(nint), typeof(nuint), typeof(Exception), typeof(Type), typeof(Random), typeof(Attribute),
+            typeof(List<int>), typeof(List<string>), typeof(Dictionary<int, int>), typeof(HashSet<int>), typeof(Queue<int>), typeof(Stack<int>), typeof(int[]), typeof(string[])
+        ];
+        return [.. arguments.Take(count).Select(static x => typeof(GenericActivationTarget<>).MakeGenericType(x))];
+    }
+
+    [Fact]
+    public void ActivateManyTypesKeepsEveryEntryAcrossTableGrowth()
+    {
+        // Arrange: far more distinct types than the initial activation table holds, so it is rebuilt several times
+        using var provider = new ServiceCollection().BuildGeneratedServiceProvider();
+        var types = CreateManyActivationTypes(40);
+
+        // Act
+        var first = types.Select(provider.Activate).ToArray();
+        var second = types.Select(provider.Activate).ToArray();
+
+        // Assert: every type activates before and after the rebuilds, and each one has exactly one accessor
+        for (var i = 0; i < types.Length; i++)
+        {
+            Assert.IsType(types[i], first[i]);
+            Assert.IsType(types[i], second[i]);
+            Assert.NotSame(first[i], second[i]);
+        }
+
+        var report = provider.CreateFactoryReport();
+        Assert.All(types, type => Assert.Single(report, x => x.ServiceType == type));
+    }
+
+    [Fact]
+    public void ConcurrentActivationPublishesOneAccessorPerType()
+    {
+        // Arrange
+        using var provider = new ServiceCollection().BuildGeneratedServiceProvider();
+        var types = CreateManyActivationTypes(24);
+        var results = new object[types.Length * 8];
+
+        // Act: every type is activated for the first time from several threads at once
+        // ReSharper disable once AccessToDisposedClosure
+        Parallel.For(0, results.Length, i => results[i] = provider.Activate(types[i % types.Length]));
+
+        // Assert
+        for (var i = 0; i < results.Length; i++)
+        {
+            Assert.IsType(types[i % types.Length], results[i]);
+        }
+
+        var report = provider.CreateFactoryReport();
+        Assert.All(types, type => Assert.Single(report, x => x.ServiceType == type));
+    }
+
+    //--------------------------------------------------------------------------------
     // Injected activator
     //--------------------------------------------------------------------------------
 
@@ -240,3 +303,7 @@ public sealed class ActivationConsumer
 public interface IActivationAbstraction;
 
 public abstract class ActivationAbstractTarget;
+
+#pragma warning disable CA1812
+public sealed class GenericActivationTarget<T>;
+#pragma warning restore CA1812

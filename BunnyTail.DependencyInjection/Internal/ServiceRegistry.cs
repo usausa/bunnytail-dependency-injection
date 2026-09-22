@@ -16,6 +16,9 @@ internal sealed class ServiceRegistry
 
     internal static readonly ServiceRegistry DisposedSentinel = new();
 
+    // Room for 16 activated types before the first rebuild
+    private const int ActivationTableInitialCapacity = 32;
+
     // Registrations
 
     private readonly ServiceDescriptor[] descriptors;
@@ -30,19 +33,17 @@ internal sealed class ServiceRegistry
 
     private readonly ConcurrentDictionary<AccessorCacheKey, ServiceAccessor> descriptorAccessors = new();
 
-    private readonly ConcurrentDictionary<Type, ServiceAccessor> activationAccessors = new();
-
     // Lookup
 
     private FixedTypeServiceTable typeTable;
 
     private FixedKeyedServiceTable keyedTable;
 
-    // Promotion
+    // Activation cache: same table as the type lookup (TypeHandle hash, lock-free reads), appended under tableSync
+    private FixedTypeServiceTable activationTable = new(ActivationTableInitialCapacity);
 
-    private readonly List<KeyValuePair<Type, ServiceAccessor>>? typeTableEntries;
-
-    private readonly List<(Type Type, object Key, ServiceAccessor Accessor)>? keyedTableEntries;
+    // Promotion is suppressed while the constructor is still building the tables
+    private readonly bool warmupCompleted;
 
     // Tracking
 
@@ -155,8 +156,7 @@ internal sealed class ServiceRegistry
 
         typeTable = new FixedTypeServiceTable(typeEntries);
         keyedTable = new FixedKeyedServiceTable(keyedEntries);
-        typeTableEntries = typeEntries;
-        keyedTableEntries = keyedEntries;
+        warmupCompleted = true;
     }
 
     //--------------------------------------------------------------------------------
@@ -177,11 +177,7 @@ internal sealed class ServiceRegistry
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type type,
         ServiceProviderScope scope)
     {
-        if (!activationAccessors.TryGetValue(type, out var accessor))
-        {
-            // The value factory overload of GetOrAdd breaks the annotation flow, so create first and then publish
-            accessor = activationAccessors.GetOrAdd(type, CreateActivationAccessor(type));
-        }
+        var accessor = activationTable.Get(type) ?? AddActivationAccessor(type);
 
         var value = accessor.GetValue(scope);
         if (value is null)
@@ -190,6 +186,26 @@ internal sealed class ServiceRegistry
         }
 
         return value;
+    }
+
+    // Miss path. The accessor is created outside the lock as before (a racing thread discards its copy),
+    // and the first one published under tableSync wins
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private ServiceAccessor AddActivationAccessor(
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type type)
+    {
+        var created = CreateActivationAccessor(type);
+        lock (tableSync)
+        {
+            var existing = activationTable.Get(type);
+            if (existing is not null)
+            {
+                return existing;
+            }
+
+            Volatile.Write(ref activationTable, activationTable.Add(type, created));
+            return created;
+        }
     }
 
     private ServiceAccessor CreateActivationAccessor(
@@ -249,7 +265,7 @@ internal sealed class ServiceRegistry
 
         // Activated types (realized lazily, so only types activated so far appear)
         // ReSharper disable once LoopCanBeConvertedToQuery
-        foreach (var pair in activationAccessors)
+        foreach (var pair in activationTable.ToArray())
         {
             var status = pair.Value switch
             {
@@ -335,9 +351,8 @@ internal sealed class ServiceRegistry
     {
         lock (tableSync)
         {
-            if ((typeTableEntries is null) || (keyedTableEntries is null))
+            if (!warmupCompleted)
             {
-                // During warmup
                 return;
             }
 
@@ -345,16 +360,14 @@ internal sealed class ServiceRegistry
             {
                 if (typeTable.Get(id.ServiceType) is null)
                 {
-                    typeTableEntries.Add(new KeyValuePair<Type, ServiceAccessor>(id.ServiceType, accessor));
-                    Volatile.Write(ref typeTable, new FixedTypeServiceTable(typeTableEntries));
+                    Volatile.Write(ref typeTable, typeTable.Add(id.ServiceType, accessor));
                 }
             }
             else
             {
                 if (keyedTable.Get(id.ServiceType, id.Key) is null)
                 {
-                    keyedTableEntries.Add((id.ServiceType, id.Key, accessor));
-                    Volatile.Write(ref keyedTable, new FixedKeyedServiceTable(keyedTableEntries));
+                    Volatile.Write(ref keyedTable, keyedTable.Add(id.ServiceType, id.Key, accessor));
                 }
             }
         }
