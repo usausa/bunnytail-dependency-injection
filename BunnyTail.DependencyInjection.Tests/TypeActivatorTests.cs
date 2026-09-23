@@ -305,5 +305,6 @@ public interface IActivationAbstraction;
 public abstract class ActivationAbstractTarget;
 
 #pragma warning disable CA1812
+// ReSharper disable once UnusedTypeParameter
 public sealed class GenericActivationTarget<T>;
 #pragma warning restore CA1812

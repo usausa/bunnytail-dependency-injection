@@ -10,6 +10,7 @@ public sealed class RuntimeBehaviorTests
     // Promotion
     //--------------------------------------------------------------------------------
 
+    // ReSharper disable once UnusedTypeParameter
     public interface IPromotedService<T>;
 
     public sealed class PromotedService<T> : IPromotedService<T>;
