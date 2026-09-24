@@ -24,7 +24,6 @@
     <File Path="BunnyTail.DependencyInjection.sln.DotSettings" />
     <File Path="BunnyTail.DependencyInjection.props" />
     <File Path="BunnyTail.DependencyInjection.targets" />
-    <File Path="CLAUDE.md" />
     <File Path="CodeCoverage.runsettings" />
     <File Path="Diagnostics.md" />
     <File Path="Directory.Build.props" />
