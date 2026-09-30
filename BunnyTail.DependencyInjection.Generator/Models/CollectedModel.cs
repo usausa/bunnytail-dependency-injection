@@ -1,9 +1,10 @@
 namespace BunnyTail.DependencyInjection.Generator.Models;
 
 internal sealed record CollectedModel(
-    FactoryModel Factory,
+    FactoryModel? Factory,
     string ServiceType,
-    string Lifetime,
+    string ServiceTypeName,
+    string? Lifetime,
     int Kind,
     string FilePath,
     int SpanStart);

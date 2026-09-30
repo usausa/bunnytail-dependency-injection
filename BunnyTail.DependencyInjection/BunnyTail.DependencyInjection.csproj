@@ -15,7 +15,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
-    <PackageReference Include="SourceGenerateHelper" Version="1.28.0" GeneratePathProperty="true" PrivateAssets="all" ExcludeAssets="compile;runtime">
+    <PackageReference Include="SourceGenerateHelper" Version="1.30.0" GeneratePathProperty="true" PrivateAssets="all" ExcludeAssets="compile;runtime">
       <IncludeAssets>build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
   </ItemGroup>
@@ -28,8 +28,8 @@
     <ItemGroup>
       <TfmSpecificPackageFile Include="..\BunnyTail.DependencyInjection.Generator\bin\$(Configuration)\netstandard2.0\BunnyTail.DependencyInjection.Generator.dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
       <TfmSpecificPackageFile Include="$(PKGSourceGenerateHelper)\lib\netstandard2.0\SourceGenerateHelper.dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
-      <TfmSpecificPackageFile Include="..\BunnyTail.DependencyInjection.props" Pack="true" PackagePath="buildTransitive\BunnyTail.DependencyInjection.props" Visible="false" />
-      <TfmSpecificPackageFile Include="..\BunnyTail.DependencyInjection.targets" Pack="true" PackagePath="buildTransitive\BunnyTail.DependencyInjection.targets" Visible="false" />
+      <TfmSpecificPackageFile Include="..\BunnyTail.DependencyInjection.props" Pack="true" PackagePath="build\BunnyTail.DependencyInjection.props" Visible="false" />
+      <TfmSpecificPackageFile Include="..\BunnyTail.DependencyInjection.targets" Pack="true" PackagePath="build\BunnyTail.DependencyInjection.targets" Visible="false" />
     </ItemGroup>
   </Target>
 

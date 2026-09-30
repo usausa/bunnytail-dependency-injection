@@ -1,11 +1,8 @@
 namespace BunnyTail.DependencyInjection.Generator.Models;
 
-using SourceGenerateHelper;
-
 internal sealed record ClosedGenericUsageModel(
-    string ServiceDefinitionKey,
-    bool HasValueTypeArgument,
-    EquatableArray<string> TypeArgumentMetadataNames,
+    string Name,
+    int Arity,
     string FilePath,
     int SpanStart,
-    LocationInfo? Location);
+    int SpanLength);

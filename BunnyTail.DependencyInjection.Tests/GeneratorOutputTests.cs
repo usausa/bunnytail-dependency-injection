@@ -64,13 +64,15 @@ public sealed class GeneratorOutputTests
 
             public sealed class DependentComponent(CollectedComponent dependency);
 
+            public sealed class FactoryComponent;
+
             public static class Setup
             {
                 public static void Configure(IServiceCollection services)
                 {
                     services.AddTransient<CollectedComponent>();
                     services.AddSingleton<DependentComponent>();
-                    services.AddSingleton(static _ => new CollectedComponent());   // factory registrations are not collected
+                    services.AddSingleton(static _ => new FactoryComponent());   // factory registrations get no generated factory
                 }
             }
             """;
@@ -88,8 +90,45 @@ public sealed class GeneratorOutputTests
 
         Assert.Contains("new global::Demo.CollectedComponent())", generated, StringComparison.Ordinal);
         Assert.Contains("new global::BunnyTail.DependencyInjection.Internal.InlinedDependency(typeof(global::Demo.CollectedComponent), typeof(global::Demo.CollectedComponent))", generated, StringComparison.Ordinal);
+        Assert.DoesNotContain("typeof(global::Demo.FactoryComponent)", generated, StringComparison.Ordinal);
 
         Assert.DoesNotContain("AddGeneratedComponents", generated, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FactoryRegistrationOfSameServiceIsNotInlined()
+    {
+        // Arrange
+        const string source = """
+            using Microsoft.Extensions.DependencyInjection;
+
+            namespace Demo;
+
+            public sealed class CollectedComponent;
+
+            public sealed class DependentComponent(CollectedComponent dependency);
+
+            public static class Setup
+            {
+                public static void Configure(IServiceCollection services)
+                {
+                    services.AddTransient<CollectedComponent>();
+                    services.AddSingleton<DependentComponent>();
+                    services.AddSingleton(static _ => new CollectedComponent());   // the last registration wins
+                }
+            }
+            """;
+
+        // Act
+        var result = GeneratorTestHelper.CreateRunner()
+            .VerifyCompiles()
+            .Run(source);
+
+        // Assert
+        var generated = result.GeneratedSource("GeneratedComponents.g.cs");
+
+        Assert.Contains("typeof(global::Demo.DependentComponent),", generated, StringComparison.Ordinal);
+        Assert.DoesNotContain("InlinedDependency(typeof(global::Demo.CollectedComponent)", generated, StringComparison.Ordinal);
     }
 
     //--------------------------------------------------------------------------------
@@ -141,7 +180,7 @@ public sealed class GeneratorOutputTests
         Assert.Contains("typeof(global::Demo.InterfaceActivatedComponent)", generated, StringComparison.Ordinal);
 
         // Activation never joins registrations
-        Assert.DoesNotContain("services.Add", generated, StringComparison.Ordinal);
+        Assert.DoesNotContain("ServiceCollectionServiceExtensions.Add", generated, StringComparison.Ordinal);
         Assert.DoesNotContain("AddGeneratedComponents", generated, StringComparison.Ordinal);
     }
 
@@ -182,9 +221,9 @@ public sealed class GeneratorOutputTests
         // Assert
         var generated = result.GeneratedSource("Demo_Registrations.g.cs");
 
-        Assert.Contains("services.AddScoped<global::Demo.FooService>();", generated, StringComparison.Ordinal);
-        Assert.Contains("services.AddScoped<global::Demo.IFooService>(static provider =>", generated, StringComparison.Ordinal);
-        Assert.Contains("services.AddScoped<global::Demo.PlainService>();", generated, StringComparison.Ordinal);
+        Assert.Contains("global::Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddScoped<global::Demo.FooService>(services);", generated, StringComparison.Ordinal);
+        Assert.Contains("global::Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddScoped<global::Demo.IFooService>(services, static provider =>", generated, StringComparison.Ordinal);
+        Assert.Contains("global::Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddScoped<global::Demo.PlainService>(services);", generated, StringComparison.Ordinal);
         Assert.DoesNotContain("OtherComponent", generated, StringComparison.Ordinal);
 
         var factories = result.GeneratedSource("GeneratedComponents.g.cs");
@@ -261,8 +300,8 @@ public sealed class GeneratorOutputTests
         // Assert: only the implementation types are registered, whatever the interface count
         var generated = result.GeneratedSource("Demo_Registrations.g.cs");
 
-        Assert.Contains("services.AddTransient<global::Demo.SingleFaceViewModel>();", generated, StringComparison.Ordinal);
-        Assert.Contains("services.AddTransient<global::Demo.MultiFaceViewModel>();", generated, StringComparison.Ordinal);
+        Assert.Contains("global::Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddTransient<global::Demo.SingleFaceViewModel>(services);", generated, StringComparison.Ordinal);
+        Assert.Contains("global::Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddTransient<global::Demo.MultiFaceViewModel>(services);", generated, StringComparison.Ordinal);
         Assert.DoesNotContain("IMarkerA", generated, StringComparison.Ordinal);
         Assert.DoesNotContain("IMarkerB", generated, StringComparison.Ordinal);
 
@@ -302,9 +341,9 @@ public sealed class GeneratorOutputTests
         // Assert: every matched class is registered under the shared service type
         var generated = result.GeneratedSource("Demo_Registrations.g.cs");
 
-        Assert.Contains("services.AddTransient<global::Demo.IHandler, global::Demo.FooHandler>();", generated, StringComparison.Ordinal);
-        Assert.Contains("services.AddTransient<global::Demo.IHandler, global::Demo.BarHandler>();", generated, StringComparison.Ordinal);
-        Assert.DoesNotContain("services.AddTransient<global::Demo.FooHandler>();", generated, StringComparison.Ordinal);
+        Assert.Contains("global::Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddTransient<global::Demo.IHandler, global::Demo.FooHandler>(services);", generated, StringComparison.Ordinal);
+        Assert.Contains("global::Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddTransient<global::Demo.IHandler, global::Demo.BarHandler>(services);", generated, StringComparison.Ordinal);
+        Assert.DoesNotContain("global::Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddTransient<global::Demo.FooHandler>(services);", generated, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -341,8 +380,8 @@ public sealed class GeneratorOutputTests
 
         Assert.Contains("public static partial global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddServices", generated, StringComparison.Ordinal);
         Assert.Contains("internal static partial global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddRepositories", generated, StringComparison.Ordinal);
-        Assert.Contains("services.AddSingleton<global::Demo.FooService>();", generated, StringComparison.Ordinal);
-        Assert.Contains("services.AddScoped<global::Demo.BarRepository>();", generated, StringComparison.Ordinal);
+        Assert.Contains("global::Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddSingleton<global::Demo.FooService>(services);", generated, StringComparison.Ordinal);
+        Assert.Contains("global::Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddScoped<global::Demo.BarRepository>(services);", generated, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -415,11 +454,11 @@ public sealed class GeneratorOutputTests
 
         // Assert
         var components = result.GeneratedSource("GeneratedComponents.g.cs");
-        Assert.Contains("services.AddSingleton<global::Demo.IKept>(", components, StringComparison.Ordinal);
+        Assert.Contains("global::Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddSingleton<global::Demo.IKept>(services", components, StringComparison.Ordinal);
         Assert.DoesNotContain("global::Demo.IIgnored", components, StringComparison.Ordinal);
 
         var registrations = result.GeneratedSource("Demo_Registrations.g.cs");
-        Assert.Contains("services.AddSingleton<global::Demo.ConventionService>();", registrations, StringComparison.Ordinal);
+        Assert.Contains("global::Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddSingleton<global::Demo.ConventionService>(services);", registrations, StringComparison.Ordinal);
         Assert.DoesNotContain("global::Demo.IIgnored", registrations, StringComparison.Ordinal);
     }
 
@@ -488,7 +527,7 @@ public sealed class GeneratorOutputTests
         var generated = result.GeneratedSource("GeneratedComponents.g.cs");
 
         Assert.Contains("GeneratedFactoryRegistry.Register(", generated, StringComparison.Ordinal);
-        Assert.Contains("instance.Right = scope.GetRequiredKeyedService<global::Demo.ILeaf>(\"right\");", generated, StringComparison.Ordinal);
+        Assert.Contains("Right = scope.GetRequiredKeyedService<global::Demo.ILeaf>(\"right\"),", generated, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -525,7 +564,7 @@ public sealed class GeneratorOutputTests
         var generated = result.GeneratedSource("GeneratedComponents.g.cs");
 
         Assert.Contains("RegisterKeyed(", generated, StringComparison.Ordinal);
-        Assert.Contains("instance.Leaf = scope.GetRequiredKeyedService<global::Demo.ILeaf>(\"right\");", generated, StringComparison.Ordinal);
+        Assert.Contains("Leaf = scope.GetRequiredKeyedService<global::Demo.ILeaf>(\"right\"),", generated, StringComparison.Ordinal);
     }
 
     //--------------------------------------------------------------------------------
@@ -746,7 +785,7 @@ public sealed class GeneratorOutputTests
 
         Assert.Contains("typeof(global::Demo.Uncontrolled)", generated, StringComparison.Ordinal);
         Assert.Contains("new global::Demo.Uncontrolled(", generated, StringComparison.Ordinal);
-        Assert.DoesNotContain("services.Add", generated, StringComparison.Ordinal);
+        Assert.DoesNotContain("ServiceCollectionServiceExtensions.Add", generated, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1064,7 +1103,7 @@ public sealed class GeneratorOutputTests
         Assert.Contains("instance.Setup();", generated, StringComparison.Ordinal);
         Assert.Contains("((global::BunnyTail.DependencyInjection.IInitializable)instance).Initialize();", generated, StringComparison.Ordinal);
 
-        Assert.DoesNotContain("services.AddTransient<global::BunnyTail.DependencyInjection.IInitializable>", generated, StringComparison.Ordinal);
+        Assert.DoesNotContain("global::Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddTransient<global::BunnyTail.DependencyInjection.IInitializable>", generated, StringComparison.Ordinal);
 
         Assert.Contains(".GetValue<global::Demo.WithInterface>(scope)", generated, StringComparison.Ordinal);
     }

@@ -6,4 +6,5 @@ internal static class CollectedKinds
     public const int FactoryOnly = 1;
     public const int Keyed = 2;
     public const int ActivationOnly = 3;
+    public const int ServiceOnly = 4;
 }

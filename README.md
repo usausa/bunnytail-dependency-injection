@@ -298,7 +298,7 @@ All sources are incremental - editing a method body regenerates nothing.
 | Source | Collected from | Result |
 |---|---|---|
 | Attributes | `[Singleton]` / `[Scoped]` / `[Transient]` classes | `RegisterComponents()` body + a factory per implementation |
-| `Add*` calls | `Add*` / `TryAdd*` / `AddKeyed*` in user code | A factory per implementation (the registration itself stays in user code) |
+| `Add*` calls | `Add*` / `TryAdd*` / `AddKeyed*` in user code, including calls chained after `AddGeneratedComponents()` | A factory per implementation (the registration itself stays in user code) |
 | Conventions | `[ComponentRegistration]` partial methods, optionally scanning a referenced assembly | The method body + a factory per matched implementation |
 | Referenced modules | Assemblies marked with `[ComponentModule]` | The `AddGeneratedComponents()` aggregation |
 

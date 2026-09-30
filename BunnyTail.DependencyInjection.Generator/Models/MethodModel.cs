@@ -1,13 +1,11 @@
 namespace BunnyTail.DependencyInjection.Generator.Models;
 
-using Microsoft.CodeAnalysis;
-
 using SourceGenerateHelper;
 
 internal sealed record MethodModel(
     string? Namespace,
     string ClassName,
-    Accessibility MethodAccessibility,
-    string MethodName,
+    string Signature,
+    string ParameterName,
     EquatableArray<PatternModel> Patterns,
     LocationInfo? Location);

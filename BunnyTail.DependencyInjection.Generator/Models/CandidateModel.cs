@@ -7,6 +7,7 @@ internal sealed record CandidateModel(
     string Name,
     FactoryModel Factory,
     string? Assembly,
-    EquatableArray<string> Interfaces,
+    EquatableArray<TypeNameModel> Interfaces,
+    bool IsReferable,
     string FilePath,
     int SpanStart);

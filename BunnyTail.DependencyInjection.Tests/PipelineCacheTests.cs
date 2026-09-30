@@ -57,4 +57,44 @@ public sealed class PipelineCacheTests
         // Assert
         Assert.Contains(result.OutputReasons, static x => x.IsChanged());
     }
+
+    [Fact]
+    public void UnrelatedEditKeepsReferenceScanCached()
+    {
+        // Arrange & Act
+        var result = RunIncremental(UnrelatedSource);
+
+        // Assert
+        Assert.NotEmpty(result.StepReasons("ReferencedModules"));
+        Assert.DoesNotContain(result.StepReasons("ReferencedModules"), static x => x.IsChanged());
+    }
+
+    [Fact]
+    public void UnrelatedEditKeepsCandidatesUnchanged()
+    {
+        // Arrange
+        const string source =
+            """
+            using BunnyTail.DependencyInjection;
+            using Microsoft.Extensions.DependencyInjection;
+
+            namespace Demo;
+
+            public sealed class FooService;
+
+            public static partial class Registrations
+            {
+                [ComponentRegistration(Lifetime.Singleton, "Service$")]
+                public static partial IServiceCollection AddServices(this IServiceCollection services);
+            }
+            """;
+
+        // Act
+        var result = GeneratorTestHelper.RunIncremental(source, UnrelatedSource);
+
+        // Assert
+        Assert.NotEmpty(result.StepReasons("Candidates"));
+        Assert.DoesNotContain(result.StepReasons("Candidates"), static x => x.IsChanged());
+        Assert.Equal(result.FirstGeneratedText, result.SecondGeneratedText);
+    }
 }

@@ -2,6 +2,8 @@ namespace BunnyTail.DependencyInjection.Generator;
 
 using Microsoft.CodeAnalysis;
 
+using SourceGenerateHelper;
+
 internal static class Diagnostics
 {
     // Directive parsing
@@ -12,7 +14,8 @@ internal static class Diagnostics
         messageFormat: "[ComponentRegistration] method must be a static partial extension. method=[{0}]",
         category: "Usage",
         defaultSeverity: DiagnosticSeverity.Error,
-        isEnabledByDefault: true);
+        isEnabledByDefault: true,
+        customTags: DiagnosticTags.NotSuppressible);
 
     public static DiagnosticDescriptor InvalidPattern { get; } = new(
         id: "BTDI0002",
@@ -43,9 +46,9 @@ internal static class Diagnostics
     public static DiagnosticDescriptor AmbiguousConstructor { get; } = new(
         id: "BTDI0005",
         title: "Ambiguous constructor",
-        messageFormat: "Maximum parameter count is not unique. type=[{0}]",
+        messageFormat: "Maximum parameter count is not unique, so the runtime path selects the constructor. type=[{0}]",
         category: "Usage",
-        defaultSeverity: DiagnosticSeverity.Error,
+        defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
 
     public static DiagnosticDescriptor InvalidPostConstruct { get; } = new(
@@ -54,7 +57,8 @@ internal static class Diagnostics
         messageFormat: "Method must be public parameterless void. type=[{1}] method=[{0}]",
         category: "Usage",
         defaultSeverity: DiagnosticSeverity.Error,
-        isEnabledByDefault: true);
+        isEnabledByDefault: true,
+        customTags: DiagnosticTags.NotSuppressible);
 
     public static DiagnosticDescriptor ConflictingPostConstruct { get; } = new(
         id: "BTDI0007",
@@ -62,7 +66,17 @@ internal static class Diagnostics
         messageFormat: "PostConstruct specifications conflict. type=[{0}]",
         category: "Usage",
         defaultSeverity: DiagnosticSeverity.Error,
-        isEnabledByDefault: true);
+        isEnabledByDefault: true,
+        customTags: DiagnosticTags.NotSuppressible);
+
+    public static DiagnosticDescriptor InvalidInjectProperty { get; } = new(
+        id: "BTDI0014",
+        title: "Invalid Inject property",
+        messageFormat: "[Inject] property must have a public setter. type=[{1}] property=[{0}]",
+        category: "Usage",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        customTags: DiagnosticTags.NotSuppressible);
 
     // Dependency graph analysis
 
@@ -72,7 +86,8 @@ internal static class Diagnostics
         messageFormat: "Dependency chain forms a cycle. chain=[{0}]",
         category: "Usage",
         defaultSeverity: DiagnosticSeverity.Error,
-        isEnabledByDefault: true);
+        isEnabledByDefault: true,
+        customTags: DiagnosticTags.NotSuppressible);
 
     public static DiagnosticDescriptor UnresolvedDependency { get; } = new(
         id: "BTDI0009",
@@ -119,4 +134,39 @@ internal static class Diagnostics
         category: "Usage",
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
+
+    public static DiagnosticDescriptor UndefinedEnumValue { get; } = new(
+        id: "BTDI0015",
+        title: "Undefined enum value",
+        messageFormat: "Attribute argument is not a defined value. argument=[{0}], value=[{1}]",
+        category: "Usage",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        customTags: DiagnosticTags.NotSuppressible);
+
+    public static DiagnosticDescriptor ComponentNotReferable { get; } = new(
+        id: "BTDI0016",
+        title: "Component not referable",
+        messageFormat: "Component cannot be referred to from the generated code, and is not registered. type=[{0}]",
+        category: "Usage",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        customTags: DiagnosticTags.NotSuppressible);
+
+    public static DiagnosticDescriptor CandidateNotReferable { get; } = new(
+        id: "BTDI0017",
+        title: "Class not referable",
+        messageFormat: "Class matched by the pattern cannot be referred to from the generated code, and is not registered. class=[{0}]",
+        category: "Usage",
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
+    public static DiagnosticDescriptor HintNameCollision { get; } = new(
+        id: "BTDI0018",
+        title: "Class name differs only in case",
+        messageFormat: "Class name differs only in case from another class, and its registration methods are not generated. class=[{0}], other=[{1}]",
+        category: "Usage",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        customTags: DiagnosticTags.NotSuppressible);
 }
