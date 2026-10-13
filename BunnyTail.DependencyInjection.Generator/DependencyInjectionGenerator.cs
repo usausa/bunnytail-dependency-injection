@@ -519,7 +519,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     private static (string Key, string Name, int Kind, string? KeyLiteral, bool InCompilation, bool IsValueType) CreateDependencyModel(ITypeSymbol type, ImmutableArray<AttributeData> attributes, IAssemblySymbol compilationAssembly)
     {
         var key = ToKey(type);
-        var name = ToName(type);
+        var name = ToName(type.IsReferenceType ? type.WithNullableAnnotation(NullableAnnotation.NotAnnotated) : type);
         var inCompilation = SymbolEqualityComparer.Default.Equals(type.ContainingAssembly, compilationAssembly);
         var isValueType = type.IsValueType;
 

@@ -253,6 +253,44 @@ public sealed class GeneratedCodeTests
     }
 
     [Fact]
+    public void NullableReferenceDependenciesCompileWithoutWarning()
+    {
+        // Arrange
+        const string source = """
+            using BunnyTail.DependencyInjection;
+
+            namespace Demo;
+
+            public interface ILocalizer;
+
+            [Scoped(As = typeof(ILocalizer))]
+            public sealed class Localizer : ILocalizer;
+
+            public interface IStore;
+
+            [Singleton(As = typeof(IStore))]
+            public sealed class Store : IStore;
+
+            [Scoped]
+            public sealed class UsesNullable(ILocalizer? localizer, IStore? store)
+            {
+                public ILocalizer? Localizer { get; } = localizer;
+
+                public IStore? Store { get; } = store;
+
+                [Inject]
+                public ILocalizer? Injected { get; set; }
+            }
+            """;
+
+        // Act
+        var problems = GeneratorTestHelper.GetProblemIds(source);
+
+        // Assert
+        Assert.Empty(problems);
+    }
+
+    [Fact]
     public void RecordComponentIsRegistered()
     {
         // Arrange
