@@ -264,4 +264,6 @@ public sealed class SampleGadget;
 
 public interface IIgnoredMarker;
 
-public sealed class IgnoredMarkerService : IIgnoredMarker;
+public interface IOtherIgnoredMarker;
+
+public sealed class IgnoredMarkerService : IIgnoredMarker, IOtherIgnoredMarker;

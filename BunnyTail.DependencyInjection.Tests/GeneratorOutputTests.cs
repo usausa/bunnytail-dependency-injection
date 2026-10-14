@@ -448,7 +448,7 @@ public sealed class GeneratorOutputTests
 
         // Act
         var result = GeneratorTestHelper.CreateRunner()
-            .WithGlobalOption("build_property.DependencyInjectionIgnoreInterface", "Demo.IIgnored")
+            .WithGlobalOption("build_property._DependencyInjectionIgnoreInterface", "Demo.IIgnored")
             .VerifyCompiles()
             .Run(source);
 

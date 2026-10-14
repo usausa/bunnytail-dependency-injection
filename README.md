@@ -146,7 +146,7 @@ Registration calls in user code are collected by the generator, so existing MEDI
 </PropertyGroup>
 ```
 
-* Comma separated, matched against the namespace-qualified name
+* Separated by `,` or `;`, matched against the namespace-qualified name
 * Applies to attribute and convention registration alike. An explicit `As = typeof(...)` is never affected
 
 ### 🟨 Multi-project modules
@@ -287,7 +287,7 @@ All extend `IServiceCollection`.
 
 ### 🟦 MSBuild properties
 
-* `DependencyInjectionIgnoreInterface` - comma-separated interfaces excluded from automatic registration. `IDisposable` / `IAsyncDisposable` / `IInitializable` always are
+* `DependencyInjectionIgnoreInterface` - interfaces separated by `,` or `;` excluded from automatic registration. `IDisposable` / `IAsyncDisposable` / `IInitializable` always are
 
 ## ⚙️ How it works
 

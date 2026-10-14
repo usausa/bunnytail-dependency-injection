@@ -15,7 +15,7 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <DependencyInjectionIgnoreInterface>BunnyTail.DependencyInjection.Tests.Components.IIgnoredMarker</DependencyInjectionIgnoreInterface>
+    <DependencyInjectionIgnoreInterface>BunnyTail.DependencyInjection.Tests.Components.IIgnoredMarker;BunnyTail.DependencyInjection.Tests.Components.IOtherIgnoredMarker</DependencyInjectionIgnoreInterface>
   </PropertyGroup>
 
   <Import Project="..\BunnyTail.DependencyInjection.targets" />

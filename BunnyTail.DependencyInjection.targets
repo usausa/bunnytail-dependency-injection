@@ -1,7 +1,14 @@
 <Project>
 
   <ItemGroup>
-    <CompilerVisibleProperty Include="DependencyInjectionIgnoreInterface" />
+    <CompilerVisibleProperty Include="_DependencyInjectionIgnoreInterface" />
   </ItemGroup>
+
+  <Target Name="ComputeDependencyInjectionIgnoreInterface"
+          BeforeTargets="GenerateMSBuildEditorConfigFileShouldRun">
+    <PropertyGroup>
+      <_DependencyInjectionIgnoreInterface>$(DependencyInjectionIgnoreInterface.Replace('%', '%2525').Replace('#', '%2523').Replace(';', '%253B').Replace('%0D', '%250D').Replace('%0A', '%250A'))</_DependencyInjectionIgnoreInterface>
+    </PropertyGroup>
+  </Target>
 
 </Project>

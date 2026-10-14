@@ -43,7 +43,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
     private const string GeneratedComponentsHintName = "GeneratedComponents.g.cs";
 
-    private const string IgnoreInterfaceProperty = "build_property.DependencyInjectionIgnoreInterface";
+    private const string IgnoreInterfaceProperty = "build_property._DependencyInjectionIgnoreInterface";
 
     private const string ServiceCollectionExtensionsReference = "global::" + ServiceCollectionExtensionsName;
     private const string TrackingServiceCollectionExtensionsReference = "global::" + TrackingServiceCollectionExtensionsName;
@@ -199,7 +199,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             return [];
         }
 
-        var names = value.Split(',')
+        var names = Uri.UnescapeDataString(value).Split(',', ';')
             .Select(static x => x.Trim())
             .Where(static x => x.Length > 0)
             .ToArray();
@@ -291,8 +291,8 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             .ToArray();
         var constructor = constructors.Length > 0 ? constructors[0] : null;
 
-        // 同数の最大コンストラクタが複数あり、互いに superset でない場合は曖昧 (BTDI0005)
-        // Ambiguous when multiple constructors share the maximum parameter count and are not supersets of each other (BTDI0005).
+        // 同数の最大コンストラクタが複数あり、互いに superset でない場合は曖昧 (BTDI0204)
+        // Ambiguous when multiple constructors share the maximum parameter count and are not supersets of each other (BTDI0204).
         var ambiguous = false;
         if ((constructors.Length > 1) && (constructors[0].Parameters.Length == constructors[1].Parameters.Length))
         {
@@ -398,8 +398,8 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             }
         }
 
-        // 初期化コールバック: ライフタイム属性の PostConstruct 指定を収集する (相違があれば BTDI0007)
-        // Initialization callback: collect PostConstruct from lifetime attributes (BTDI0007 when they disagree).
+        // 初期化コールバック: ライフタイム属性の PostConstruct 指定を収集する (相違があれば BTDI0202)
+        // Initialization callback: collect PostConstruct from lifetime attributes (BTDI0202 when they disagree).
         string? postConstruct = null;
         var conflictingPostConstruct = false;
         foreach (var attribute in symbol.GetAttributes())
@@ -1308,8 +1308,8 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                 continue;
             }
 
-            // PostConstruct 指定は属性由来の値より優先する。妥当でなければ BTDI0006
-            // The PostConstruct specification wins over the attribute derived value; an invalid one reports BTDI0006.
+            // PostConstruct 指定は属性由来の値より優先する。妥当でなければ BTDI0201
+            // The PostConstruct specification wins over the attribute derived value; an invalid one reports BTDI0201.
             if (postConstruct is not null)
             {
                 if (FindPostConstructMethod(type, postConstruct) is null)
@@ -1691,11 +1691,11 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
         // open generic 登録の閉型使用から作られた生成ファクトリ (パイプライン側で解決済み)。実行時は open generic 実現
         // (MakeGenericType → 閉じた実装型) が採用フック (TryGet) で自動的にこれを拾う。
-        // 値型引数のまま実行時経路に残る使用は NativeAOT で失敗するため BTDI0011 を報告する
+        // 値型引数のまま実行時経路に残る使用は NativeAOT で失敗するため BTDI0401 を報告する
         // Generated factories built from closed usages of open generic registrations (resolved on the pipeline side).
         // At runtime the open generic realization (MakeGenericType into the closed implementation) picks them up
         // through the adoption hook (TryGet). Usages left on the runtime path with value type arguments fail on
-        // NativeAOT, so BTDI0011 is reported for them.
+        // NativeAOT, so BTDI0401 is reported for them.
         foreach (var factory in closedGenerics.Factories)
         {
             if (emittedUnkeyed.Add(factory.ImplementationType))
@@ -1905,9 +1905,9 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         var warnings = new List<ClosedGenericWarningModel>();
 
         // 定義キー → 実装 (同一キーの再登録は後勝ち: 実行時の last-wins と一致)。キー集合は使用が無くても
-        // BTDI0009 の解決可能性判定に使うため常に返す
+        // BTDI0302 の解決可能性判定に使うため常に返す
         // Definition key -> implementation (re-registrations are last-wins, matching runtime behavior). The key set
-        // is always returned because BTDI0009 resolvability checks need it even without usages.
+        // is always returned because BTDI0302 resolvability checks need it even without usages.
         var registrations = new Dictionary<string, OpenGenericModel>(StringComparer.Ordinal);
         foreach (var model in openGenerics.OrderBy(static x => x.FilePath, StringComparer.Ordinal).ThenBy(static x => x.SpanStart))
         {
@@ -2156,8 +2156,8 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
         static string Display(string typeName) => typeName.StartsWith("global::", StringComparison.Ordinal) ? typeName.Substring(8) : typeName;
 
-        // BTDI0009 (未解決) / BTDI0010 (captive) / BTDI0005 (曖昧 ctor) — 属性コンポーネント起点
-        // BTDI0009 (unresolved) / BTDI0010 (captive) / BTDI0005 (ambiguous ctor) reported from attribute components.
+        // BTDI0302 (未解決) / BTDI0303 (captive) / BTDI0204 (曖昧 ctor) — 属性コンポーネント起点
+        // BTDI0302 (unresolved) / BTDI0303 (captive) / BTDI0204 (ambiguous ctor) reported from attribute components.
         foreach (var component in components)
         {
             var componentName = Display(component.Factory.ImplementationTypeName);
@@ -2214,8 +2214,8 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             }
         }
 
-        // BTDI0008 (循環) — 生成対象ノード全体で DFS
-        // BTDI0008 (cycles) — DFS over all generation target nodes.
+        // BTDI0301 (循環) — 生成対象ノード全体で DFS
+        // BTDI0301 (cycles) — DFS over all generation target nodes.
         var state = new Dictionary<string, int>(StringComparer.Ordinal);   // 0=未訪問 1=探索中 2=完了 / 0=unvisited 1=visiting 2=done
         var reported = new HashSet<string>(StringComparer.Ordinal);
         foreach (var node in nodes.Keys)
@@ -2451,7 +2451,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         var factory = map.GetTarget(serviceTypeName);
         if ((factory is null) || stack.Contains(factory.ImplementationType))
         {
-            return null;   // 展開不可 or 循環 / not expandable or cyclic (cycles themselves error separately via BTDI0008)
+            return null;   // 展開不可 or 循環 / not expandable or cyclic (cycles themselves error separately via BTDI0301)
         }
 
         stack.Add(factory.ImplementationType);
@@ -2517,10 +2517,10 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
 
     // 外部アセンブリの候補走査。要求されたアセンブリだけを歩き、名前と名前空間で絞ってから
     // FactoryModel を構築する (シンボル解析は一致した型のみ)。不正な正規表現はここでは無視し、
-    // 診断は Execute 側の BTDI0002 が報告する
+    // 診断は Execute 側の BTDI0005 が報告する
     // Candidate scan of external assemblies. Only requested assemblies are walked, and names and namespaces are
     // filtered before FactoryModel construction (symbol analysis touches matched types only). Invalid regexes are
-    // ignored here; BTDI0002 in Execute reports them.
+    // ignored here; BTDI0005 in Execute reports them.
     // TODO
     private static ExternalScanResult CollectExternalCandidates(EquatableArray<ExternalRequest> requests, Compilation compilation, CancellationToken token)
     {

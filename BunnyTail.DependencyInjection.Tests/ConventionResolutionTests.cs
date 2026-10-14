@@ -82,5 +82,6 @@ public sealed class ConventionResolutionTests
         // Act & Assert
         Assert.NotNull(provider.GetService<IgnoredMarkerService>());
         Assert.Null(provider.GetService<IIgnoredMarker>());
+        Assert.Null(provider.GetService<IOtherIgnoredMarker>());
     }
 }
