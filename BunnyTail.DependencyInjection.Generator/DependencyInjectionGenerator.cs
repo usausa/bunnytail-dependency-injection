@@ -606,11 +606,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             }
         }
 
-        // ReSharper disable UseCollectionExpression
-#pragma warning disable IDE0028
         return filtered.Count == interfaces.Count ? interfaces : new(filtered.ToArray());
-#pragma warning restore IDE0028
-        // ReSharper restore UseCollectionExpression
     }
 
     // TODO
@@ -1758,9 +1754,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
                 continue;
             }
 
-#pragma warning disable IDE0028
             EmitConventionClass(sourceContext, group.Key.Namespace, group.Key.ClassName, hintName, group.ToList());
-#pragma warning restore IDE0028
         }
     }
 
