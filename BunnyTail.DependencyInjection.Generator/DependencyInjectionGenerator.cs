@@ -497,15 +497,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         {
             foreach (var member in type.GetMembers(name))
             {
-                if (member is IMethodSymbol
-                    {
-                        IsStatic: false,
-                        Parameters.Length: 0,
-                        ReturnsVoid: true,
-                        IsGenericMethod: false,
-                        DeclaredAccessibility: Accessibility.Public,
-                        MethodKind: MethodKind.Ordinary
-                    } method)
+                if (member is IMethodSymbol { IsStatic: false, Parameters.Length: 0, ReturnsVoid: true, IsGenericMethod: false, DeclaredAccessibility: Accessibility.Public, MethodKind: MethodKind.Ordinary } method)
                 {
                     return method;
                 }
@@ -797,11 +789,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     }
 
     private static bool IsOpenGenericInvocationSyntax(SyntaxNode node) =>
-        node is InvocationExpressionSyntax
-        {
-            Expression: MemberAccessExpressionSyntax { Name.Identifier.ValueText: "AddSingleton" or "AddScoped" or "AddTransient" or "TryAddSingleton" or "TryAddScoped" or "TryAddTransient" },
-            ArgumentList.Arguments: { Count: 2 } arguments
-        } &&
+        node is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax { Name.Identifier.ValueText: "AddSingleton" or "AddScoped" or "AddTransient" or "TryAddSingleton" or "TryAddScoped" or "TryAddTransient" }, ArgumentList.Arguments: { Count: 2 } arguments } &&
         (arguments[0].Expression is TypeOfExpressionSyntax { Type: var service }) &&
         (arguments[1].Expression is TypeOfExpressionSyntax { Type: var implementation }) &&
         IsUnboundGenericName(service) &&
