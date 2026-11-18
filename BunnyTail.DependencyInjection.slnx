@@ -19,8 +19,8 @@
     <File Path=".editorconfig" />
     <File Path=".gitattributes" />
     <File Path=".gitignore" />
+    <File Path=".globalconfig" />
     <File Path="AGENTS.md" />
-    <File Path="Analyzers.ruleset" />
     <File Path="BunnyTail.DependencyInjection.sln.DotSettings" />
     <File Path="BunnyTail.DependencyInjection.props" />
     <File Path="BunnyTail.DependencyInjection.targets" />
