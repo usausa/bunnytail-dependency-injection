@@ -855,7 +855,8 @@ internal sealed class ServiceRegistry
                 continue;
             }
 
-            if ((property.SetMethod is null) || !property.SetMethod.IsPublic)
+            var setter = property.SetMethod;
+            if ((setter is null) || !setter.IsPublic)
             {
                 throw new InvalidOperationException($"[Inject] property must have a public setter. type=[{implType}] property=[{property.Name}]");
             }
@@ -866,7 +867,7 @@ internal sealed class ServiceRegistry
                 throw new InvalidOperationException($"Unable to resolve service for type '{property.PropertyType}' while attempting to activate '{implType}'.");
             }
 
-            (list ??= []).Add(new PropertyInjection(property, ParameterPlan.FromService(accessor)));
+            (list ??= []).Add(new PropertyInjection(MethodInvoker.Create(setter), ParameterPlan.FromService(accessor)));
         }
 
         return list is null ? EmptyPropertyInjections : [.. list];

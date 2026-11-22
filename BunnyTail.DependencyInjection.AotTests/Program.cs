@@ -1,6 +1,10 @@
 // NativeAOT execution verification: exercises both attribute components (generated path) and runtime registrations (runtime path) in an executable built with PublishAot
+using System.Diagnostics.CodeAnalysis;
+
 using BunnyTail.DependencyInjection;
 using BunnyTail.DependencyInjection.AotTests;
+using BunnyTail.DependencyInjection.Diagnostics;
+using BunnyTail.DependencyInjection.Internal;
 
 using Microsoft.Extensions.DependencyInjection;
 
@@ -18,6 +22,10 @@ void Assert(bool condition, string name)
         failures++;
     }
 }
+
+static void AddRuntime<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicMethods)] T>(IServiceCollection services, ServiceLifetime lifetime)
+    where T : class
+    => services.Add(ServiceDescriptor.Describe(typeof(T), typeof(T), lifetime));
 
 // AddGeneratedComponents = attribute components in one call (module aggregation included) / AddTransient = Add* collection -> generated factory
 var services = new ServiceCollection()
@@ -136,6 +144,20 @@ using (var provider = services.BuildGeneratedServiceProvider())
 }
 
 Assert(!activated.Disposed, "activated instance is caller owned");
+
+var runtimeServices = new ServiceCollection().AddGeneratedComponents();
+AddRuntime<AotRuntimeLeaf>(runtimeServices, ServiceLifetime.Singleton);
+AddRuntime<AotRuntimeComponent>(runtimeServices, ServiceLifetime.Transient);
+GeneratedFactoryRegistry.RegisterInitializer(typeof(AotRuntimeComponent), nameof(AotRuntimeComponent.Setup));
+using (var provider = runtimeServices.BuildGeneratedServiceProvider())
+{
+    var runtime = provider.GetRequiredService<AotRuntimeComponent>();
+    Assert(provider.CreateFactoryReport().First(static x => x.ServiceType == typeof(AotRuntimeComponent)).Status == ServiceFactoryStatus.RuntimeFallback, "runtime path fallback");
+    Assert(ReferenceEquals(runtime.Leaf, provider.GetRequiredService<AotRuntimeLeaf>()), "runtime path constructor injection");
+    Assert(ReferenceEquals(runtime.Singleton, provider.GetRequiredService<AotSingleton>()), "runtime path second constructor argument");
+    Assert(ReferenceEquals(runtime.Prop, provider.GetRequiredService<AotPropDependency>()), "runtime path inject property");
+    Assert(runtime.Initialized, "runtime path post construct");
+}
 
 Console.WriteLine(failures == 0 ? "ALL OK" : $"FAILED: {failures}");
 return failures == 0 ? 0 : 1;
@@ -268,4 +290,20 @@ namespace BunnyTail.DependencyInjection.AotTests
     }
 
     public sealed class RuntimeRegistered;
+
+    public sealed class AotRuntimeLeaf;
+
+    public sealed class AotRuntimeComponent(AotRuntimeLeaf leaf, AotSingleton singleton)
+    {
+        public AotRuntimeLeaf Leaf { get; } = leaf;
+
+        public AotSingleton Singleton { get; } = singleton;
+
+        [Inject]
+        public AotPropDependency Prop { get; set; } = default!;
+
+        public bool Initialized { get; private set; }
+
+        public void Setup() => Initialized = true;
+    }
 }

@@ -5,14 +5,14 @@ using System.Reflection;
 internal readonly struct PropertyInjection
 {
 #pragma warning disable SA1401
-    public readonly PropertyInfo Property;
+    public readonly MethodInvoker Setter;
 
     public readonly ParameterPlan Plan;
 #pragma warning restore SA1401
 
-    public PropertyInjection(PropertyInfo property, ParameterPlan plan)
+    public PropertyInjection(MethodInvoker setter, ParameterPlan plan)
     {
-        Property = property;
+        Setter = setter;
         Plan = plan;
     }
 }

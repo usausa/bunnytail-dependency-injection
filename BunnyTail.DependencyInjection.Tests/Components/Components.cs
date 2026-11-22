@@ -267,3 +267,79 @@ public interface IIgnoredMarker;
 public interface IOtherIgnoredMarker;
 
 public sealed class IgnoredMarkerService : IIgnoredMarker, IOtherIgnoredMarker;
+
+public interface IReflectionArityComponent
+{
+    IReadOnlyList<object> Arguments { get; }
+}
+
+public sealed class ReflectionLeaf1;
+
+public sealed class ReflectionLeaf2;
+
+public sealed class ReflectionLeaf3;
+
+public sealed class ReflectionLeaf4;
+
+public sealed class ReflectionLeaf5;
+
+public sealed class ReflectionArity0Component : IReflectionArityComponent
+{
+    public IReadOnlyList<object> Arguments { get; } = [];
+}
+
+public sealed class ReflectionArity1Component(ReflectionLeaf1 a) : IReflectionArityComponent
+{
+    public IReadOnlyList<object> Arguments { get; } = [a];
+}
+
+public sealed class ReflectionArity2Component(ReflectionLeaf1 a, ReflectionLeaf2 b) : IReflectionArityComponent
+{
+    public IReadOnlyList<object> Arguments { get; } = [a, b];
+}
+
+public sealed class ReflectionArity3Component(ReflectionLeaf1 a, ReflectionLeaf2 b, ReflectionLeaf3 c) : IReflectionArityComponent
+{
+    public IReadOnlyList<object> Arguments { get; } = [a, b, c];
+}
+
+public sealed class ReflectionArity4Component(ReflectionLeaf1 a, ReflectionLeaf2 b, ReflectionLeaf3 c, ReflectionLeaf4 d) : IReflectionArityComponent
+{
+    public IReadOnlyList<object> Arguments { get; } = [a, b, c, d];
+}
+
+public sealed class ReflectionArity5Component(ReflectionLeaf1 a, ReflectionLeaf2 b, ReflectionLeaf3 c, ReflectionLeaf4 d, ReflectionLeaf5 e) : IReflectionArityComponent
+{
+    public IReadOnlyList<object> Arguments { get; } = [a, b, c, d, e];
+}
+
+public sealed class ReflectionPropertyComponent
+{
+    [Inject]
+    public ReflectionLeaf1 Leaf { get; set; } = default!;
+}
+
+public sealed class ReflectionThrowingPropertyComponent
+{
+    [Inject]
+    public ReflectionLeaf1? Leaf
+    {
+        get;
+        set
+        {
+            field = value;
+            throw new InvalidOperationException();
+        }
+    }
+}
+
+public sealed class ReflectionThrowingInitComponent
+{
+    public bool Attempted { get; private set; }
+
+    public void Setup()
+    {
+        Attempted = true;
+        throw new InvalidOperationException();
+    }
+}

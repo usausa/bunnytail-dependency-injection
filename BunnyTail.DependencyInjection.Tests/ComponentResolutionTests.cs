@@ -2,6 +2,7 @@ namespace BunnyTail.DependencyInjection.Tests;
 
 using BunnyTail.DependencyInjection;
 using BunnyTail.DependencyInjection.Diagnostics;
+using BunnyTail.DependencyInjection.Internal;
 using BunnyTail.DependencyInjection.Tests.Components;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -530,6 +531,76 @@ public sealed class ComponentResolutionTests
 
         // Act & Assert
         Assert.False(provider.GetRequiredService<RuntimeInitializable>().Initialized);
+    }
+
+    [Theory]
+    [InlineData(typeof(ReflectionArity0Component), 0)]
+    [InlineData(typeof(ReflectionArity1Component), 1)]
+    [InlineData(typeof(ReflectionArity2Component), 2)]
+    [InlineData(typeof(ReflectionArity3Component), 3)]
+    [InlineData(typeof(ReflectionArity4Component), 4)]
+    [InlineData(typeof(ReflectionArity5Component), 5)]
+    public void ReflectionPathResolvesEachArity(Type componentType, int arity)
+    {
+        // Arrange
+        Type[] leaves = [typeof(ReflectionLeaf1), typeof(ReflectionLeaf2), typeof(ReflectionLeaf3), typeof(ReflectionLeaf4), typeof(ReflectionLeaf5)];
+        IServiceCollection services = new ServiceCollection();
+        foreach (var leaf in leaves)
+        {
+            services.Add(ServiceDescriptor.Describe(leaf, leaf, ServiceLifetime.Transient));
+        }
+        services.Add(ServiceDescriptor.Describe(componentType, componentType, ServiceLifetime.Transient));
+        using var provider = services.BuildGeneratedServiceProvider();
+
+        // Act
+        var component = (IReflectionArityComponent)((IServiceProvider)provider).GetRequiredService(componentType);
+
+        // Assert
+        Assert.Equal(ServiceFactoryStatus.RuntimeFallback, provider.CreateFactoryReport().First(x => x.ServiceType == componentType).Status);
+        Assert.Equal(leaves.Take(arity), component.Arguments.Select(static x => x.GetType()));
+    }
+
+    [Fact]
+    public void ReflectionPathInjectsProperties()
+    {
+        // Arrange
+        IServiceCollection services = new ServiceCollection();
+        services.Add(ServiceDescriptor.Describe(typeof(ReflectionLeaf1), typeof(ReflectionLeaf1), ServiceLifetime.Singleton));
+        services.Add(ServiceDescriptor.Describe(typeof(ReflectionPropertyComponent), typeof(ReflectionPropertyComponent), ServiceLifetime.Transient));
+        using var provider = services.BuildGeneratedServiceProvider();
+
+        // Act
+        var component = provider.GetRequiredService<ReflectionPropertyComponent>();
+
+        // Assert
+        Assert.Equal(ServiceFactoryStatus.RuntimeFallback, provider.CreateFactoryReport().First(static x => x.ServiceType == typeof(ReflectionPropertyComponent)).Status);
+        Assert.Same(provider.GetRequiredService<ReflectionLeaf1>(), component.Leaf);
+    }
+
+    [Fact]
+    public void ReflectionPathPropertySetterThrowsOriginalException()
+    {
+        // Arrange
+        IServiceCollection services = new ServiceCollection();
+        services.Add(ServiceDescriptor.Describe(typeof(ReflectionLeaf1), typeof(ReflectionLeaf1), ServiceLifetime.Singleton));
+        services.Add(ServiceDescriptor.Describe(typeof(ReflectionThrowingPropertyComponent), typeof(ReflectionThrowingPropertyComponent), ServiceLifetime.Transient));
+        using var provider = services.BuildGeneratedServiceProvider();
+
+        // Act & Assert
+        Assert.Throws<InvalidOperationException>(provider.GetRequiredService<ReflectionThrowingPropertyComponent>);
+    }
+
+    [Fact]
+    public void ReflectionPathPostConstructThrowsOriginalException()
+    {
+        // Arrange
+        GeneratedFactoryRegistry.RegisterInitializer(typeof(ReflectionThrowingInitComponent), nameof(ReflectionThrowingInitComponent.Setup));
+        IServiceCollection services = new ServiceCollection();
+        services.Add(ServiceDescriptor.Describe(typeof(ReflectionThrowingInitComponent), typeof(ReflectionThrowingInitComponent), ServiceLifetime.Transient));
+        using var provider = services.BuildGeneratedServiceProvider();
+
+        // Act & Assert
+        Assert.Throws<InvalidOperationException>(provider.GetRequiredService<ReflectionThrowingInitComponent>);
     }
 
     //--------------------------------------------------------------------------------

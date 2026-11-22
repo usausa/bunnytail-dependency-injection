@@ -1,7 +1,7 @@
 namespace BunnyTail.DependencyInjection.Accessors;
 
 using System.Reflection;
-using System.Runtime.ExceptionServices;
+using System.Runtime.CompilerServices;
 
 internal sealed class ConstructorAccessor : ServiceAccessor
 {
@@ -11,7 +11,7 @@ internal sealed class ConstructorAccessor : ServiceAccessor
 
     private readonly PropertyInjection[] properties;
 
-    private readonly MethodInfo? postConstruct;
+    private readonly MethodInvoker? postConstruct;
 
     private readonly bool initializable;
 
@@ -21,46 +21,33 @@ internal sealed class ConstructorAccessor : ServiceAccessor
         invoker = ConstructorInvoker.Create(constructor);
         this.plans = plans;
         this.properties = properties;
-        this.postConstruct = postConstruct;
+        this.postConstruct = postConstruct is null ? null : MethodInvoker.Create(postConstruct);
         this.initializable = initializable;
     }
 
     protected override object Create(ServiceProviderScope scope)
     {
-        object instance;
-        if (plans.Length == 0)
+        var p = plans;
+        var instance = p.Length switch
         {
-            instance = invoker.Invoke();
-        }
-        else
-        {
-            var arguments = new object?[plans.Length];
-            for (var i = 0; i < plans.Length; i++)
-            {
-                arguments[i] = plans[i].Resolve(scope);
-            }
-
-            instance = invoker.Invoke(arguments.AsSpan());
-        }
+            0 => invoker.Invoke(),
+            1 => invoker.Invoke(p[0].Resolve(scope)),
+            2 => invoker.Invoke(p[0].Resolve(scope), p[1].Resolve(scope)),
+            3 => invoker.Invoke(p[0].Resolve(scope), p[1].Resolve(scope), p[2].Resolve(scope)),
+            4 => invoker.Invoke(p[0].Resolve(scope), p[1].Resolve(scope), p[2].Resolve(scope), p[3].Resolve(scope)),
+            _ => InvokeMany(scope)
+        };
 
         // Property injection
-        for (var i = 0; i < properties.Length; i++)
+        foreach (ref readonly var injection in properties.AsSpan())
         {
-            properties[i].Property.SetValue(instance, properties[i].Plan.Resolve(scope));
+            injection.Setter.Invoke(instance, injection.Plan.Resolve(scope));
         }
 
         // Initialization
         if (postConstruct is not null)
         {
-            try
-            {
-                postConstruct.Invoke(instance, null);
-            }
-            catch (TargetInvocationException e) when (e.InnerException is not null)
-            {
-                ExceptionDispatchInfo.Capture(e.InnerException).Throw();
-                throw;
-            }
+            postConstruct.Invoke(instance);
         }
         else if (initializable)
         {
@@ -68,5 +55,17 @@ internal sealed class ConstructorAccessor : ServiceAccessor
         }
 
         return instance;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private object InvokeMany(ServiceProviderScope scope)
+    {
+        var arguments = new object?[plans.Length];
+        for (var i = 0; i < plans.Length; i++)
+        {
+            arguments[i] = plans[i].Resolve(scope);
+        }
+
+        return invoker.Invoke(arguments.AsSpan());
     }
 }
