@@ -32,19 +32,20 @@ public sealed class ServiceFactoryReportEntry
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type? implementationType,
         object? serviceKey,
         ServiceLifetime lifetime,
-        ServiceFactoryStatus status)
+        ServiceFactoryStatus status,
+        ConstructorInfo? runtimeConstructor)
     {
         ServiceType = serviceType;
         ImplementationType = implementationType;
         ServiceKey = serviceKey;
         Lifetime = lifetime;
         Status = status;
-        CanGenerateFactory = (implementationType is not null) && IsFactoryGeneratable(implementationType);
+        CanGenerateFactory = (implementationType is not null) && (serviceKey is null) && IsFactoryGeneratable(implementationType, runtimeConstructor);
     }
 
-    private static bool IsFactoryGeneratable([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type type)
+    private static bool IsFactoryGeneratable([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type type, ConstructorInfo? runtimeConstructor)
     {
-        if (!IsPubliclyVisible(type) ||
+        if (!type.IsVisible ||
             !type.IsClass ||
             type.IsAbstract ||
             type.ContainsGenericParameters)
@@ -53,7 +54,9 @@ public sealed class ServiceFactoryReportEntry
         }
 
         var constructor = SelectConstructor(type);
-        if (constructor is null)
+        if ((constructor is null) ||
+            ((runtimeConstructor is not null) && (runtimeConstructor != constructor)) ||
+            (constructor.GetCustomAttribute<ObsoleteAttribute>() is { IsError: true }))
         {
             return false;
         }
@@ -61,7 +64,9 @@ public sealed class ServiceFactoryReportEntry
         // ReSharper disable once LoopCanBeConvertedToQuery
         foreach (var parameter in constructor.GetParameters())
         {
-            if (parameter.HasDefaultValue)
+            if (parameter.HasDefaultValue ||
+                (parameter.GetCustomAttribute<ServiceKeyAttribute>() is not null) ||
+                (parameter.GetCustomAttribute<FromKeyedServicesAttribute>() is { LookupMode: ServiceKeyLookupMode.InheritKey }))
             {
                 return false;
             }
@@ -73,29 +78,29 @@ public sealed class ServiceFactoryReportEntry
     private static ConstructorInfo? SelectConstructor([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type type)
     {
         ConstructorInfo? selected = null;
+        ConstructorInfo? second = null;
         foreach (var constructor in type.GetConstructors())
         {
-            if ((selected is null) || (constructor.GetParameters().Length > selected.GetParameters().Length))
+            var count = constructor.GetParameters().Length;
+            if ((selected is null) || (count > selected.GetParameters().Length))
             {
                 selected = constructor;
+                second = null;
             }
+            else if ((second is null) && (count == selected.GetParameters().Length))
+            {
+                second = constructor;
+            }
+        }
+
+        if ((selected is not null) && (second is not null) && !HasSameParameterTypes(selected, second))
+        {
+            return null;
         }
 
         return selected;
     }
 
-    private static bool IsPubliclyVisible(Type type)
-    {
-        while (type.IsNested)
-        {
-            if (!type.IsNestedPublic || (type.DeclaringType is null))
-            {
-                return false;
-            }
-
-            type = type.DeclaringType;
-        }
-
-        return type.IsPublic;
-    }
+    private static bool HasSameParameterTypes(ConstructorInfo x, ConstructorInfo y) =>
+        new HashSet<Type>(x.GetParameters().Select(static p => p.ParameterType)).SetEquals(y.GetParameters().Select(static p => p.ParameterType));
 }

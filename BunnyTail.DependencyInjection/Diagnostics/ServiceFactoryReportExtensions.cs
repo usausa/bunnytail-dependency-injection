@@ -41,30 +41,52 @@ public static class ServiceFactoryReportExtensions
 
     private static void AppendTypeName(StringBuilder builder, Type type)
     {
-        if (type.IsNested && (type.DeclaringType is not null))
+        if (type.IsArray)
         {
-            AppendTypeName(builder, type.DeclaringType);
-            _ = builder.Append('.');
-        }
-        else if (!String.IsNullOrEmpty(type.Namespace))
-        {
-            _ = builder.Append(type.Namespace).Append('.');
+            var element = type;
+            var suffix = new StringBuilder();
+            while (element.IsArray && (element.GetElementType() is { } inner))
+            {
+                _ = suffix.Append('[').Append(',', element.GetArrayRank() - 1).Append(']');
+                element = inner;
+            }
+
+            AppendTypeName(builder, element);
+            _ = builder.Append(suffix);
+            return;
         }
 
-        var name = type.Name;
+        var arguments = type.IsGenericType ? type.GetGenericArguments() : Type.EmptyTypes;
+        AppendTypeName(builder, type.IsGenericType ? type.GetGenericTypeDefinition() : type, arguments, arguments.Length);
+    }
+
+    private static void AppendTypeName(StringBuilder builder, Type definition, Type[] arguments, int count)
+    {
+        var start = 0;
+        if (definition.IsNested && (definition.DeclaringType is { } declaringType))
+        {
+            start = declaringType.GetGenericArguments().Length;
+            AppendTypeName(builder, declaringType, arguments, start);
+            _ = builder.Append('.');
+        }
+        else if (!String.IsNullOrEmpty(definition.Namespace))
+        {
+            _ = builder.Append(definition.Namespace).Append('.');
+        }
+
+        var name = definition.Name;
         var index = name.IndexOf('`', StringComparison.Ordinal);
         _ = builder.Append(index >= 0 ? name.AsSpan(0, index) : name.AsSpan());
 
-        if (!type.IsGenericType)
+        if (count <= start)
         {
             return;
         }
 
-        var arguments = type.GetGenericArguments();
         _ = builder.Append('<');
-        for (var i = 0; i < arguments.Length; i++)
+        for (var i = start; i < count; i++)
         {
-            if (i > 0)
+            if (i > start)
             {
                 _ = builder.Append(", ");
             }

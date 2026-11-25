@@ -239,7 +239,7 @@ internal sealed class ServiceRegistry
 
             if ((implementationType is null) || implementationType.IsGenericTypeDefinition || descriptor.ServiceType.IsGenericTypeDefinition)
             {
-                report.Add(new Diagnostics.ServiceFactoryReportEntry(descriptor.ServiceType, implementationType, key, descriptor.Lifetime, Diagnostics.ServiceFactoryStatus.NotApplicable));
+                report.Add(new Diagnostics.ServiceFactoryReportEntry(descriptor.ServiceType, implementationType, key, descriptor.Lifetime, Diagnostics.ServiceFactoryStatus.NotApplicable, null));
                 continue;
             }
 
@@ -260,7 +260,7 @@ internal sealed class ServiceRegistry
                 null => Diagnostics.ServiceFactoryStatus.Unresolvable,
                 _ => Diagnostics.ServiceFactoryStatus.NotApplicable
             };
-            report.Add(new Diagnostics.ServiceFactoryReportEntry(descriptor.ServiceType, implementationType, key, descriptor.Lifetime, status));
+            report.Add(new Diagnostics.ServiceFactoryReportEntry(descriptor.ServiceType, implementationType, key, descriptor.Lifetime, status, (accessor as ConstructorAccessor)?.Constructor));
         }
 
         // Activated types (realized lazily, so only types activated so far appear)
@@ -273,7 +273,7 @@ internal sealed class ServiceRegistry
                 ConstructorAccessor => Diagnostics.ServiceFactoryStatus.RuntimeFallback,
                 _ => Diagnostics.ServiceFactoryStatus.NotApplicable
             };
-            report.Add(new Diagnostics.ServiceFactoryReportEntry(pair.Key, pair.Key, null, ServiceLifetime.Transient, status));
+            report.Add(new Diagnostics.ServiceFactoryReportEntry(pair.Key, pair.Key, null, ServiceLifetime.Transient, status, (pair.Value as ConstructorAccessor)?.Constructor));
         }
 
         return report;

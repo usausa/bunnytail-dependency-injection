@@ -15,9 +15,12 @@ internal sealed class ConstructorAccessor : ServiceAccessor
 
     private readonly bool initializable;
 
+    public ConstructorInfo Constructor { get; }
+
     public ConstructorAccessor(ConstructorInfo constructor, ParameterPlan[] plans, PropertyInjection[] properties, MethodInfo? postConstruct, bool initializable, ResultCache cache, int slot, bool trackDisposable)
         : base(cache, slot, trackDisposable)
     {
+        Constructor = constructor;
         invoker = ConstructorInvoker.Create(constructor);
         this.plans = plans;
         this.properties = properties;

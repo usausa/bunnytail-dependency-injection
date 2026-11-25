@@ -42,3 +42,4 @@
 | ID | Severity | Description | How to fix |
 |---|---|---|---|
 | BTDI0401 | ⚠️ Warning | Closed generic with value type arguments has no generated factory and resolves through the runtime path, which fails on NativeAOT | Register the closed generic explicitly so that a factory is generated |
+| BTDI0402 | ⚠️ Warning | Implementation of an `Add*` or `Activate<T>()` call cannot be referred to from the generated code (`private` or `protected` nested, `file`-local, or nested in a generic type), so it has no generated factory and resolves through the runtime path | Make the class accessible from the assembly and not nested in a generic type |

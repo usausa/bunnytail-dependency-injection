@@ -162,6 +162,138 @@ public sealed class ComponentResolutionTests
         public int Value { get; }
     }
 
+    [Theory]
+    [InlineData(typeof(AmbiguousConstructorProbe), null)]
+    [InlineData(typeof(ObsoleteConstructorProbe), null)]
+    [InlineData(typeof(RequiredMemberProbe), null)]
+    [InlineData(typeof(ServiceKeyProbe), "probe")]
+    [InlineData(typeof(InheritedKeyProbe), null)]
+    [InlineData(typeof(GenericArgumentProbe<HiddenArgumentProbe>), null)]
+    [InlineData(typeof(UntrackedProbe), "probe")]
+    [InlineData(typeof(ConstructorMismatchProbe), null)]
+    public void FactoryReportSkipsRegistrationWithoutUsableGeneratedFactory(Type type, string? key)
+    {
+        // Arrange
+        var services = new ServiceCollection().AddGeneratedComponents();
+        services.Add(key is null
+            ? ServiceDescriptor.Describe(type, type, ServiceLifetime.Transient)
+            : ServiceDescriptor.DescribeKeyed(type, key, type, ServiceLifetime.Transient));
+        using var provider = services.BuildGeneratedServiceProvider();
+
+        // Act
+        var report = provider.CreateFactoryReport();
+        var text = provider.DescribeRuntimeFallbacks(x => (x.ImplementationType == type) && Equals(x.ServiceKey, key));
+
+        // Assert
+        var entry = report.First(x => (x.ImplementationType == type) && Equals(x.ServiceKey, key));
+        Assert.Equal(ServiceFactoryStatus.RuntimeFallback, entry.Status);
+        Assert.False(entry.CanGenerateFactory);
+        Assert.Empty(text);
+    }
+
+    public sealed class AmbiguousConstructorProbe
+    {
+        public AmbiguousConstructorProbe(SingletonComponent component)
+        {
+            Component = component;
+        }
+
+        public AmbiguousConstructorProbe(UntrackedProbe probe)
+        {
+            Probe = probe;
+        }
+
+        public SingletonComponent? Component { get; }
+
+        public UntrackedProbe? Probe { get; }
+    }
+
+    public sealed class ObsoleteConstructorProbe
+    {
+        [Obsolete("Probe", true)]
+        public ObsoleteConstructorProbe()
+        {
+        }
+    }
+
+    public sealed class RequiredMemberProbe
+    {
+        public required string Name { get; set; }
+    }
+
+    public sealed class ServiceKeyProbe
+    {
+        public ServiceKeyProbe([ServiceKey] string key)
+        {
+            Key = key;
+        }
+
+        public string Key { get; }
+    }
+
+    public sealed class InheritedKeyProbe
+    {
+        public InheritedKeyProbe([FromKeyedServices] SingletonComponent component)
+        {
+            Component = component;
+        }
+
+        public SingletonComponent Component { get; }
+    }
+
+    public sealed class ConstructorMismatchProbe
+    {
+        public ConstructorMismatchProbe(SingletonComponent component, UntrackedProbe probe)
+        {
+            Component = component;
+            Probe = probe;
+        }
+
+        public ConstructorMismatchProbe(SingletonComponent component)
+        {
+            Component = component;
+        }
+
+        public SingletonComponent Component { get; }
+
+        public UntrackedProbe? Probe { get; }
+    }
+
+    [Fact]
+    public void FactoryReportDescribesNestedAndArrayTypes()
+    {
+        // Arrange
+        var services = new ServiceCollection().AddGeneratedComponents();
+        services.Add(ServiceDescriptor.Describe(typeof(GenericOuterProbe<int>.Inner), typeof(GenericOuterProbe<int>.Inner), ServiceLifetime.Transient));
+        services.Add(ServiceDescriptor.Describe(typeof(GenericArgumentProbe<List<int>[]>), typeof(GenericArgumentProbe<List<int>[]>), ServiceLifetime.Transient));
+        services.Add(ServiceDescriptor.Describe(typeof(GenericArgumentProbe<int[][,]>), typeof(GenericArgumentProbe<int[][,]>), ServiceLifetime.Transient));
+        services.Add(ServiceDescriptor.Describe(typeof(GenericArgumentProbe<DefaultedParameterProbe[]>), typeof(GenericArgumentProbe<DefaultedParameterProbe[]>), ServiceLifetime.Transient));
+        using var provider = services.BuildGeneratedServiceProvider();
+
+        // Act
+        var lines = provider.DescribeRuntimeFallbacks(formatter: static (_, typeName) => typeName).Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
+
+        // Assert
+        Assert.Contains("BunnyTail.DependencyInjection.Tests.ComponentResolutionTests.GenericOuterProbe<global::System.Int32>.Inner", lines);
+        Assert.Contains("BunnyTail.DependencyInjection.Tests.ComponentResolutionTests.GenericArgumentProbe<global::System.Collections.Generic.List<global::System.Int32>[]>", lines);
+        Assert.Contains("BunnyTail.DependencyInjection.Tests.ComponentResolutionTests.GenericArgumentProbe<global::System.Int32[][,]>", lines);
+        Assert.Contains("BunnyTail.DependencyInjection.Tests.ComponentResolutionTests.GenericArgumentProbe<global::BunnyTail.DependencyInjection.Tests.ComponentResolutionTests.DefaultedParameterProbe[]>", lines);
+    }
+
+    public sealed class GenericOuterProbe<T>
+    {
+        public T? Value { get; set; }
+
+        public sealed class Inner;
+    }
+
+    public sealed class GenericArgumentProbe<T>
+    {
+        public T? Value { get; set; }
+    }
+
+    private readonly struct HiddenArgumentProbe;
+
     [Fact]
     public void FactoryReportDescribeAcceptsPredicate()
     {

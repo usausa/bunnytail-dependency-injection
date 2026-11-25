@@ -804,7 +804,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
     };
 
     // TODO
-    private static CollectedModel? CreateCollectedModel(GeneratorSyntaxContext context)
+    private static Result<CollectedModel>? CreateCollectedModel(GeneratorSyntaxContext context)
     {
         var invocation = (InvocationExpressionSyntax)context.Node;
         if (GetInvokedMethod(context.SemanticModel, invocation) is not { } method)
@@ -1065,7 +1065,7 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
         return null;
     }
 
-    private static CollectedModel? CreateServiceOnlyModel(InvocationExpressionSyntax invocation, ITypeSymbol? service, string? lifetime)
+    private static Result<CollectedModel>? CreateServiceOnlyModel(InvocationExpressionSyntax invocation, ITypeSymbol? service, string? lifetime)
     {
         if (service is null)
         {
@@ -1077,11 +1077,11 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             return null;
         }
 
-        return new CollectedModel(null, ToKey(service), ToName(service), lifetime, CollectedKinds.ServiceOnly, invocation.SyntaxTree.FilePath, invocation.SpanStart);
+        return Results.Success(new CollectedModel(null, ToKey(service), ToName(service), lifetime, CollectedKinds.ServiceOnly, invocation.SyntaxTree.FilePath, invocation.SpanStart));
     }
 
     // TODO
-    private static CollectedModel? CreateCollectedModelCore(GeneratorSyntaxContext context, InvocationExpressionSyntax invocation, ITypeSymbol serviceArgument, ITypeSymbol implementationArgument, string lifetime, int kind)
+    private static Result<CollectedModel>? CreateCollectedModelCore(GeneratorSyntaxContext context, InvocationExpressionSyntax invocation, ITypeSymbol serviceArgument, ITypeSymbol implementationArgument, string lifetime, int kind)
     {
         if (implementationArgument is not INamedTypeSymbol implementationSymbol)
         {
@@ -1099,20 +1099,25 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             return null;
         }
 
+        var model = new CollectedModel(null, ToKey(serviceArgument), ToName(serviceArgument), lifetime, kind, invocation.SyntaxTree.FilePath, invocation.SpanStart);
+
         // 生成ファクトリ (new 直書き) が現在のアセンブリから参照できること
         // The generated factory (literal new) must be able to refer to the type from the current assembly.
         if (!IsReferable(implementationSymbol, context.SemanticModel.Compilation))
         {
-            return null;
+            return Results.Success(model) with
+            {
+                Diagnostics = new EquatableArray<DiagnosticInfo>([new DiagnosticInfo(Diagnostics.ImplementationNotReferable, LocationInfo.CreateFrom(invocation), implementationSymbol.ToDisplayString())])
+            };
         }
 
         var factory = CreateFactoryModel(implementationSymbol, context.SemanticModel.Compilation.Assembly);
         if (kind == CollectedKinds.Keyed ? !factory.EligibleKeyed : !factory.EligibleUnkeyed)
         {
-            return null;
+            return Results.Success(model);
         }
 
-        return new CollectedModel(factory, ToKey(serviceArgument), ToName(serviceArgument), lifetime, kind, invocation.SyntaxTree.FilePath, invocation.SpanStart);
+        return Results.Success(model with { Factory = factory });
     }
 
     // ------------------------------------------------------------
@@ -1498,7 +1503,12 @@ public sealed class DependencyInjectionGenerator : IIncrementalGenerator
             .ThenBy(static x => x.SpanStart)
             .ToArray();
 
-        var sortedCollected = collected
+        foreach (var model in collected)
+        {
+            diagnostics?.AddRange(model.Diagnostics);
+        }
+
+        var sortedCollected = collected.SelectValue()
             .OrderBy(static x => x.FilePath, StringComparer.Ordinal)
             .ThenBy(static x => x.SpanStart)
             .ToArray();

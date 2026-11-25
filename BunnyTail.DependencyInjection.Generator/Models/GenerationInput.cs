@@ -8,7 +8,7 @@ internal sealed record GenerationInput(
     ImmutableArray<Result<ComponentModel>> Singletons,
     ImmutableArray<Result<ComponentModel>> Scopeds,
     ImmutableArray<Result<ComponentModel>> Transients,
-    ImmutableArray<CollectedModel> Collected,
+    ImmutableArray<Result<CollectedModel>> Collected,
     ImmutableArray<Result<MethodModel>> Methods,
     EquatableArray<CandidateModel> Candidates,
     ImmutableArray<Result<FactoryModel>> GenerateComponentFactoryTargets,

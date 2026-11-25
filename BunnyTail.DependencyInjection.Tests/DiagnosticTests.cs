@@ -646,6 +646,39 @@ public sealed class DiagnosticTests
         Assert.DoesNotContain(result.Diagnostics(["BTDI"]), static x => x.Id == "BTDI0302");
     }
 
+    [Theory]
+    [InlineData("private sealed class Impl : IService;")]
+    [InlineData("public sealed class Impl : IService { public Impl(int value = 0) { _ = value; } }")]
+    public void Btdi0302RegistrationWithoutGeneratedFactoryEmitsNoDiagnostic(string declaration)
+    {
+        // Arrange
+        var source = """
+            using BunnyTail.DependencyInjection;
+            using Microsoft.Extensions.DependencyInjection;
+
+            namespace Demo;
+
+            public interface IService;
+
+            [Singleton]
+            public sealed class Component(IService service);
+
+            public static class Setup
+            {
+                public static void Configure(IServiceCollection services) => services.AddSingleton<IService, Impl>();
+
+            """ + declaration + """
+
+            }
+            """;
+
+        // Act
+        var result = GeneratorTestHelper.CreateRunner().Run(source);
+
+        // Assert
+        Assert.DoesNotContain(result.Diagnostics(["BTDI"]), static x => x.Id == "BTDI0302");
+    }
+
     [Fact]
     public void Btdi0302DefaultValueParameterEmitsNoDiagnostic()
     {
@@ -879,6 +912,52 @@ public sealed class DiagnosticTests
         var diagnostics = result.Diagnostics(["BTDI"]).Where(static x => x.Id == "BTDI0401").ToArray();
         Assert.Single(diagnostics);
         Assert.Contains("Repository<int>", diagnostics[0].GetMessage(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("public static class Setup { public static void Configure(IServiceCollection services) => services.AddSingleton<IService, Hidden>(); private sealed class Hidden : IService; }")]
+    [InlineData("public static class Setup { public static void Configure(IServiceCollection services) => services.AddKeyedSingleton<IService, Hidden>(\"key\"); private sealed class Hidden : IService; }")]
+    [InlineData("public static class Setup { public static void Configure(IServiceCollection services) => services.AddTransient(typeof(IService), typeof(Hidden)); private sealed class Hidden : IService; }")]
+    [InlineData("public static class Setup { public static void Configure(IServiceCollection services) => services.Add(ServiceDescriptor.Singleton<IService, Hidden>()); private sealed class Hidden : IService; }")]
+    [InlineData("public static class Setup { public static void Create(ITypeActivator activator) => _ = activator.Activate<Hidden>(); private sealed class Hidden; }")]
+    [InlineData("public static class Setup { public static void Configure(IServiceCollection services) => services.AddSingleton<IService, FileLocal>(); } file sealed class FileLocal : IService;")]
+    [InlineData("public sealed class Outer<T> { public static void Configure(IServiceCollection services) => services.AddSingleton<Inner>(); public sealed class Inner; }")]
+    public void Btdi0402ImplementationNotReferableEmitsDiagnostic(string declaration)
+    {
+        var problems = GeneratorTestHelper.GetProblemIds(
+            """
+            using BunnyTail.DependencyInjection;
+            using Microsoft.Extensions.DependencyInjection;
+
+            namespace Demo;
+
+            public interface IService;
+
+            """ + declaration);
+
+        Assert.Equal(["BTDI0402"], problems);
+    }
+
+    [Fact]
+    public void Btdi0402InternalImplementationEmitsNoDiagnostic()
+    {
+        var problems = GeneratorTestHelper.GetProblemIds(
+            """
+            using Microsoft.Extensions.DependencyInjection;
+
+            namespace Demo;
+
+            public interface IService;
+
+            public static class Setup
+            {
+                public static void Configure(IServiceCollection services) => services.AddSingleton<IService, Hidden>();
+
+                internal sealed class Hidden : IService;
+            }
+            """);
+
+        Assert.Empty(problems);
     }
 
     // ------------------------------------------------------------

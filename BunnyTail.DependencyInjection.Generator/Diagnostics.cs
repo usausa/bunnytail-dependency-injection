@@ -71,7 +71,7 @@ internal static class Diagnostics
     public static DiagnosticDescriptor InvalidGenerateComponentFactoryTarget { get; } = new(
         id: "BTDI0008",
         title: "Invalid GenerateComponentFactory target",
-        messageFormat: "Type must be a public concrete class. type=[{0}]",
+        messageFormat: "Type must be a public concrete class with a usable public constructor. type=[{0}]",
         category: "Usage",
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
@@ -164,6 +164,14 @@ internal static class Diagnostics
         id: "BTDI0401",
         title: "Value type generic on runtime path",
         messageFormat: "Value type generic has no factory. type=[{0}]",
+        category: "Usage",
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
+    public static DiagnosticDescriptor ImplementationNotReferable { get; } = new(
+        id: "BTDI0402",
+        title: "Implementation not referable",
+        messageFormat: "Implementation cannot be referred to from the generated code, so it resolves through the runtime path. type=[{0}]",
         category: "Usage",
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
